@@ -73,8 +73,8 @@ def show_progress():
         return
 
     sessions = h["sessions"]
-    modules = ["A", "B", "C", "D"]
-    module_names = {"A": "链面扫异常", "B": "心算价差", "C": "天气→策略", "D": "Greek直觉"}
+    modules = ["A", "B", "C", "D", "E"]
+    module_names = {"A": "链面扫异常", "B": "心算价差", "C": "天气→策略", "D": "Greek直觉", "E": "信用价差扫描"}
 
     print(f"\n{'═'*60}")
     print(f"  📊 训练统计（共 {len(sessions)} 次）")
@@ -163,19 +163,56 @@ def generate_chain_segment():
         anomaly_type = random.choice(["inversion_tradeable", "inversion_untradeable",
                                        "zero_bid", "wide_spread"])
         if anomaly_type == "inversion_tradeable":
-            prices[idx]["theo"] = round(prices[idx-1]["theo"] * random.uniform(0.5, 0.8), 2)
-            prices[idx]["bid"] = round(prices[idx]["theo"] * random.uniform(0.88, 0.94), 2)
-            prices[idx]["ask"] = round(prices[idx]["bid"] * random.uniform(1.03, 1.10), 2)
-            tradeable_strikes.append(strikes[idx])
-            all_anomalies.append({"strike": strikes[idx], "type": "可交易倒挂",
-                                   "detail": f"行权价{strikes[idx]}：更高但更便宜，买价{prices[idx]['bid']:.2f}存在，价差合理"})
+            # 检查参考腿（低行权价，idx-1）的流动性
+            ref_bid = prices[idx-1]["bid"]
+            ref_ask = prices[idx-1]["ask"]
+            ref_spread_pct = (ref_ask - ref_bid) / ref_bid * 100 if ref_bid > 0 else 999
+
+            if ref_bid <= 0:
+                # 参考腿没买价 → 不可交易
+                prices[idx]["theo"] = round(prices[idx-1]["theo"] * random.uniform(0.5, 0.8), 2)
+                prices[idx]["bid"] = 0.0
+                all_anomalies.append({"strike": strikes[idx], "type": "假倒挂",
+                                       "detail": f"行权价{strikes[idx]}：价格倒挂但参考腿买价为零 → 不能做"})
+            elif ref_spread_pct > 15:
+                # 参考腿价差太宽 → 不可交易
+                prices[idx]["theo"] = round(prices[idx-1]["theo"] * random.uniform(0.5, 0.8), 2)
+                prices[idx]["bid"] = round(prices[idx]["theo"] * random.uniform(0.88, 0.94), 2)
+                prices[idx]["ask"] = round(prices[idx]["bid"] * random.uniform(1.03, 1.10), 2)
+                all_anomalies.append({"strike": strikes[idx], "type": "假倒挂",
+                                       "detail": f"行权价{strikes[idx]}：价格倒挂但参考腿价差{ref_spread_pct:.0f}%太宽 → 不能做"})
+            else:
+                # 参考腿流动性好 → 真正可交易
+                prices[idx]["theo"] = round(prices[idx-1]["theo"] * random.uniform(0.5, 0.8), 2)
+                prices[idx]["bid"] = round(prices[idx]["theo"] * random.uniform(0.88, 0.94), 2)
+                prices[idx]["ask"] = round(prices[idx]["bid"] * random.uniform(1.03, 1.10), 2)
+                tradeable_strikes.append(strikes[idx])
+                all_anomalies.append({"strike": strikes[idx], "type": "可交易倒挂",
+                                       "detail": f"行权价{strikes[idx]}：更高但更便宜，买价{prices[idx]['bid']:.2f}存在，参考腿价差{ref_spread_pct:.0f}%合理"})
         elif anomaly_type == "inversion_untradeable":
             prices[idx]["theo"] = round(prices[idx-1]["theo"] * random.uniform(0.5, 0.8), 2)
-            if random.random() < 0.5:
+            ref_bid = prices[idx-1]["bid"]
+            ref_spread = (prices[idx-1]["ask"] - ref_bid) / ref_bid * 100 if ref_bid > 0 else 999
+
+            # 四种不可交易原因，随机选一种
+            roll = random.random()
+            if roll < 0.25 and ref_bid <= 0:
+                # 参考腿无流动性
+                prices[idx]["bid"] = round(prices[idx]["theo"] * random.uniform(0.88, 0.94), 2)
+                prices[idx]["ask"] = round(prices[idx]["bid"] * random.uniform(1.03, 1.10), 2)
+                detail = f"行权价{strikes[idx]}：价格倒挂但参考腿买价为零 → 参考价不可信，不能做"
+            elif roll < 0.50 and ref_spread > 15:
+                # 参考腿价差太宽
+                prices[idx]["bid"] = round(prices[idx]["theo"] * random.uniform(0.88, 0.94), 2)
+                prices[idx]["ask"] = round(prices[idx]["bid"] * random.uniform(1.03, 1.10), 2)
+                detail = f"行权价{strikes[idx]}：价格倒挂但参考腿价差{ref_spread:.0f}%太宽 → 参考价不可信，不能做"
+            elif roll < 0.75:
+                # 倒挂腿自身买价为零
                 prices[idx]["bid"] = 0.0
                 prices[idx]["ask"] = round(prices[idx]["theo"] * 1.5, 2)
                 detail = f"行权价{strikes[idx]}：价格倒挂了但买价为零 → 无法平仓，不能做"
             else:
+                # 倒挂腿自身价差过宽
                 prices[idx]["bid"] = round(prices[idx]["theo"] * 0.2, 2)
                 prices[idx]["ask"] = round(prices[idx]["theo"] * 3.0, 2)
                 detail = f"行权价{strikes[idx]}：价格倒挂了但价差过宽 → 滑点吃掉利润，不能做"
@@ -225,9 +262,11 @@ def run_drill_a(quick=False):
             ask_str = f"{p['ask']:.2f}"
             theo_str = f"{p['theo']:.2f}"
             if p['bid'] > 0 and p['ask'] > 0:
-                spread_str = f"{round((p['ask'] - p['bid']) / p['bid'] * 100, 1)}%"
+                sp = round((p['ask'] - p['bid']) / p['bid'] * 100, 1)
+                flag = " ⚠️" if sp > 15 else ""
+                spread_str = f"{sp}%{flag}"
             elif p['bid'] == 0:
-                spread_str = "零买价"
+                spread_str = "零买价 ❌"
             else:
                 spread_str = "—"
             print(col_fmt.format(s, bid_str, ask_str, theo_str, spread_str))
@@ -699,12 +738,133 @@ def run_drill_d(quick=False):
 
 
 # ═══════════════════════════════════════════
+# 训练 E：虚值信用价差扫描
+# ═══════════════════════════════════════════
+
+def run_drill_e(quick=False):
+    """训练 E：虚值信用价差 — 找卖腿买腿 + 心算净利"""
+    print(f"\n{'─'*60}")
+    print(f"  训练 E — 虚值信用价差扫描")
+    print(f"  规则：从链面找出能做信用价差的行权价对，算净权利金。")
+    print(f"  格式：卖腿行权价,买腿行权价,净权利金  （或'无'）")
+    print(f"{'─'*60}")
+
+    n_rounds = 3 if quick else 10
+    score = 0
+    total_time = 0
+    correct = 0
+
+    for round_num in range(1, n_rounds + 1):
+        chain = generate_chain_segment()
+        # 注入信用价差机会
+        cs_pairs = []
+        valid_strikes = [(i, chain["strikes"][i], chain["prices"][i])
+                         for i in range(len(chain["strikes"]))
+                         if chain["prices"][i]["bid"] > 0 and chain["prices"][i]["ask"] > 0
+                         and (chain["prices"][i]["ask"] - chain["prices"][i]["bid"]) / chain["prices"][i]["bid"] < 0.10]
+
+        # 随机注入 0-1 个可交易信用价差对
+        if len(valid_strikes) >= 2 and random.random() < 0.6:
+            pair_indices = random.sample(valid_strikes, 2)
+            pair_indices.sort(key=lambda x: x[0], reverse=True)  # 高行权价在前
+            high, low = pair_indices[0], pair_indices[1]
+            sell_bid = high[2]["bid"]
+            buy_ask = low[2]["ask"]
+            if sell_bid > buy_ask:
+                net = round(sell_bid - buy_ask, 1)
+                cs_pairs.append({
+                    "sell_strike": high[1], "buy_strike": low[1],
+                    "net_premium": net,
+                })
+
+        print(f"\n  [{round_num}/{n_rounds}] {chain['product']} 期货≈{chain['futures']}")
+        col_fmt = f"  {{:>6}} │ {{:>8}} {{:>8}} {{:>8}}"
+        print(col_fmt.format('行权价', 'P买价(bid)', 'P卖价(ask)', '价差%'))
+        print(f"  {'─'*6}─┼─{'─'*32}")
+
+        for i, (s, p) in enumerate(zip(chain["strikes"], chain["prices"])):
+            bid_str = f"{p['bid']:.2f}" if p['bid'] > 0 else "0.00"
+            ask_str = f"{p['ask']:.2f}"
+            if p['bid'] > 0 and p['ask'] > 0:
+                sp = round((p['ask'] - p['bid']) / p['bid'] * 100, 1)
+                flag = " ⚠️" if sp > 15 else ""
+                spread_str = f"{sp}%{flag}"
+            elif p['bid'] == 0:
+                spread_str = "零买价 ❌"
+            else:
+                spread_str = "—"
+            print(col_fmt.format(s, bid_str, ask_str, spread_str))
+
+        print(f"  规则：卖高行权价(bid成交)，买低行权价(ask成交)。净利=卖bid-买ask")
+        t_start = time.time()
+        try:
+            answer = input(f"  → 卖行权价,买行权价,净利（或'无'）: ").strip()
+        except (EOFError, KeyboardInterrupt):
+            print(f"\n  训练中断。")
+            return
+        elapsed = (time.time() - t_start) * 1000
+        total_time += elapsed
+
+        if answer.lower() in ["无", "none", "n", ""]:
+            user_pair = None
+            user_net = 0
+        else:
+            parts = answer.replace("，", ",").split(",")
+            try:
+                user_pair = (int(parts[0]), int(parts[1]))
+                user_net = float(parts[2]) if len(parts) >= 3 else 0
+            except (ValueError, IndexError):
+                user_pair = None
+                user_net = 0
+
+        has_cs = len(cs_pairs) > 0
+        expected_pair = (cs_pairs[0]["sell_strike"], cs_pairs[0]["buy_strike"]) if has_cs else None
+        expected_net = cs_pairs[0]["net_premium"] if has_cs else 0
+
+        pair_ok = user_pair == expected_pair
+        net_ok = abs(user_net - expected_net) < 0.15 if has_cs else True
+
+        if not has_cs:
+            if user_pair is None:
+                correct += 1
+                score += 3 if elapsed < 15000 else (2 if elapsed < 25000 else 1)
+                print(f"  ✅ 正确！今日无信用价差机会 ({elapsed/1000:.1f}s)")
+            else:
+                print(f"  ❌ 误报。今日无合格信用价差机会")
+        elif pair_ok and net_ok:
+            correct += 1
+            score += 3 if elapsed < 20000 else (2 if elapsed < 30000 else 1)
+            print(f"  ✅ 全对！卖P{expected_pair[0]}/买P{expected_pair[1]} 净收 ¥{expected_net} ({elapsed/1000:.1f}s)")
+        elif pair_ok and not net_ok:
+            print(f"  ⚠️ 行权价对正确，但净利算错。你算¥{user_net}，正确¥{expected_net}")
+            print(f"     卖bid {cs_pairs[0]['sell_strike']}P, 买ask {cs_pairs[0]['buy_strike']}P")
+            score += 1
+        else:
+            print(f"  ❌ 正确答案：卖P{expected_pair[0]}/买P{expected_pair[1]} 净收 ¥{expected_net}")
+            score += 0
+
+        if round_num < n_rounds:
+            input(f"  (按回车继续)")
+
+    accuracy = correct / n_rounds * 100
+    avg_time = total_time / n_rounds
+    save_session("E", score, accuracy, avg_time, n_rounds)
+
+    print(f"\n  {'─'*40}")
+    print(f"  训练E完成: {correct}/{n_rounds} 正确 ({accuracy:.0f}%)")
+    print(f"  平均用时: {avg_time/1000:.1f}s/题  得分: {score}")
+    rating = "⭐ 信用价差猎手！" if accuracy >= 85 else ("👍 继续磨" if accuracy >= 65 else "🐢 多跑几次扫描器")
+    print(f"  {rating}")
+    print()
+
+
+# ═══════════════════════════════════════════
 # 主菜单
 # ═══════════════════════════════════════════
 
 def today_recommendation():
     dow = date.today().weekday()  # 0=Mon
-    return {0: "A", 1: "B", 2: "C", 3: "A", 4: "B", 5: "C", 6: "D"}[dow]
+    return {0: "A", 1: "B", 2: "C", 3: "A", 4: "E", 5: "C", 6: "D"}[dow]
 
 
 def main():
@@ -717,7 +877,7 @@ def main():
     module = args.module
     if module is None or module == "auto":
         module = today_recommendation()
-        names = {"A": "链面扫异常", "B": "心算价差", "C": "天气→策略", "D": "Greek直觉"}
+        names = {"A": "链面扫异常", "B": "心算价差", "C": "天气→策略", "D": "Greek直觉", "E": "信用价差扫描"}
         print(f"\n  📅 今日推荐: 训练 {module} — {names[module]}")
         if args.quick:
             print(f"  ⚡ 快速模式(5题)")
@@ -734,8 +894,10 @@ def main():
         run_drill_c(quick=args.quick)
     elif module == "D":
         run_drill_d(quick=args.quick)
+    elif module == "E":
+        run_drill_e(quick=args.quick)
     else:
-        print(f"未知模块: {module}。请用 A/B/C/D/stats")
+        print(f"未知模块: {module}。请用 A/B/C/D/E/stats")
         return
 
     # 训练后显示简要统计
