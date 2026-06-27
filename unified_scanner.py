@@ -160,7 +160,12 @@ def scan_deep_otm(vcode, variety, capital=None):
                 sp = _spread(nxt['bid'], nxt['ask'])
                 net = round(profit_pct - sp, 1)
                 cost = nxt['price'] * mult
+                # 倒挂腿（nxt）必须流动性合格
                 tradeable = sp < profit_pct and sp < MAX_SPREAD_PCT and nxt['bid'] > 0
+                # 参考腿（cur）也必须流动性合格，否则参考价不可信
+                ref_sp = _spread(cur['bid'], cur['ask'])
+                if cur['bid'] <= 0 or ref_sp > MAX_SPREAD_PCT:
+                    tradeable = False
 
                 if capital and cost > capital * 0.05:
                     continue
@@ -293,8 +298,90 @@ def scan_credit_spreads(vcode, variety, capital=None):
                 'tradeable': tradeable,
             })
 
+    # ── 虚值 Call 信用价差（看跌方向）──
+    for contract in contracts:
+        try:
+            df = ak.option_commodity_contract_table_sina(symbol=symbol, contract=contract)
+        except Exception:
+            continue
+        if df is None or df.empty:
+            continue
+
+        df = df.rename(columns={
+            '行权价': 'strike',
+            '看涨合约-买价': 'c_bid', '看涨合约-卖价': 'c_ask',
+            '看涨合约-最新价': 'c_last', '看涨合约-持仓量': 'c_oi',
+        })
+
+        calls = df[df['c_bid'] > 0].copy()
+        if calls.empty:
+            continue
+        calls = calls.sort_values('strike')
+
+        for i in range(len(calls) - 1):
+            low_row = calls.iloc[i]      # 较低行权价 → 卖出
+            high_row = calls.iloc[i + 1]  # 较高行权价 → 买入
+
+            sell_strike = int(low_row['strike'])
+            buy_strike = int(high_row['strike'])
+
+            # 两条腿都必须是虚值 Call（行权价 > 期货现价）
+            if sell_strike <= futures or buy_strike <= futures:
+                continue
+
+            strike_width = buy_strike - sell_strike
+            if strike_width > futures * 0.05:
+                continue
+
+            sell_bid = _safe(low_row['c_bid'])
+            buy_ask = _safe(high_row['c_ask'])
+
+            if sell_bid <= 0 or buy_ask <= 0 or sell_bid <= buy_ask:
+                continue
+
+            net_premium = round(sell_bid - buy_ask, 2)
+            max_profit = net_premium * mult
+            max_loss = round((strike_width * mult) - max_profit, 0)
+
+            if capital and max_loss > capital * 0.05:
+                continue
+            if max_loss <= 0:
+                continue
+
+            rr_ratio = round(max_profit / max_loss, 2)
+            if rr_ratio < 0.15:
+                continue
+
+            sell_spread = _spread(low_row['c_bid'], low_row['c_ask'])
+            buy_spread = _spread(high_row['c_bid'], high_row['c_ask'])
+            if sell_spread > MAX_SPREAD_PCT or buy_spread > MAX_SPREAD_PCT:
+                continue
+
+            tradeable = (
+                net_premium > 0 and max_loss > 0
+                and (not capital or max_loss <= capital * 0.05)
+                and rr_ratio >= 0.15
+            )
+
+            all_signals.append({
+                'variety': vcode,
+                'name': variety['name'],
+                'contract': contract,
+                'sell_strike': sell_strike,
+                'buy_strike': buy_strike,
+                'sell_bid': round(float(sell_bid), 2),
+                'buy_ask': round(float(buy_ask), 2),
+                'net_premium': net_premium,
+                'max_profit': round(max_profit, 0),
+                'max_loss': max_loss,
+                'rr_ratio': rr_ratio,
+                'tradeable': tradeable,
+            })
+
     tradeable = [s for s in all_signals if s['tradeable']]
-    summary = f"{len(all_signals)}信号({len(tradeable)}可做)" if all_signals else "无信号"
+    nc = len([s for s in tradeable if s['sell_strike'] > futures])  # Call 信号数
+    np = len([s for s in tradeable if s['sell_strike'] < futures])  # Put 信号数
+    summary = f"{len(all_signals)}信号({len(tradeable)}可做: {np}Puts {nc}Calls)" if all_signals else "无信号"
     return all_signals, summary
 
 
@@ -459,6 +546,8 @@ def main():
     parser.add_argument('--variety', type=str, default='all', help='指定品种')
     parser.add_argument('--skip-otm', action='store_true', help='跳过虚值倒挂扫描')
     parser.add_argument('--skip-cs', action='store_true', help='跳过信用价差扫描')
+    parser.add_argument('--show', type=int, default=10, help='信号详情显示数量，默认10。填0显示全部')
+    parser.add_argument('--raw', action='store_true', help='不过滤，显示全部原始信号')
     args = parser.parse_args()
 
     if args.variety == 'all':
@@ -561,6 +650,15 @@ def main():
 
     # ── 结论 ──
     if not args.quick:
+        # 事件品种（用于标记）
+        event_vcodes = set()
+        for e in events:
+            if e['impact'] == 'high' and e['days_until'] <= 7:
+                for vn in e.get('variety_names', []):
+                    for vc, vi in VARIETIES.items():
+                        if vi['name'] == vn:
+                            event_vcodes.add(vc)
+
         # 展开信用价差信号详情
         all_cs = []
         for vcode, (signals, _) in cs_results.items():
@@ -568,12 +666,34 @@ def main():
         if all_cs:
             cs_ok = [s for s in all_cs if s['tradeable']]
             if cs_ok:
-                print(f"\n  ┌─ 可交易信用价差详情")
-                for i, s in enumerate(sorted(cs_ok, key=lambda x: x['rr_ratio'], reverse=True)[:10], 1):
-                    print(f"  │ [{i}] {s['name']} {s['contract']} "
-                          f"卖P{s['sell_strike']}({s['sell_bid']}) / 买P{s['buy_strike']}({s['buy_ask']})")
-                    print(f"  │     净收 ¥{s['net_premium']} | 最大盈 ¥{s['max_profit']:.0f} | 最大亏 ¥{s['max_loss']:.0f}")
-                print(f"  └─")
+                if not args.raw:
+                    # 过滤：去重 + 盈亏比 + 事件标记
+                    seen = {}
+                    filtered = []
+                    for s in sorted(cs_ok, key=lambda x: x['rr_ratio'], reverse=True):
+                        key = f"{s['variety']}_{s['contract']}"
+                        if key not in seen:
+                            seen[key] = s
+                            if s['rr_ratio'] >= 0.25:
+                                s['_event_warning'] = s['variety'] in event_vcodes
+                                filtered.append(s)
+                    display_cs = filtered
+                else:
+                    display_cs = cs_ok
+
+                if display_cs:
+                    filtered_label = "（已去重+筛选）" if not args.raw else "（原始）"
+                    print(f"\n  ┌─ 可交易信用价差详情 {filtered_label}")
+                    if not args.raw:
+                        print(f"  │ 筛选：单品种单合约仅显示最佳 | 盈亏比≥0.25(亏¥1赚¥0.25+) | ⚠️=7日内有高影响事件")
+                    limit = args.show if args.show > 0 else len(display_cs)
+                    for i, s in enumerate(display_cs[:limit], 1):
+                        warn = " ⚠️有事件" if s.get('_event_warning') else ""
+                        opt_type = "C" if s['sell_strike'] < s['buy_strike'] else "P"
+                        print(f"  │ [{i}] {s['name']} {s['contract']} "
+                              f"卖{opt_type}{s['sell_strike']}({s['sell_bid']}) / 买{opt_type}{s['buy_strike']}({s['buy_ask']}){warn}")
+                        print(f"  │     净收 ¥{s['net_premium']} | 最大盈 ¥{s['max_profit']:.0f} | 最大亏 ¥{s['max_loss']:.0f}")
+                    print(f"  └─")
 
         # 展开所有虚值信号详情
         all_signals = []
@@ -583,7 +703,8 @@ def main():
             tradeable_signals = [s for s in all_signals if s['tradeable']]
             if tradeable_signals:
                 print(f"\n  ┌─ 可交易虚值倒挂详情")
-                for i, s in enumerate(sorted(tradeable_signals, key=lambda x: x['net_pct'], reverse=True)[:10], 1):
+                olimit = args.show if args.show > 0 else len(tradeable_signals)
+                for i, s in enumerate(sorted(tradeable_signals, key=lambda x: x['net_pct'], reverse=True)[:olimit], 1):
                     print(f"  │ [{i}] {s['name']} {s['contract']} "
                           f"P{s['buy_strike']}({s['buy_price']:.2f}) < P{s['ref_strike']}({s['ref_price']:.2f})")
                     print(f"  │     净利 +{s['net_pct']}% | 成本 ¥{s['cost']:.0f} | "
