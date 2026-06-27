@@ -138,13 +138,19 @@ def generate_chain_segment():
         theo = round(prices[i-1]["theo"] + increment, 2)
         if random.random() < 0.15:
             theo = round(prices[i-1]["theo"] + random.uniform(1.0, 3.0), 2)
-        # 真实市场：bid/ask 随机跳动
+        # 真实市场：bid/ask 随机跳动。一半行权价价差较紧（可交易），一半较宽
         theo += random.uniform(-0.15, 0.15)
-        bid = round(theo * random.uniform(0.85, 0.96), 2)
-        ask = round(theo * random.uniform(1.04, 1.15), 2)
+        if random.random() < 0.5:
+            # 紧价差：bid 贴近 theo，ask 小幅加价
+            bid = round(theo * random.uniform(0.90, 0.97), 2)
+            ask = round(theo * random.uniform(1.03, 1.10), 2)
+        else:
+            # 宽价差：模拟真实深度虚值区
+            bid = round(theo * random.uniform(0.80, 0.90), 2)
+            ask = round(theo * random.uniform(1.10, 1.25), 2)
         # 随机零买价
         otm_pct = (fut - strikes[i]) / fut
-        if otm_pct > 0.25 and random.random() < 0.08:
+        if otm_pct > 0.25 and random.random() < 0.06:
             bid = 0.0
         prices.append({
             "theo": max(prices[i-1]["theo"] + 0.01, theo),
@@ -152,16 +158,16 @@ def generate_chain_segment():
             "ask": ask,
         })
 
-    # 注入 0-3 个混合异常
+    # 注入 1-3 个混合异常（加权：可交易倒挂出现概率更高）
     tradeable_strikes = []
     all_anomalies = []
-    n_anomalies = random.randint(0, 3)
+    n_anomalies = random.randint(1, 3)
     candidates = list(range(2, len(strikes) - 2))
     random.shuffle(candidates)
 
     for idx in candidates[:n_anomalies]:
-        anomaly_type = random.choice(["inversion_tradeable", "inversion_untradeable",
-                                       "zero_bid", "wide_spread"])
+        anomaly_type = random.choice(["inversion_tradeable", "inversion_tradeable",
+                                       "inversion_untradeable", "zero_bid", "wide_spread"])
         if anomaly_type == "inversion_tradeable":
             # 检查参考腿（低行权价，idx-1）的流动性
             ref_bid = prices[idx-1]["bid"]
@@ -763,8 +769,8 @@ def run_drill_e(quick=False):
                          if chain["prices"][i]["bid"] > 0 and chain["prices"][i]["ask"] > 0
                          and (chain["prices"][i]["ask"] - chain["prices"][i]["bid"]) / chain["prices"][i]["bid"] < 0.10]
 
-        # 随机注入 0-1 个可交易信用价差对
-        if len(valid_strikes) >= 2 and random.random() < 0.6:
+        # 随机注入 0-1 个可交易信用价差对（80% 概率，够 2 条合格腿就做）
+        if len(valid_strikes) >= 2 and random.random() < 0.8:
             pair_indices = random.sample(valid_strikes, 2)
             pair_indices.sort(key=lambda x: x[0], reverse=True)  # 高行权价在前
             high, low = pair_indices[0], pair_indices[1]
