@@ -18,7 +18,7 @@ from datetime import datetime, date
 from pathlib import Path
 
 SCRIPT_DIR = Path(__file__).parent
-STATE_DIR = SCRIPT_DIR / "drill_state"
+STATE_DIR = SCRIPT_DIR.parent / "drill_state"
 STATE_DIR.mkdir(exist_ok=True)
 HISTORY_FILE = STATE_DIR / "history.json"
 
@@ -73,8 +73,8 @@ def show_progress():
         return
 
     sessions = h["sessions"]
-    modules = ["A", "B", "C", "D", "E"]
-    module_names = {"A": "链面扫异常", "B": "心算价差", "C": "天气→策略", "D": "Greek直觉", "E": "信用价差扫描"}
+    modules = ["A", "B", "C", "D", "E", "F"]
+    module_names = {"A": "链面扫异常", "B": "价差判断", "C": "天气→策略", "D": "Greek场景", "E": "信用价差扫描", "F": "持仓管理"}
 
     print(f"\n{'═'*60}")
     print(f"  📊 训练统计（共 {len(sessions)} 次）")
@@ -340,11 +340,12 @@ def run_drill_a(quick=False):
 # ═══════════════════════════════════════════
 
 def run_drill_b(quick=False):
-    """训练 B：心算价差百分比"""
+    """训练 B：价差判断 — 能不能做"""
     print(f"\n{'─'*60}")
-    print(f"  训练 B — 心算价差")
-    print(f"  规则：看 bid/ask，心算价差百分比，输入答案")
-    print(f"  公式：(卖价-买价)÷买价×100。目标：3秒/题，误差<2%，正确率>90%")
+    print(f"  训练 B — 价差判断")
+    print(f"  规则：看 bid/ask，判断能不能做。不计算，只判断。")
+    print(f"  可 (价差<10%)  |  警 (10-15%看情况)  |  不 (价差>15%)")
+    print(f"  目标：3秒/题，正确率>85%")
     print(f"{'─'*60}")
 
     n_rounds = 5 if quick else 25
@@ -352,53 +353,56 @@ def run_drill_b(quick=False):
     total_time = 0
     correct = 0
 
+    labels = {"可": "✅可(<10%)", "警": "⚠️警(10-15%)", "不": "❌不(>15%)"}
+
     for round_num in range(1, n_rounds + 1):
-        # 生成逼真的 bid/ask 对
         scenario_type = random.choice(["deep_otm", "atm", "itm", "wide", "tight"])
         if scenario_type == "deep_otm":
             bid = round(random.uniform(0.10, 2.00), 2)
-            ask = round(bid * random.uniform(1.10, 2.50), 2)
+            ask = round(bid * random.uniform(1.05, 3.00), 2)
         elif scenario_type == "atm":
             bid = round(random.uniform(5.00, 50.00), 2)
-            ask = round(bid * random.uniform(1.01, 1.10), 2)
+            ask = round(bid * random.uniform(1.01, 1.25), 2)
         elif scenario_type == "itm":
             bid = round(random.uniform(30.00, 200.00), 2)
-            ask = round(bid * random.uniform(1.01, 1.08), 2)
+            ask = round(bid * random.uniform(1.01, 1.20), 2)
         elif scenario_type == "wide":
             bid = round(random.uniform(0.20, 3.00), 2)
-            ask = round(bid * random.uniform(2.00, 5.00), 2)
+            ask = round(bid * random.uniform(2.00, 8.00), 2)
         else:
             bid = round(random.uniform(1.00, 20.00), 2)
             ask = round(bid * random.uniform(1.02, 1.06), 2)
 
         actual_spread = round((ask - bid) / bid * 100, 1)
+        if actual_spread < 10:
+            expected = "可"
+        elif actual_spread <= 15:
+            expected = "警"
+        else:
+            expected = "不"
 
         print(f"\n  [{round_num}/{n_rounds}]  买价={bid:.2f}  卖价={ask:.2f}")
 
         t_start = time.time()
         try:
-            user_answer = float(input(f"  → 价差 = ?%: ").strip())
-        except ValueError:
-            user_answer = -999
+            user = input(f"  → 可/警/不 ?: ").strip()
         except (EOFError, KeyboardInterrupt):
             print(f"\n  训练中断。已保存当前进度。")
             return
         elapsed = (time.time() - t_start) * 1000
         total_time += elapsed
 
-        error = abs(user_answer - actual_spread)
-        if error <= 2.0:
+        if user == expected:
             correct += 1
-            # 速度加分
             if elapsed < 3000:
                 score += 3
             elif elapsed < 6000:
                 score += 2
             else:
                 score += 1
-            print(f"  ✅ {elapsed/1000:.1f}s  你:{user_answer}%  实际:{actual_spread}%  (误差{error:.1f}%)")
+            print(f"  ✅ {elapsed/1000:.1f}s  {labels[expected]}  实际价差{actual_spread}%")
         else:
-            print(f"  ❌ {elapsed/1000:.1f}s  你:{user_answer}%  实际:{actual_spread}%  (误差{error:.1f}%，超过2%)")
+            print(f"  ❌ {elapsed/1000:.1f}s  你选{user}  实际{labels[expected]}  价差{actual_spread}%")
 
     accuracy = correct / n_rounds * 100
     avg_time = total_time / n_rounds
@@ -407,9 +411,10 @@ def run_drill_b(quick=False):
     print(f"\n  {'─'*40}")
     print(f"  训练B完成: {correct}/{n_rounds} 正确 ({accuracy:.0f}%)")
     print(f"  平均用时: {avg_time/1000:.1f}s/题  得分: {score}")
-    rating = "⭐ 心算天才！" if avg_time < 3000 else ("👍 不错" if avg_time < 6000 else "🐢 多练，价差判断是赚钱的关键")
+    rating = "⚡ 火眼金睛！" if accuracy >= 85 else ("👍 继续磨" if accuracy >= 65 else "🐢 多看真实链面")
     print(f"  {rating}")
     print()
+
 
 
 # ═══════════════════════════════════════════
@@ -566,184 +571,86 @@ def run_drill_c(quick=False):
 
 
 # ═══════════════════════════════════════════
-# 训练 D：Greek 直觉
+# 训练 D：Greek 场景直觉
 # ═══════════════════════════════════════════
+# 不再问知识选择题。给持仓 + 市场变化，判断 P&L 和主因 Greek。
 
 SCENARIOS_D = [
     {
-        "position": "买入 ATM Call，到期还有 30 天",
-        "q": "最有利的 Greek 是什么？",
+        "position": "卖豆粕虚值 Put 价差（卖 P2900 / 买 P2850），到期 25 天",
+        "event": "豆粕期货突然跌了 4%，从 2966 跌到 2850",
+        "q": "你的 P&L 大概变多少？主因是哪个 Greek？",
         "options": [
-            ("Delta — 方向对了就赚钱", False, "Delta 只是 1:1 平移，真正的加速器是 Gamma"),
-            ("Gamma — 方向对了越赚越快", True, "ATM 期权 Gamma 最大，标的涨 1 块 → Delta 也变大 → 利润加速"),
-            ("Theta — 时间价值增长", False, "买方 Theta 每天在亏钱"),
-            ("Vega — 波动率上升赚钱", True, "ATM Vega 也大，IV 上升时直接拉动期权价格"),
-        ],
-        "correct_count": 2,
-    },
-    {
-        "position": "卖出深度虚值 Put，到期还有 5 天",
-        "q": "最危险的 Greek 是什么？",
-        "options": [
-            ("Delta — 方向风险", False, "虚值 Put 的 Delta 很小（0.05-0.15），方向不致命"),
-            ("Gamma — 快速变实值后 Delta 爆炸", True, "到期临近 + 虚值 = Gamma 极高，一旦方向不利，期权迅速变实值，亏损非线性放大"),
-            ("Theta — 时间损耗太快", False, "卖方 Theta 是朋友"),
-            ("Vega — IV 突然飙升", False, "只剩5天，Vega 已经很小了"),
+            ("浮亏 ¥150-300，主因 Delta + Gamma", True, "卖腿从虚值变平值 → Delta 从 0.15 跳到 0.50 → 浮亏。Gamma 加速了 Delta 变化"),
+            ("浮亏 ¥50 以内，影响不大", False, "跌 4% 对虚值价差已经是事件级别"),
+            ("浮盈 ¥100+，主因 Vega", False, "急跌时 IV 通常涨（恐慌），Vega 负 = 亏钱，不是赚钱"),
+            ("浮亏 ¥500+，主因 Theta", False, "Theta 是每天慢慢赚的，不会造成急性亏损"),
         ],
         "correct_count": 1,
     },
     {
-        "position": "买入深度虚值 Put，到期还有 60 天",
-        "q": "最大的敌人是什么？",
+        "position": "卖玉米 Call 价差（卖 C2300 / 买 C2340），到期 30 天",
+        "event": "USDA 报告利多，玉米期货跳涨 3% 到 2370",
+        "q": "你的卖腿变实值了。现在怎么办？",
         "options": [
-            ("Theta — 每天蒸发时间价值", True, "虽然远月 Theta 小，但虚值期权没有内在价值 = 全由时间价值组成 = Theta 是最大敌人"),
-            ("Gamma — 波动加速", False, "远月虚值 Gamma 很小，加速效应弱"),
-            ("Delta — 方向性亏损", False, "虚值 Delta 小，标的微涨微跌影响不大"),
-            ("Rho — 利率变动", False, "商品期权短期利率影响可忽略"),
+            ("立即平仓止损，亏损已到最大附近，等没有意义", True, "卖腿深实值 → 亏损封顶 → 持仓没有恢复空间，保证金还被占用"),
+            ("继续持有，等期货跌回来", False, "深实值 Call 只剩内在价值，时间价值几乎为零，不可能跌回来"),
+            ("加卖一张更虚的 Call 摊平成本", False, "亏损加仓 = 赌徒行为"),
+            ("买入期货对冲 Delta", False, "已经在最大亏损了，对冲没有意义"),
         ],
         "correct_count": 1,
     },
     {
-        "position": "卖出 ATM 跨式（Call+Put），到期还有 14 天",
-        "q": "你赌的是什么？",
+        "position": "卖菜粕 Put 价差（卖 P2275 / 买 P2250），到期 8 天，浮盈 ¥60（收了 ¥80）",
+        "event": "还有 8 天到期，目前期货在 2310，远高于卖腿行权价",
+        "q": "现在要不要提前平仓？",
         "options": [
-            ("标的窄幅震荡 + IV 下跌", True, "跨式卖方赚两份 Theta + Vega 回落，需要标的不动 + 波动率下降"),
-            ("标的单边暴涨", False, "卖方最怕这个"),
-            ("标的暴跌", False, "另一腿 Put 也会亏"),
-            ("利率大幅变动", False, "Rho 不是主要风险"),
+            ("平仓锁利。赚了 75%，最后 8 天可能 Gamma 暴涨，不值得冒险", True, "到期临近 Gamma 大 + 利润已经拿了大部分。落袋为安。"),
+            ("不平。反正快到期了，等归零全赚", False, "最后一周 Gamma 最大，万一暴跌会亏掉之前的浮盈"),
+            ("不平。卖了更高行权价，利润更大", False, "这是在追利润，不是管理风险"),
+            ("平掉一半", False, "信用价差两条腿，平一半 = 分腿 = 裸卖，不可以"),
         ],
         "correct_count": 1,
     },
     {
-        "position": "买入宽跨式（OTM Call + OTM Put），到期还有 3 天，下周 USDA 报告",
-        "q": "持有到期最可能的结果？",
+        "position": "卖豆粕 Put 价差，浮亏 ¥200（最大亏损 ¥350），到期 20 天",
+        "event": "IV 突然大幅跳升（Vega 负 = 你亏），但期货没怎么动",
+        "q": "亏损的主要来源是什么？该不该平？",
         "options": [
-            ("两腿都归零，亏光权利金", True, "宽跨式两腿都虚值 + 只剩3天 = 大概率归零。除非报告造成远超预期的跳空。"),
-            ("至少一腿赚钱", False, "两腿都是虚值，都需大跳空才变实值。3天时间太短。"),
-            ("Theta 每天补偿权利金", False, "买方 Theta 是负的"),
-            ("Delta 对冲自动获利", False, "未做 Delta 对冲"),
+            ("Vega 亏损 + 暂时不平，IV 飙升后会回落，除非快到期", True, "期货没动 = Delta 没亏。IV 跳是暂时的，等均值回归。还剩 20 天够等。"),
+            ("Delta 亏损 + 立即平仓", False, "期货没动，Delta 没亏"),
+            ("Theta 亏损 + 不平", False, "卖方 Theta 是收益，不是亏损"),
+            ("Gamma 亏损 + 平仓", False, "期货没动 → Gamma 没触发"),
         ],
         "correct_count": 1,
     },
     {
-        "position": "买入远月 ITM Put（Delta -0.85），作为期货空单替代品",
-        "q": "相比直接做空期货，优势是？",
+        "position": "持有菜粕信用价差 + 下周 USDA 报告",
+        "event": "USDA 报告前的周五，IV 已经涨了 15%",
+        "q": "报告前该不该平掉信用价差？",
         "options": [
-            ("亏损上限锁定在权利金", True, "买方最大亏损 = 权利金，期货理论上无上限（对空单来说也无下限）"),
-            ("手续费更低", False, "期权手续费通常更高"),
-            ("杠杆更高", False, "ITM 期权的杠杆通常低于期货"),
-            ("不受时间损耗影响", False, "即使 ITM 也有 Theta，只是较小"),
+            ("平掉。报告可能让 IV 继续涨或期货跳空。不想赌事件。", True, "信用价差 = 卖波动率。事件前平仓 = 不赌。等报告后 IV 回落再进。"),
+            ("不平。信用价差封顶亏损，不怕", False, "封顶亏损不代表可以不考虑机会成本。保证金会在浮亏中被多占很久。"),
+            ("加仓。IV 高是卖方好时机", False, "事件前 IV 高是对的——但事件后可能更高。只有事件后才确定 IV 是高点。"),
+            ("不动。反正到期还早", False, "这是主动忽视风险，不是管理风险"),
         ],
         "correct_count": 1,
     },
     {
-        "position": "卖出 NTM（近值）Put，同时买入更低行权价 Put（Bull Put Spread），到期 30 天",
-        "q": "和裸卖 Put 相比，这个结构有什么不同？",
+        "position": "卖玉米虚值 Put 价差，明天到期，期货离卖腿只差 0.5%",
+        "event": "最后一天，期货在卖腿行权价附近徘徊",
+        "q": "Gamma 最大的时刻。你该怎么做？",
         "options": [
-            ("最大亏损封顶了", True, "牛市看跌价差 = 裸卖 Put 的最大亏损被买入的更低行权 Put 截断了"),
-            ("胜率提高了", True, "盈亏平衡点更低（净收入降低了成本基础）→ 胜率确实更高"),
-            ("Vega 敞口更大", False, "两腿 Vega 对冲，净 Vega 变小"),
-            ("不需要保证金", False, "仍需保证金"),
-        ],
-        "correct_count": 2,
-    },
-    {
-        "position": "持有期货多头 + 买入 OTM Put 保护",
-        "q": "这个组合本质上等于什么？",
-        "options": [
-            ("买入 Call（合成看涨）", True, "期货多 + 买 Put = 买 Call（Put-Call Parity）。锁了下方风险 + 保留上方空间。"),
-            ("卖出 Put", False, "方向反了"),
-            ("卖出跨式", False, "完全不同的结构"),
-            ("裸做多期货", False, "多了 Put 保护后变成了合成期权"),
+            ("立即平仓。最后一天 Gamma 是平时的 10 倍+，0.5% 的移动就会造成巨大 P&L 跳动", True, "临到期 Gamma 爆炸。离行权价这么近 = 每一跳都是赌博。平掉。"),
+            ("继续持有，等明天自动到期", False, "最后一天的 Gamma 风险不值得用一天的 Theta 去换"),
+            ("买入期货对冲", False, "最后一天 Delta 变化太快，对冲跟不上"),
+            ("什么都不做", False, "这是最危险的时刻，必须主动管理"),
         ],
         "correct_count": 1,
     },
 ]
 
 
-def run_drill_d(quick=False):
-    """训练 D：Greek 直觉"""
-    print(f"\n{'─'*60}")
-    print(f"  训练 D — Greek 直觉")
-    print(f"  规则：看期权头寸场景，回答 Greek 相关问题")
-    print(f"  可能有多个正确答案。目标：正确率 > 85%")
-    print(f"{'─'*60}")
-
-    n_rounds = 3 if quick else 12
-    score = 0
-    total_time = 0
-    correct = 0
-
-    for round_num in range(1, n_rounds + 1):
-        scenario = random.choice(SCENARIOS_D)
-        random.shuffle(scenario["options"])
-
-        print(f"\n  [{round_num}/{n_rounds}]")
-        print(f"  📍 头寸: {scenario['position']}")
-        print(f"  ❓ {scenario['q']}")
-        print(f"  （选{scenario['correct_count']}个正确答案）")
-        print()
-        for j, (opt_text, _, _) in enumerate(scenario["options"], 1):
-            print(f"    {j}. {opt_text}")
-
-        t_start = time.time()
-        try:
-            answers = input(f"  → 选哪几个 (数字，逗号分隔): ").strip()
-        except (EOFError, KeyboardInterrupt):
-            print(f"\n  训练中断。已保存当前进度。")
-            return
-        elapsed = (time.time() - t_start) * 1000
-        total_time += elapsed
-
-        # 解析答案
-        try:
-            user_choices = [int(x.strip()) for x in answers.split(",") if x.strip()]
-        except ValueError:
-            user_choices = []
-
-        correct_choices = [j for j, (_, is_c, _) in enumerate(scenario["options"], 1) if is_c]
-
-        # 部分正确给部分分
-        matched = len(set(user_choices) & set(correct_choices))
-        extra = len(set(user_choices) - set(correct_choices))
-        missed = len(set(correct_choices) - set(user_choices))
-
-        if matched == len(correct_choices) and extra == 0:
-            correct += 1
-            if elapsed < 8000:
-                score += 3
-            elif elapsed < 15000:
-                score += 2
-            else:
-                score += 1
-            print(f"  ✅ 完美！{elapsed/1000:.1f}s")
-        elif matched > 0:
-            print(f"  ⚠️ 部分正确 ({elapsed/1000:.1f}s)")
-            if missed > 0:
-                print(f"     漏了: {', '.join(str(c) for c in correct_choices if c not in user_choices)}")
-            if extra > 0:
-                print(f"     多了: {', '.join(str(c) for c in user_choices if c not in correct_choices)}")
-            score += 1
-        else:
-            print(f"  ❌ ({elapsed/1000:.1f}s) 正确答案: {', '.join(str(c) for c in correct_choices)}")
-            for j, (t, _, _) in enumerate(scenario["options"], 1):
-                if j in correct_choices:
-                    print(f"     {j}. {t}")
-
-    accuracy = correct / n_rounds * 100
-    avg_time = total_time / n_rounds
-    save_session("D", score, accuracy, avg_time, n_rounds)
-
-    print(f"\n  {'─'*40}")
-    print(f"  训练D完成: {correct}/{n_rounds} 全对 ({accuracy:.0f}%)")
-    print(f"  平均用时: {avg_time/1000:.1f}s/题  得分: {score}")
-    ratings = ["⭐ Greek 大师！", "👍 基础扎实", "📚 重看 Natenberg 第4-5章", "🐢 从头来过"]
-    idx = 0 if accuracy >= 85 else (1 if accuracy >= 65 else (2 if accuracy >= 40 else 3))
-    print(f"  {ratings[idx]}")
-    print()
-
-
-# ═══════════════════════════════════════════
 # 训练 E：虚值信用价差扫描
 # ═══════════════════════════════════════════
 
@@ -865,12 +772,154 @@ def run_drill_e(quick=False):
 
 
 # ═══════════════════════════════════════════
+# 训练 F：持仓管理
+# ═══════════════════════════════════════════
+
+SCENARIOS_F = [
+    {
+        "position": "卖菜粕 Put 价差（P2275/P2250），净收 ¥80，最大亏损 ¥170，到期 20 天",
+        "event": "菜粕期货从 2310 跌到 2285，你的卖腿离实值只剩 10 个点",
+        "q": "浮亏在扩大。你该怎么做？",
+        "options": [
+            ("立即平仓。离行权价太近了，Gamma 开始变大，不值得冒", True, "只剩 10 点 = 0.4%。最后这点空间不能赌，锁亏离场。"),
+            ("继续持有。期货没到行权价就不用动", False, "等到了行权价可能已经浮亏翻倍"),
+            ("加卖一张看涨期权来对冲", False, "不对路——这是方向风险，不是波动率风险"),
+            ("买入期货空单做 Delta 对冲", False, "Layer 2 才学这个。现在分腿加期货会乱"),
+        ],
+        "correct_count": 1,
+    },
+    {
+        "position": "卖玉米 Call 价差（C2320/C2360），净收 ¥100，最大亏损 ¥300，到期 35 天",
+        "event": "过去一周期货在 2300-2320 窄幅震荡，你的 Call 卖腿还安全",
+        "q": "一切正常。你该做什么？",
+        "options": [
+            ("什么都不做。策略在按计划跑", True, "没触发止损条件 = 不管。这是持仓管理最难的事——不做。"),
+            ("提前平仓锁利", False, "才过一周，Theta 只收了小部分。现在平亏手续费。"),
+            ("加仓，多加一组价差", False, "窄幅震荡在卖腿附近 = 随时可能突破，加仓是加大风险"),
+            ("每天盯着看几次", False, "盯没问题，但不能因为盯了就乱动"),
+        ],
+        "correct_count": 1,
+    },
+    {
+        "position": "卖豆粕 Put 价差，收 ¥120，最大亏损 ¥380，到期 10 天，目前浮盈 ¥80",
+        "event": "还有 10 天到期，IV 突然从 50% 分位跌到 20% 分位",
+        "q": "IV 跌了 = Vega 让你赚了钱。现在该不该提前平仓？",
+        "options": [
+            ("平仓。10 天风险/回报不对等，赚了 67% 差不多了", True, "IV 回落是卖方最想看到的。已经赚了 2/3，最后几天 Gamma 大，不平可能吐回去。"),
+            ("不平。等到期全赚", False, "最后 10 天 Gamma 最大，如果期货动一下浮盈可能蒸发"),
+            ("不平。再卖一组价差", False, "IV 已经在低位了 = 不适合卖方进场"),
+            ("平一半", False, "信用价差不能分腿平"),
+        ],
+        "correct_count": 1,
+    },
+    {
+        "position": "卖豆粕虚值 Put 价差，刚开仓 3 天",
+        "event": "期货在卖腿上方 3% 处正常运行，浮盈 ¥25",
+        "q": "一切正常。但你觉得浮盈太少，想换一个更近行权价的价差来多赚。该换吗？",
+        "options": [
+            ("不换。频繁换仓 = 手续费吃掉利润。这个位置是安全的，等到期", True, "持仓管理的头号错误：因为无聊而改变正在赚钱的策略。"),
+            ("换。更近行权价 = 更多权利金", False, "更近 = 更高 Delta = 更高风险 = 不是同一个策略了"),
+            ("平掉一半，另一半留着", False, "又是分腿——做不到"),
+            ("加仓另一组更近的价差", False, "可以，但不该以当前盈利为理由"),
+        ],
+        "correct_count": 1,
+    },
+    {
+        "position": "卖菜粕 Put 价差 + 卖玉米 Put 价差，两个同时持仓",
+        "event": "USDA 报告大幅利好，豆粕玉米双双暴涨。两个持仓都浮盈 ¥100+",
+        "q": "两个持仓都在赚钱。你该做什么？",
+        "options": [
+            ("都放着。报告利好 = 方向在有利的一边。到期归零就行", True, "顺境持仓 = 最不需要动的持仓。Theta 在工作，方向在帮你。"),
+            ("平掉，落袋为安", False, "报告利好意味着方向对你有利，平了反而错过剩余 Theta"),
+            ("加仓第三组价差", False, "报告刚过 IV 在回落，卖家可以等确认后加仓——但不是因为涨了要追"),
+            ("把止损收紧", False, "信用价差最大亏损是封顶的，收紧止损在这没意义"),
+        ],
+        "correct_count": 1,
+    },
+]
+
+
+def run_drill_f(quick=False):
+    """训练 F：持仓管理 — 浮亏/浮盈时该不该平"""
+    print(f"\n{'─'*60}")
+    print(f"  训练 F — 持仓管理")
+    print(f"  规则：你在持有信用价差。给场景，判断该不该动。")
+    print(f"  目标：正确率 > 80%")
+    print(f"{'─'*60}")
+
+    n_rounds = 3 if quick else 10
+    score = 0
+    total_time = 0
+    correct = 0
+
+    for round_num in range(1, n_rounds + 1):
+        scenario = random.choice(SCENARIOS_F)
+        random.shuffle(scenario["options"])
+
+        print(f"\n  [{round_num}/{n_rounds}]")
+        print(f"  📍 持有: {scenario['position']}")
+        print(f"  ⚡ 发生: {scenario['event']}")
+        print(f"  ❓ {scenario['q']}")
+        print(f"  （选{scenario['correct_count']}个正确答案）")
+        print()
+        for j, (opt_text, _, _) in enumerate(scenario["options"], 1):
+            print(f"    {j}. {opt_text}")
+
+        t_start = time.time()
+        try:
+            answers = input(f"  → 选哪几个 (数字，逗号分隔): ").strip()
+        except (EOFError, KeyboardInterrupt):
+            print(f"\n  训练中断。已保存当前进度。")
+            return
+        elapsed = (time.time() - t_start) * 1000
+        total_time += elapsed
+
+        try:
+            user_choices = [int(x.strip()) for x in answers.split(",") if x.strip()]
+        except ValueError:
+            user_choices = []
+
+        correct_choices = [j for j, (_, is_c, _) in enumerate(scenario["options"], 1) if is_c]
+        matched = len(set(user_choices) & set(correct_choices))
+        extra = len(set(user_choices) - set(correct_choices))
+        missed = len(set(correct_choices) - set(user_choices))
+
+        if matched == len(correct_choices) and extra == 0:
+            correct += 1
+            if elapsed < 8000:
+                score += 3
+            elif elapsed < 15000:
+                score += 2
+            else:
+                score += 1
+            print(f"  ✅ 完美！{elapsed/1000:.1f}s")
+        elif matched > 0:
+            print(f"  ⚠️ 部分正确 ({elapsed/1000:.1f}s)")
+            if missed > 0:
+                print(f"     漏了: {', '.join(str(c) for c in correct_choices if c not in user_choices)}")
+            score += 1
+        else:
+            print(f"  ❌ ({elapsed/1000:.1f}s) 正确答案: {', '.join(str(c) for c in correct_choices)}")
+
+    accuracy = correct / n_rounds * 100
+    avg_time = total_time / n_rounds
+    save_session("F", score, accuracy, avg_time, n_rounds)
+
+    print(f"\n  {'─'*40}")
+    print(f"  训练F完成: {correct}/{n_rounds} 正确 ({accuracy:.0f}%)")
+    print(f"  平均用时: {avg_time/1000:.1f}s/题  得分: {score}")
+    rating = "⚔️ 冷血持仓管理！" if accuracy >= 80 else ("👍 有判断意识" if accuracy >= 65 else "🐢 多复盘实盘持仓")
+    print(f"  {rating}")
+    print()
+
+
+# ═══════════════════════════════════════════
 # 主菜单
 # ═══════════════════════════════════════════
 
 def today_recommendation():
     dow = date.today().weekday()  # 0=Mon
-    return {0: "A", 1: "B", 2: "C", 3: "A", 4: "E", 5: "C", 6: "D"}[dow]
+    return {0: "A", 1: "B", 2: "C", 3: "A", 4: "F", 5: "C", 6: "D"}[dow]
 
 
 def main():
@@ -883,7 +932,7 @@ def main():
     module = args.module
     if module is None or module == "auto":
         module = today_recommendation()
-        names = {"A": "链面扫异常", "B": "心算价差", "C": "天气→策略", "D": "Greek直觉", "E": "信用价差扫描"}
+        names = {"A": "链面扫异常", "B": "价差判断", "C": "天气→策略", "D": "Greek场景", "E": "信用价差扫描", "F": "持仓管理"}
         print(f"\n  📅 今日推荐: 训练 {module} — {names[module]}")
         if args.quick:
             print(f"  ⚡ 快速模式(5题)")
@@ -902,8 +951,10 @@ def main():
         run_drill_d(quick=args.quick)
     elif module == "E":
         run_drill_e(quick=args.quick)
+    elif module == "F":
+        run_drill_f(quick=args.quick)
     else:
-        print(f"未知模块: {module}。请用 A/B/C/D/E/stats")
+        print(f"未知模块: {module}。请用 A/B/C/D/E/F/stats")
         return
 
     # 训练后显示简要统计

@@ -56,6 +56,51 @@ OTM_PCT = 0.08
 # 从期权链推断期货价格
 # ═══════════════════════════════════════════
 
+def pick_best_contract(symbol):
+    """
+    从期权合约列表里选流动性最好的那个（前2个合约中 ATM 价差更紧的）。
+    避免用快到期、流动性干涸的最近月。
+    """
+    try:
+        cdf = ak.option_commodity_contract_sina(symbol=symbol)
+        candidates = cdf['合约'].tolist()[:2]
+    except Exception:
+        return None
+
+    if not candidates:
+        return None
+    if len(candidates) == 1:
+        return candidates[0]
+
+    best_contract, best_spread = None, 999
+    for contract in candidates:
+        try:
+            df = ak.option_commodity_contract_table_sina(symbol=symbol, contract=contract)
+            df = df.rename(columns={
+                '行权价': 'strike', '看跌合约-买价': 'p_bid', '看跌合约-卖价': 'p_ask',
+                '看涨合约-买价': 'c_bid', '看涨合约-卖价': 'c_ask',
+            })
+            # 找 ATM 价差
+            min_diff, atm_bid, atm_ask = float('inf'), 0, 0
+            for _, row in df.iterrows():
+                p_bid = _safe(row['p_bid'])
+                c_bid = _safe(row['c_bid'])
+                if p_bid > 0 and c_bid > 0:
+                    diff = abs(p_bid - c_bid)
+                    if diff < min_diff:
+                        min_diff = diff
+                        atm_bid = p_bid
+                        atm_ask = _safe(row['p_ask'])
+            sp = (atm_ask - atm_bid) / atm_bid * 100 if atm_bid > 0 else 999
+            if sp < best_spread:
+                best_spread = sp
+                best_contract = contract
+        except Exception:
+            continue
+
+    return best_contract or candidates[0]
+
+
 def infer_futures_from_chain(df):
     """
     从期权链数据推断标的期货价格。
@@ -399,11 +444,9 @@ def assess_iv_environment(vcode, variety):
     futures = variety['futures']
 
     try:
-        contracts_df = ak.option_commodity_contract_sina(symbol=symbol)
-        contracts = contracts_df['合约'].tolist()
-        if not contracts:
+        main_contract = pick_best_contract(symbol)
+        if not main_contract:
             return {"iv_level": "unknown", "note": "无合约数据"}
-        main_contract = contracts[0]
 
         df = ak.option_commodity_contract_table_sina(symbol=symbol, contract=main_contract)
         df = df.rename(columns={
