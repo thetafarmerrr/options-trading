@@ -73,8 +73,8 @@ def show_progress():
         return
 
     sessions = h["sessions"]
-    modules = ["A", "B", "C", "D", "E", "F"]
-    module_names = {"A": "链面扫异常", "B": "价差判断", "C": "天气→策略", "D": "Greek场景", "E": "信用价差扫描", "F": "持仓管理"}
+    modules = ["A", "B", "C", "D", "E", "F", "G"]
+    module_names = {"A": "链面扫异常", "B": "价差判断", "C": "天气→策略", "D": "Greek场景", "E": "信用价差扫描", "F": "持仓管理", "G": "腿位判断"}
 
     print(f"\n{'═'*60}")
     print(f"  📊 训练统计（共 {len(sessions)} 次）")
@@ -917,6 +917,56 @@ def run_drill_f(quick=False):
 # 主菜单
 # ═══════════════════════════════════════════
 
+def run_drill_g(quick=False):
+    """训练 G：腿位判断 — 虚值/近值/实值"""
+    print(f"\n{'─'*60}")
+    print(f"  训练 G — 腿位判断")
+    print(f"  规则：看期货现价+卖腿行权价，判断能不能做信用价差")
+    print(f"  虚 (OTM>2%)可做 | 近 (<2%)慎做 | 实 (ITM)不做")
+    print(f"  目标：3秒/题，正确率>90%")
+    print(f"{'─'*60}")
+
+    n_rounds = 5 if quick else 15
+    score = 0; total_time = 0; correct = 0
+    labels = {"虚": "✅虚值可做", "近": "⚠️近值慎做", "实": "❌实值不做"}
+
+    for r in range(1, n_rounds + 1):
+        futures = random.randint(2200, 5800)
+        sell_strike = futures + random.choice([-300, -200, -100, -50, -30, 0, 30, 50, 100, 200])
+        spread_w = random.choice([20, 50, 100])
+        buy_strike = sell_strike - spread_w if sell_strike > futures else sell_strike - spread_w
+
+        pct_otm = (futures - sell_strike) / futures * 100
+        if pct_otm > 2:
+            expected = "虚"
+        elif pct_otm >= 0:
+            expected = "近"
+        else:
+            expected = "实"
+
+        print(f"\n  [{r}/{n_rounds}]  期货={futures}  卖腿={sell_strike}  买腿={buy_strike}")
+        t0 = time.time()
+        try:
+            u = input(f"  → 虚/近/实 ?: ").strip()
+        except (EOFError, KeyboardInterrupt):
+            print(f"\n  训练中断。")
+            return
+        el = (time.time() - t0) * 1000; total_time += el
+        if u == expected:
+            correct += 1; score += 3 if el < 3000 else (2 if el < 6000 else 1)
+            print(f"  ✅ {el/1000:.1f}s  {labels[expected]}  OTM={pct_otm:.1f}%")
+        else:
+            print(f"  ❌ {el/1000:.1f}s  你选{u}  实际{labels[expected]}  OTM={pct_otm:.1f}%")
+
+    acc = correct / n_rounds * 100; avg = total_time / n_rounds
+    save_session("G", score, acc, avg, n_rounds)
+    print(f"\n  {'─'*40}")
+    print(f"  训练G完成: {correct}/{n_rounds} 正确 ({acc:.0f}%)")
+    print(f"  平均用时: {avg/1000:.1f}s/题  得分: {score}")
+    print(f"  {'⚡ 腿位大师！' if acc >= 90 else ('👍 继续磨' if acc >= 70 else '🐢 菜粕教训牢记')}")
+    print()
+
+
 def today_recommendation():
     dow = date.today().weekday()  # 0=Mon
     return {0: "A", 1: "B", 2: "C", 3: "A", 4: "F", 5: "C", 6: "D"}[dow]
@@ -932,7 +982,7 @@ def main():
     module = args.module
     if module is None or module == "auto":
         module = today_recommendation()
-        names = {"A": "链面扫异常", "B": "价差判断", "C": "天气→策略", "D": "Greek场景", "E": "信用价差扫描", "F": "持仓管理"}
+        names = {"A": "链面扫异常", "B": "价差判断", "C": "天气→策略", "D": "Greek场景", "E": "信用价差扫描", "F": "持仓管理", "G": "腿位判断"}
         print(f"\n  📅 今日推荐: 训练 {module} — {names[module]}")
         if args.quick:
             print(f"  ⚡ 快速模式(5题)")
@@ -953,8 +1003,10 @@ def main():
         run_drill_e(quick=args.quick)
     elif module == "F":
         run_drill_f(quick=args.quick)
+    elif module == "G":
+        run_drill_g(quick=args.quick)
     else:
-        print(f"未知模块: {module}。请用 A/B/C/D/E/F/stats")
+        print(f"未知模块: {module}。请用 A/B/C/D/E/F/G/stats")
         return
 
     # 训练后显示简要统计
