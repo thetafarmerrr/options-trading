@@ -251,12 +251,39 @@
       "avg_time_ms": 4104.0,
       "total_questions": 25,
       "day_of_week": "Monday"
+    },
+    {
+      "date": "2026-06-30T09:17:30.418660",
+      "module": "B",
+      "score": 63,
+      "accuracy": 92.0,
+      "avg_time_ms": 2455.0,
+      "total_questions": 25,
+      "day_of_week": "Tuesday"
+    },
+    {
+      "date": "2026-06-30T09:22:19.591447",
+      "module": "C",
+      "score": 6,
+      "accuracy": 60.0,
+      "avg_time_ms": 22776.0,
+      "total_questions": 10,
+      "day_of_week": "Tuesday"
+    },
+    {
+      "date": "2026-06-30T10:42:05.673878",
+      "module": "G",
+      "score": 21,
+      "accuracy": 73.3,
+      "avg_time_ms": 7651.0,
+      "total_questions": 15,
+      "day_of_week": "Tuesday"
     }
   ],
   "personal_bests": {
     "A_score": 27,
     "A_accuracy": 100.0,
-    "B_score": 59,
+    "B_score": 63,
     "B_accuracy": 92.0,
     "C_score": 11,
     "C_accuracy": 90.0,
@@ -265,6 +292,8 @@
     "E_score": 28,
     "E_accuracy": 100.0,
     "F_score": 12,
-    "F_accuracy": 80.0
+    "F_accuracy": 80.0,
+    "G_score": 21,
+    "G_accuracy": 73.3
   }
 }
