@@ -922,13 +922,13 @@ def run_drill_g(quick=False):
     print(f"\n{'─'*60}")
     print(f"  训练 G — 腿位判断")
     print(f"  规则：看期货现价+卖腿行权价，判断能不能做信用价差")
-    print(f"  虚 (OTM>2%)可做 | 近 (<2%)慎做 | 实 (ITM)不做")
+    print(f"  虚做 (OTM>2%) | 近平 (平仓离场) | 实不做 (ITM)")
     print(f"  目标：3秒/题，正确率>90%")
     print(f"{'─'*60}")
 
     n_rounds = 5 if quick else 15
     score = 0; total_time = 0; correct = 0
-    labels = {"虚": "✅虚值可做", "近": "⚠️近值慎做", "实": "❌实值不做"}
+    labels = {"虚": "✅虚值可做", "近": "⚠️近值平仓", "实": "❌实值不做"}
 
     for r in range(1, n_rounds + 1):
         futures = random.randint(2200, 5800)
