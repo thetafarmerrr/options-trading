@@ -648,6 +648,154 @@ SCENARIOS_D = [
         ],
         "correct_count": 1,
     },
+    # ── Delta 方向 × 虚值/平值/实值 ──
+    {
+        "position": "卖出豆粕深度虚值 Put 价差（Delta -0.12），到期 30 天",
+        "event": "豆粕期货从 2960 涨到 3020（+2%），你的卖腿离实值更远了",
+        "q": "Delta 在这里的作用是什么？",
+        "options": [
+            ("Delta 变小 = 方向风险降低，是好事", True, "虚值 Put 的 Delta 随标的价格上涨而减小（绝对值趋向 0），你的方向性风险在降低"),
+            ("Delta 变大 = 浮亏在扩大", False, "方向反了——标的上涨对 Put 卖方有利"),
+            ("Delta 不受影响，只跟时间有关", False, "Delta 是标的价敏感度，不是时间衰减"),
+            ("应该立即加仓", False, "浮盈扩大不代表应该加仓——事件前不加码"),
+        ],
+        "correct_count": 1,
+    },
+    {
+        "position": "卖出玉米平值 Call 价差（Delta -0.48），到期 15 天",
+        "event": "玉米期货从 2320 涨到 2350（+1.3%），你的卖腿从平值变轻度实值",
+        "q": "Delta 变化意味着什么？",
+        "options": [
+            ("Delta 从 -0.48 降到 -0.65，方向风险加大", True, "标的上涨 → 实值 Call 的 Delta 从 0.5→0.65，卖方 Delta 负更多，浮亏加速"),
+            ("Delta 不变，平值期权最稳定", False, "平值 Delta 在 0.5 附近，一旦变化很快"),
+            ("Delta 变大是好事，意味着赚钱", False, "卖方的 Delta 变负更多 = 亏更多"),
+            ("平仓止损，已经到最大亏损了", False, "接近平值 = 浮亏在扩大，但不等于该平——除非触发近值规则"),
+        ],
+        "correct_count": 1,
+    },
+    {
+        "position": "买入棉花实值 Put（Delta -0.75），到期 40 天",
+        "event": "棉花期货从 16100 跌到 15800（-1.9%），方向对了",
+        "q": "Delta 的变化如何影响你的盈利？",
+        "options": [
+            ("Delta 从 -0.75 趋向 -1.0，盈利加速", True, "标的下跌 → 实值 Put Delta 绝对值增大，你的方向盈利在加速"),
+            ("Delta 从 -0.75 趋向 -0.5，盈利减速", False, "方向反了"),
+            ("Gamma 为负拖累你的利润", False, "买方 Gamma 为正，反而在加速盈利"),
+            ("Delta 的变化不会影响已经赚到的钱", False, "Delta 的变化直接影响期权价格=你的 P&L"),
+        ],
+        "correct_count": 1,
+    },
+    # ── Gamma × 近到期/远到期/末日轮 ──
+    {
+        "position": "卖出豆粕 Put 价差，到期还有 3 天，卖腿离期货 2.5%",
+        "event": "只剩 3 天了，Gamma 在快速上升",
+        "q": "卖方负 Gamma 在到期前最危险的是什么？",
+        "options": [
+            ("Delta 会加速跳变，一旦不利方向会快速亏损", True, "到期前 Gamma 极大，标的动一两个点 Delta 可能从 -0.2 跳到 -0.6"),
+            ("Theta 每天扣的更多了，浮盈缩水", False, "Theta 也大，但 Gamma 的风险 > Theta 的收益"),
+            ("IV 会暴涨导致 Vega 亏钱", False, "到期只剩3天，Vega 已经很小了"),
+            ("风险不大了，因为最大亏损封顶了", False, "封顶亏损保护还在，但被Gamma加速时实际亏损可能超过预期"),
+        ],
+        "correct_count": 1,
+    },
+    {
+        "position": "买入豆粕远月 Call（Gamma 很小），到期 90 天",
+        "event": "豆粕期货缓慢上涨 1%，持续了 5 天",
+        "q": "远月 Call 的 Gamma 很小——这意味着什么？",
+        "options": [
+            ("价格缓慢上涨时，Delta 几乎不变，盈利线性增长", True, "远月 Gamma 近零，Delta 不会加速——你赚的是 Delta 的稳定平移，不是 Gamma 加速"),
+            ("Gamma 小是坏事，应该换近月期权", False, "远月期权 Theta 也小，适合慢涨行情"),
+            ("Gamma 小意味着期权价格不会变", False, "Delta 还在工作，只是加速效应弱"),
+            ("买方应该越涨越加仓", False, "慢涨中远月 Call 线性盈利，不需要追"),
+        ],
+        "correct_count": 1,
+    },
+    {
+        "position": "卖出玉米 Call 价差，明天到期，卖腿刚好在平值",
+        "event": "末日轮——Gamma 趋近无穷。你在最后一天",
+        "q": "负 Gamma 在末日轮该怎么做？",
+        "options": [
+            ("立即平仓。最后一天的 Gamma 风险不值得用一天的 Theta 去换", True, "到期日 Gamma 爆炸——标的动 0.5% 你的 Delta 可能跳 0.3。Theta 最后一天赚的一旦被跳就赚不回"),
+            ("继续持有，等明天自动到期", False, "最后一天的风险/回报不对等"),
+            ("加仓对冲", False, "到期日加仓 = 加更多负 Gamma"),
+            ("买入期货对冲 Delta", False, "最后一天 Delta 跳太快，对冲跟不上"),
+        ],
+        "correct_count": 1,
+    },
+    # ── Theta × 买方/卖方/事件前 ──
+    {
+        "position": "买入菜粕 ATM 跨式，到期 10 天，IV 正常",
+        "event": "还有 10 天到期，期货基本没动",
+        "q": "Theta 对买方在做什么？",
+        "options": [
+            ("每天在扣你的时间价值，两条腿的 Theta 都在亏", True, "买方跨式 = 双倍负 Theta。10 天后如果还不跳，Theta 会吃掉成本的大半"),
+            ("Theta 对买方也有利，因为时间越短期权越贵", False, "时间越短期权越便宜不是越贵"),
+            ("Thet 的影响很小，可以忽略", False, "还剩 10 天 Theta 已经开始加速，不能忽略"),
+            ("应该继续持有到到期", False, "10 天不动的买方跨式 = Theta 在消灭你的本金"),
+        ],
+        "correct_count": 1,
+    },
+    {
+        "position": "卖出 PTA Put 价差，到期 35 天，浮盈 ¥80（收了 ¥265）",
+        "event": "持仓 15 天了，Theta 每天都在给你赚",
+        "q": "卖方正 Theta 在这个阶段在做什么？",
+        "options": [
+            ("每天赚一点，35 天后全部归零 = 赚满", True, "正 Theta 是卖方的自动引擎。每天都在往你的账户加微量利润，不需要你做任何事"),
+            ("Theta 在加速，快到到期了应该提前平", False, "还有 35 天，Theta 还没加速。现在平浪费"),
+            ("Theta 的贡献太小，不必关注", False, "60 笔交易的期望正是靠 Theta 堆起来的"),
+            ("应该换到更近月的合约，Theta 更大", False, "近月 Gamma 也大，风险/回报不对等"),
+        ],
+        "correct_count": 1,
+    },
+    {
+        "position": "买入玉米 Call，到期 5 天，下周一 USDA 报告",
+        "event": "最后 5 天 + 事件前。Theta 在加速扣你的时间价值",
+        "q": "买方在事件前最后几天该怎么想 Theta？",
+        "options": [
+            ("Theta 扣得很快，但 Gamma 可能爆发。赌的是 Gamma > Theta", True, "事件前买方的逻辑：付加速 Theta 换 Gamma 爆发机会。跳空够大 → Gamma 覆盖 Theta"),
+            ("Theta 不大，因为远月期权", False, "还剩5天不是远月"),
+            ("应该提前平仓，Theta 太贵了", False, "事件前平仓 = 放弃 Gamma 爆发——事件后才是最佳平仓窗口"),
+            ("加仓另一组期权", False, "已经快到期，加仓 = 加更多负 Theta"),
+        ],
+        "correct_count": 1,
+    },
+    # ── Vega × IV 高/低/均值回归 ──
+    {
+        "position": "卖出豆粕 Put 价差，IV 在 88% 分位（极高）",
+        "event": "IV 已经在历史极高位了，但还在缓慢下降",
+        "q": "你在高位卖出的。Vega 在为你做什么？",
+        "options": [
+            ("Vega 正在回落 → 你的期权空头在赚钱", True, "IV 从极高位回落是卖方的黄金窗口。Vega 负 + IV 跌 = 双重收益"),
+            ("Vega 高位 = 波动率还会涨，应该平仓", False, "IV 极高位反而意味着均值回归概率更大，不是更高"),
+            ("Vega 不影响卖方，只影响买方", False, "卖方 Vegas 为负——IV 跌你赚，IV 涨你亏"),
+            ("应该在 IV 高位加仓", False, "IV 已在高点，加仓即追顶。等确认回落再加"),
+        ],
+        "correct_count": 1,
+    },
+    {
+        "position": "买入 PTA 宽跨式（OTM Call + OTM Put），IV 在 15% 分位（极低）",
+        "event": "IV 在历史低位。下周 EIA 原油报告",
+        "q": "低 IV 环境对买方意味着什么？",
+        "options": [
+            ("IV 低 + 事件催化 = 做多 Vega 的最佳时机", True, "IV 从低位上升的概率大。你花低价买保险，赌 IV 涨+Gamma 跳"),
+            ("IV 低说明市场稳定，买方没机会", False, "IV 低意味着买方成本低，而事件可能推高 IV"),
+            ("IV 低意味着 Theta 也低，不用急", False, "Theta 和 IV 正相关，低 IV → Theta 也低，买方等得起"),
+            ("IV 低 = 期权便宜，应该卖", False, "便宜的时候买方进场才是对的"),
+        ],
+        "correct_count": 1,
+    },
+    {
+        "position": "卖出菜粕 Put 价差，IV 在 55% 分位（正常），但浮亏 ¥90",
+        "event": "期货跌了 2%，IV 涨了一点但不是爆炸",
+        "q": "浮亏来自 Delta 还是 Vega？该不该平？",
+        "options": [
+            ("主要是 Delta——期货跌了，卖腿 Delta 负值变大 = 浮亏。IV 没跳，不急着平", True, "Delta 是主要亏损来源。IV 正常波动不是危机"),
+            ("主要是 Vega——IV 涨了所以你亏，应该立即平", False, "IV 没跳。Vega 贡献小"),
+            ("Delta 和 Vega 各一半", False, "2% 的标的波动对虚值卖腿 = Delta 占主导"),
+            ("平仓止损，因为浮亏在扩大", False, "2% 在虚值价差的安全边际内。没触发止损条件"),
+        ],
+        "correct_count": 1,
+    },
 ]
 
 
@@ -683,7 +831,8 @@ def run_drill_e(quick=False):
             high, low = pair_indices[0], pair_indices[1]
             sell_bid = high[2]["bid"]
             buy_ask = low[2]["ask"]
-            if sell_bid > buy_ask:
+            strike_width = high[1] - low[1]
+            if sell_bid > buy_ask and strike_width <= chain['futures'] * 0.05:
                 net = round(sell_bid - buy_ask, 1)
                 cs_pairs.append({
                     "sell_strike": high[1], "buy_strike": low[1],
@@ -743,7 +892,11 @@ def run_drill_e(quick=False):
                 score += 3 if elapsed < 15000 else (2 if elapsed < 25000 else 1)
                 print(f"  ✅ 正确！今日无信用价差机会 ({elapsed/1000:.1f}s)")
             else:
-                print(f"  ❌ 误报。今日无合格信用价差机会")
+                sw = abs(user_pair[0] - user_pair[1])
+                if sw > chain['futures'] * 0.05:
+                    print(f"  ❌ 行权价间距{sw}点 > 期货{chain['futures']}的5%({int(chain['futures']*0.05)}点)，太大不做")
+                else:
+                    print(f"  ❌ 误报。今日无合格信用价差机会")
         elif pair_ok and net_ok:
             correct += 1
             score += 3 if elapsed < 20000 else (2 if elapsed < 30000 else 1)
@@ -833,6 +986,66 @@ SCENARIOS_F = [
             ("平掉，落袋为安", True, "IV 崩掉后 Vega 已赚完。剩下的时间价值不够厚，机会成本不值得等。落袋 + 解放保证金。"),
             ("加仓第三组价差", False, "报告刚过 IV 在回落，卖家可以等确认后加仓——但不是因为涨了要追"),
             ("把止损收紧", False, "信用价差最大亏损是封顶的，收紧止损在这没意义"),
+        ],
+        "correct_count": 1,
+    },
+    {
+        "position": "卖甲醇 Put 价差，刚开仓 2 天浮盈 ¥25",
+        "event": "期货从 2400 跌到 2385。卖腿 P2375 离期货只差 10 点（0.4%）",
+        "q": "卖腿突然离实值很近了。该不该平？",
+        "options": [
+            ("平。10 点差一天就能穿。现在小亏比明天大亏好", True, "卖腿 OTM<1%+期货还在跌 = 不做方向判断，平"),
+            ("不平。还没到行权价", False, "到了就来不及了"),
+            ("加仓一组对冲", False, "在风险上叠风险"),
+            ("什么都不做，反正封顶了", False, "Gamma 正在加速，不是正常持有"),
+        ],
+        "correct_count": 1,
+    },
+    {
+        "position": "卖 PTAPut 价差，OTM 0.7% 进场，现已深实值",
+        "event": "三天跌 5.5%。亏损 ¥200/235，接近最大亏损",
+        "q": "已到极限。继续等还是平？",
+        "options": [
+            ("平。亏到头了，继续等只锁保证金", True, "深实值无 Theta。释放保证金做新交易"),
+            ("不平。万一反弹", False, "深实值反弹也回不到盈利区"),
+            ("等到期，Theta 在赚", False, "深实值 Theta 近零，时间价值蒸发完了"),
+            ("加仓反向价差", False, "亏损加仓不是对冲"),
+        ],
+        "correct_count": 1,
+    },
+    {
+        "position": "买入玉米跨式，USDA 前 D-1 进场，成本 ¥675",
+        "event": "报告后期货只涨 2 点。IV 微跌。浮亏 ¥80",
+        "q": "Gamma 没触发，Vega 在亏。该不该平？",
+        "options": [
+            ("平。事件落地+IV跌+期货不动 = 三个平仓信号", True, "不确定性解除 = IV 继续跌。持仓每天亏 Theta"),
+            ("不平。也许明天有行情", False, "在赌，不是在管理"),
+            ("平掉一腿留一腿", False, "分腿=变策略性质"),
+            ("亏损不大，再等等", False, "IV 还在跌，越等越亏"),
+        ],
+        "correct_count": 1,
+    },
+    {
+        "position": "卖菜粕 Put 价差，持有 10 天浮盈 ¥50（收 ¥80）",
+        "event": "还剩 15 天，期货在卖腿上方 3%，正常",
+        "q": "赚了 62%。该不该提前平？",
+        "options": [
+            ("可平可不平。都合理", True, "利润已拿多数+安全距离够。平=释放保证金，不平=吃剩余 Theta"),
+            ("必须平", False, "没有必须——持仓安全+时间有利"),
+            ("加仓同款", False, "同品种加仓=风险集中"),
+            ("平一半", False, "信用价差不能分腿"),
+        ],
+        "correct_count": 1,
+    },
+    {
+        "position": "卖玉米 Put 信用价差（P2280/P2260），期货 2318",
+        "event": "6 天后期货跌到 2294。卖腿只差 14 点（0.6%）",
+        "q": "卖腿快被顶到。Gamma 在工作。怎么办？",
+        "options": [
+            ("平。14 点一天能穿，现在亏 ¥20 走", True, "近值+期货在跌+Gamma加速。看现在，别看当初"),
+            ("不平。当初 OTM 2%，没问题", False, "当初条件不成立了。持仓管理看现在"),
+            ("买期货对冲", False, "L2 才学。近值强对冲容易更乱"),
+            ("不平。反正最大亏 ¥110", False, "明明可以 ¥20 走，别等 ¥110"),
         ],
         "correct_count": 1,
     },
@@ -964,6 +1177,71 @@ def run_drill_g(quick=False):
     print(f"  训练G完成: {correct}/{n_rounds} 正确 ({acc:.0f}%)")
     print(f"  平均用时: {avg/1000:.1f}s/题  得分: {score}")
     print(f"  {'⚡ 腿位大师！' if acc >= 90 else ('👍 继续磨' if acc >= 70 else '🐢 菜粕教训牢记')}")
+    print()
+
+
+def run_drill_d(quick=False):
+    """训练 D：Greek 场景直觉"""
+    print(f"\n{'─'*60}")
+    print(f"  训练 D — Greek 场景直觉")
+    print(f"  规则：看持仓+事件，判断哪个 Greek 在驱动 P&L")
+    print(f"  15 题题库随机抽 10 题。可能有多个正确答案")
+    print(f"{'─'*60}")
+
+    n_rounds = 5 if quick else 10
+    score = 0; total_time = 0; correct = 0
+    scenarios = random.sample(SCENARIOS_D, min(n_rounds, len(SCENARIOS_D)))
+
+    for round_num, scenario in enumerate(scenarios, 1):
+        opts = scenario["options"][:]
+        random.shuffle(opts)
+
+        print(f"\n  [{round_num}/{n_rounds}]")
+        print(f"  📍 头寸: {scenario['position']}")
+        if scenario.get('event'):
+            print(f"  ⚡ 事件: {scenario['event']}")
+        print(f"  ❓ {scenario['q']}")
+        print(f"  （选{scenario['correct_count']}个正确答案）")
+        print()
+        for j, (opt_text, _, _) in enumerate(opts, 1):
+            print(f"    {j}. {opt_text}")
+
+        t0 = time.time()
+        try:
+            answers = input(f"  → 选哪几个 (数字，逗号分隔): ").strip()
+        except (EOFError, KeyboardInterrupt):
+            print(f"\n  训练中断。")
+            return
+        el = (time.time() - t0) * 1000; total_time += el
+
+        try:
+            user_choices = [int(x.strip()) for x in answers.split(",") if x.strip()]
+        except ValueError:
+            user_choices = []
+
+        correct_choices = [j for j, (_, is_c, _) in enumerate(opts, 1) if is_c]
+        matched = len(set(user_choices) & set(correct_choices))
+        extra = len(set(user_choices) - set(correct_choices))
+        missed = len(set(correct_choices) - set(user_choices))
+
+        if matched == len(correct_choices) and extra == 0:
+            correct += 1
+            score += 3 if el < 8000 else (2 if el < 15000 else 1)
+            print(f"  ✅ 完美！{el/1000:.1f}s")
+        elif matched > 0:
+            print(f"  ⚠️ 部分正确 ({el/1000:.1f}s)")
+            if missed: print(f"     漏了")
+            score += 1
+        else:
+            print(f"  ❌ ({el/1000:.1f}s)")
+
+    acc = correct / n_rounds * 100; avg = total_time / n_rounds
+    save_session("D", score, acc, avg, n_rounds)
+    print(f"\n  {'─'*40}")
+    print(f"  训练D完成: {correct}/{n_rounds} 正确 ({acc:.0f}%)")
+    print(f"  平均用时: {avg/1000:.1f}s/题  得分: {score}")
+    rating = "⭐ Greek 大师！" if acc >= 85 else ("👍 基础扎实" if acc >= 65 else "📚 重看第6章")
+    print(f"  {rating}")
     print()
 
 
