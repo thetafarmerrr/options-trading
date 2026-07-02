@@ -314,22 +314,85 @@
       "avg_time_ms": 7440.0,
       "total_questions": 15,
       "day_of_week": "Wednesday"
+    },
+    {
+      "date": "2026-07-02T16:21:29.137979",
+      "module": "A",
+      "score": 22,
+      "accuracy": 90.0,
+      "avg_time_ms": 14471.0,
+      "total_questions": 10,
+      "day_of_week": "Thursday"
+    },
+    {
+      "date": "2026-07-02T16:23:52.502871",
+      "module": "B",
+      "score": 62,
+      "accuracy": 96.0,
+      "avg_time_ms": 2741.0,
+      "total_questions": 25,
+      "day_of_week": "Thursday"
+    },
+    {
+      "date": "2026-07-02T16:26:42.384811",
+      "module": "C",
+      "score": 11,
+      "accuracy": 90.0,
+      "avg_time_ms": 13504.0,
+      "total_questions": 10,
+      "day_of_week": "Thursday"
+    },
+    {
+      "date": "2026-07-02T16:35:06.603618",
+      "module": "D",
+      "score": 9,
+      "accuracy": 90.0,
+      "avg_time_ms": 41569.0,
+      "total_questions": 10,
+      "day_of_week": "Thursday"
+    },
+    {
+      "date": "2026-07-02T16:45:08.638372",
+      "module": "E",
+      "score": 13,
+      "accuracy": 70.0,
+      "avg_time_ms": 45491.0,
+      "total_questions": 10,
+      "day_of_week": "Thursday"
+    },
+    {
+      "date": "2026-07-02T16:49:08.712308",
+      "module": "F",
+      "score": 15,
+      "accuracy": 100.0,
+      "avg_time_ms": 19698.0,
+      "total_questions": 10,
+      "day_of_week": "Thursday"
+    },
+    {
+      "date": "2026-07-02T16:51:24.430323",
+      "module": "G",
+      "score": 24,
+      "accuracy": 73.3,
+      "avg_time_ms": 8128.0,
+      "total_questions": 15,
+      "day_of_week": "Thursday"
     }
   ],
   "personal_bests": {
     "A_score": 27,
     "A_accuracy": 100.0,
     "B_score": 63,
-    "B_accuracy": 92.0,
+    "B_accuracy": 96.0,
     "C_score": 11,
     "C_accuracy": 90.0,
     "D_score": 15,
-    "D_accuracy": 75.0,
+    "D_accuracy": 90.0,
     "E_score": 28,
     "E_accuracy": 100.0,
-    "F_score": 12,
-    "F_accuracy": 80.0,
-    "G_score": 21,
+    "F_score": 15,
+    "F_accuracy": 100.0,
+    "G_score": 24,
     "G_accuracy": 80.0
   }
 }
