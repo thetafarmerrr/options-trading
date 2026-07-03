@@ -36,35 +36,50 @@ def _safe(v):
     return v if not pd.isna(v) else 0
 
 
+def get_last_atm(vcode):
+    """从 CSV 历史中读出该品种最近一次记录的 ATM 行权价"""
+    if not os.path.exists(OUTPUT_FILE):
+        return None
+    try:
+        with open(OUTPUT_FILE, "r", encoding="utf-8") as f:
+            reader = csv.DictReader(f)
+            last = None
+            for row in reader:
+                if row.get("variety") == vcode:
+                    last = row.get("atm_strike")
+            return int(last) if last else None
+    except Exception:
+        return None
+
+
+def get_last_contract(vcode):
+    """从 CSV 历史中读出该品种最近一次用的合约"""
+    if not os.path.exists(OUTPUT_FILE):
+        return None
+    try:
+        with open(OUTPUT_FILE, "r", encoding="utf-8") as f:
+            reader = csv.DictReader(f)
+            last = None
+            for row in reader:
+                if row.get("variety") == vcode:
+                    last = row.get("contract")
+            return last
+    except Exception:
+        return None
+
+
 def collect_variety(vcode, vinfo):
     """拉取单个品种的主力合约 ATM 期权数据"""
     symbol = vinfo["symbol"]
 
-    # 获取合约列表，选流动性最好的（前2个中 ATM 价差更紧的那个）
-    contracts_df = ak.option_commodity_contract_sina(symbol=symbol)
-    candidates = contracts_df["合约"].tolist()[:2]
-    if not candidates:
+    # 优先沿用上次采集的合约（数据连续性），其次取第一个合约
+    main_contract = get_last_contract(vcode)
+    if not main_contract:
+        contracts_df = ak.option_commodity_contract_sina(symbol=symbol)
+        candidates = contracts_df["合约"].tolist()
+        main_contract = candidates[0] if candidates else None
+    if not main_contract:
         return None
-    if len(candidates) == 1:
-        main_contract = candidates[0]
-    else:
-        # 选 ATM 价差更紧的那个
-        best_contract, best_spread = None, 999
-        for c in candidates:
-            try:
-                tdf = ak.option_commodity_contract_table_sina(symbol=symbol, contract=c)
-                tdf = tdf.rename(columns={"行权价": "strike", "看跌合约-买价": "p_bid", "看跌合约-卖价": "p_ask", "看涨合约-买价": "c_bid"})
-                min_diff, atm_bid, atm_ask = float("inf"), 0, 0
-                for _, r in tdf.iterrows():
-                    pb = _safe(r["p_bid"]); cb = _safe(r["c_bid"])
-                    if pb > 0 and cb > 0 and abs(pb - cb) < min_diff:
-                        min_diff = abs(pb - cb); atm_bid = pb; atm_ask = _safe(r["p_ask"])
-                sp = (atm_ask - atm_bid) / atm_bid * 100 if atm_bid > 0 else 999
-                if sp < best_spread:
-                    best_spread = sp; best_contract = c
-            except Exception:
-                continue
-        main_contract = best_contract or candidates[0]
 
     # 拉期权链
     df = ak.option_commodity_contract_table_sina(symbol=symbol, contract=main_contract)
@@ -74,21 +89,33 @@ def collect_variety(vcode, vinfo):
         "看跌合约-买价": "p_bid", "看跌合约-卖价": "p_ask",
     })
 
-    # 找 ATM：Call 和 Put bid 最接近的那个行权价
-    best_strike, best_diff = None, float("inf")
-    best_row = None
+    # 找 ATM：加权评分 = 交易活跃度 / Call-Put偏差
+    # 远端行权价（如玉米2640）绝对差值小但bid也极小→活跃度低→评分低
+    best_strike, best_score, best_row = None, -1, None
     for _, row in df.iterrows():
         p_bid = _safe(row["p_bid"])
         c_bid = _safe(row["c_bid"])
         if p_bid > 0 and c_bid > 0:
             diff = abs(p_bid - c_bid)
-            if diff < best_diff:
-                best_diff = diff
+            activity = (p_bid + c_bid) / 2  # 平均bid = 市场参与度
+            score = activity / max(diff, 0.01)  # 活跃度高 + 偏差小 = 高分
+            if score > best_score:
+                best_score = score
                 best_strike = int(row["strike"])
                 best_row = row
 
     if best_row is None:
         return None
+
+    # 安全网：如果 ATM 偏离昨天 5% 以上 → 用昨天的（开盘流动性假象）
+    yesterday_atm = get_last_atm(vcode)
+    if yesterday_atm and yesterday_atm > 0:
+        deviation = abs(best_strike - yesterday_atm) / yesterday_atm
+        if deviation > 0.05:
+            best_strike = yesterday_atm
+            # 从链面找最近的行权价行
+            closest = df.iloc[(df["strike"] - yesterday_atm).abs().argsort()[:1]]
+            best_row = closest.iloc[0] if len(closest) > 0 else best_row
 
     p_bid = _safe(best_row["p_bid"])
     p_ask = _safe(best_row["p_ask"])

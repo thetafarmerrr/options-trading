@@ -97,10 +97,12 @@ Phase 1-6（9周）→ Layer 1（3-6月）→ Layer 2（2-3月）
 
 ## 七、当前状态
 
-- Phase 1 Day 6，退出考试未考
-- 模拟盘 2 笔
-- GitHub: thetafarmerrr/options-trading
-- 文华财经手机版已下载
+- Phase 2 Day 13。模拟盘 5 笔（4 平 1 持），总亏损 ¥443
+- 当前持仓：菜粕 2609 Put 信用价差（P2225/P2200）
+- 训练 B：96%/2.7s。C：60%→90%
+- 工具：scanner（四模块，期货价自动推断）、drill（A-G 七模块）、iv_collector（5 天）
+- GitHub: thetafarmerrr/options-trading。隔日 commit
+- 持仓监控：三档规则（OTM 距离 + 期货方向 + 到期天数）
 
 ## 已搁置讨论（按 Layer 激活）
 
@@ -109,7 +111,8 @@ Phase 1-6（9周）→ Layer 1（3-6月）→ Layer 2（2-3月）
 | Karpathy LLM Wiki 知识库自动化 | Layer 3 | 2026-06-28 |
 | 60年尾部事件表 Layer 3+ 部分 | Layer 3 | 2026-06-28 |
 | drill 链面生成对标真实市场数据校准 | iv_collector 积累 2 周 | 2026-06-28 |
-| drill D/F 题库从 6 题扩展到 12-15 题 | Layer 3 | 2026-06-28 |
+| D 题库 15 题 ✅ | 已完成 | 2026-07-02 |
+| F 题库 5→10 ✅ | 已完成 | 2026-07-02 |
 | C++ 学习路径 | Layer 4 | 2026-06-27 |
 | 海外市场开户（IBKR/CME） | Layer 4 | 2026-06-27 |
 | 股指期权 vs 商品期权增量选择 | Layer 3 | 2026-06-27 |
