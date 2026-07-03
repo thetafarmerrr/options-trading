@@ -99,7 +99,7 @@ Phase 1-6（9周）→ Layer 1（3-6月）→ Layer 2（2-3月）
 
 - Phase 2 Day 13。模拟盘 5 笔（4 平 1 持），总亏损 ¥443
 - 当前持仓：菜粕 2609 Put 信用价差（P2225/P2200）
-- 训练 B：96%/2.7s。C：60%→90%
+- 训练 B：96%/2.3s。C：60%→90%。D：100%
 - 工具：scanner（四模块，期货价自动推断）、drill（A-G 七模块）、iv_collector（5 天）
 - GitHub: thetafarmerrr/options-trading。隔日 commit
 - 持仓监控：三档规则（OTM 距离 + 期货方向 + 到期天数）
