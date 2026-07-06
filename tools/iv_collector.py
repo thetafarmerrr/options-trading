@@ -18,6 +18,7 @@ SCRIPT_DIR = os.path.dirname(os.path.abspath(__file__))
 sys.path.insert(0, SCRIPT_DIR)
 
 import akshare as ak
+from unified_scanner import pick_best_contract
 
 # ── 配置 ──
 DEFAULT_VARIETIES = {
@@ -72,12 +73,12 @@ def collect_variety(vcode, vinfo):
     """拉取单个品种的主力合约 ATM 期权数据"""
     symbol = vinfo["symbol"]
 
-    # 优先沿用上次采集的合约（数据连续性），其次取第一个合约
+    # 与 scanner 同套逻辑选主力合约。优先沿用历史合约保证连续性
     main_contract = get_last_contract(vcode)
-    if not main_contract:
-        contracts_df = ak.option_commodity_contract_sina(symbol=symbol)
-        candidates = contracts_df["合约"].tolist()
-        main_contract = candidates[0] if candidates else None
+    best_contract = pick_best_contract(symbol, vcode)
+    if best_contract and best_contract != main_contract:
+        print(f"  🔄 {vinfo['name']} 合约切换: {main_contract} → {best_contract}")
+    main_contract = best_contract or main_contract
     if not main_contract:
         return None
 

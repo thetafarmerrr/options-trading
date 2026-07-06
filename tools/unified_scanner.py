@@ -56,50 +56,103 @@ OTM_PCT = 0.08
 # 从期权链推断期货价格
 # ═══════════════════════════════════════════
 
-def pick_best_contract(symbol):
+# 各品种允许交易的主力月份
+VALID_MONTHS = {
+    # 农产品-标准
+    'm':  [1, 5, 9], 'rm': [1, 5, 9], 'sr': [1, 5, 9], 'cf': [1, 5, 9],
+    # 农产品-全单月
+    'c':  [1, 3, 5, 7, 9, 11],
+    # 能化品
+    'ta': [1, 5, 9], 'ma': [1, 5, 9], 'ru': [1, 5, 9],
+    # 黑色系
+    'i':  [1, 5, 9],
+    # 贵金属
+    'au': [2, 4, 6, 8, 10, 12],
+}
+
+def pick_best_contract(symbol, vcode=None):
     """
-    从期权合约列表里选流动性最好的那个。
-    综合评分：有效行权价数量 × 10 - ATM 价差。活跃档位多 + 价差紧 = 高分。
+    L0 指向当前周期合约 → L1 质量验证。
+    L0: 交易所规则 + 当前月份 → 直接指向主力合约
+    L1: ATM ±5 档 bid>0 比例验证。通过 → 用。不通过 → 报警，试下一个。
     """
+    today = datetime.now()
+    cur_month = today.month
+    cur_year = today.year % 100
+
     try:
         cdf = ak.option_commodity_contract_sina(symbol=symbol)
-        candidates = cdf['合约'].tolist()[:2]
+        all_contracts = cdf['合约'].tolist()
     except Exception:
         return None
 
-    if not candidates:
+    if not all_contracts:
         return None
-    if len(candidates) == 1:
-        return candidates[0]
 
-    best_contract, best_score = None, -1
-    for contract in candidates:
+    # ── L0: 指向当前周期合约 ──
+    if vcode and vcode in VALID_MONTHS:
+        valid_months = sorted(VALID_MONTHS[vcode])
+        # 生成目标月份序列：从当月+1开始，绕一圈
+        ordered_months = [m for m in valid_months if m >= cur_month + 1]
+        ordered_months += [m for m in valid_months if m < cur_month + 1]
+        # 转为合约代码，如 9→"2609", 1→"2701"
+        target_codes = []
+        for m in ordered_months:
+            yr = cur_year if m > cur_month else cur_year + 1
+            target_codes.append(f"{yr:02d}{m:02d}")
+        # 在 all_contracts 中按顺序找
+        candidates = []
+        for tc in target_codes[:3]:
+            match = next((c for c in all_contracts if c.endswith(tc)), None)
+            if match:
+                candidates.append(match)
+        if not candidates:
+            return all_contracts[0] if all_contracts else None
+    else:
+        candidates = all_contracts[:2]
+
+    # ── L1: 验证平值区质量。优先选第一个通过验证的合约 ──
+    def check_quality(contract):
+        """返回 (通过, bid_ratio)"""
         try:
             df = ak.option_commodity_contract_table_sina(symbol=symbol, contract=contract)
             df = df.rename(columns={
-                '行权价': 'strike', '看跌合约-买价': 'p_bid', '看跌合约-卖价': 'p_ask',
-                '看涨合约-买价': 'c_bid', '看涨合约-卖价': 'c_ask',
+                '行权价': 'strike',
+                '看跌合约-买价': 'p_bid', '看跌合约-买量': 'p_bid_vol',
+                '看涨合约-买价': 'c_bid', '看涨合约-买量': 'c_bid_vol',
             })
-            active = len(df[df['p_bid'] > 0])
-            min_diff, atm_bid, atm_ask = float('inf'), 0, 0
-            for _, row in df.iterrows():
+            df = df.sort_values('strike').reset_index(drop=True)
+
+            atm_idx, best_diff = None, float('inf')
+            for idx, row in df.iterrows():
                 p_bid = _safe(row['p_bid'])
                 c_bid = _safe(row['c_bid'])
                 if p_bid > 0 and c_bid > 0:
                     diff = abs(p_bid - c_bid)
-                    if diff < min_diff:
-                        min_diff = diff
-                        atm_bid = p_bid
-                        atm_ask = _safe(row['p_ask'])
-            sp = (atm_ask - atm_bid) / atm_bid * 100 if atm_bid > 0 else 999
-            score = active * 10 - sp
-            if score > best_score:
-                best_score = score
-                best_contract = contract
-        except Exception:
-            continue
+                    if diff < best_diff:
+                        best_diff = diff
+                        atm_idx = idx
+            if atm_idx is None:
+                return False, 0
 
-    return best_contract or candidates[0]
+            start = max(0, atm_idx - 5)
+            end = min(len(df), atm_idx + 6)
+            nearby = df.iloc[start:end]
+            bid_ok = sum(1 for _, r in nearby.iterrows()
+                         if _safe(r['p_bid']) > 0 or _safe(r['c_bid']) > 0)
+            ratio = bid_ok / len(nearby)
+            return ratio >= 0.5, ratio
+        except Exception:
+            return False, 0
+
+    for contract in candidates:
+        ok, ratio = check_quality(contract)
+        if ok:
+            return contract
+
+    # 全部未通过 → 用第一个，报警
+    print(f"  ⚠️ {vcode}: 所有候选合约平值区流动性异常，使用 {candidates[0]}")
+    return candidates[0]
 
 
 def infer_futures_from_chain(df):
@@ -154,7 +207,7 @@ def scan_deep_otm(vcode, variety, capital=None):
     mult = variety['multiplier']
 
     # 只扫流动性最好的合约，期货价从它自己的期权链推断
-    contract = pick_best_contract(symbol)
+    contract = pick_best_contract(symbol, vcode)
     if not contract:
         return [], f"❌ 获取失败"
 
@@ -235,7 +288,7 @@ def scan_credit_spreads(vcode, variety, capital=None):
     symbol = variety['symbol']
     mult = variety['multiplier']
 
-    contract = pick_best_contract(symbol)
+    contract = pick_best_contract(symbol, vcode)
     if not contract:
         return [], f"❌ 获取失败"
 
@@ -404,7 +457,7 @@ def assess_iv_environment(vcode, variety):
     futures = variety['futures']
 
     try:
-        main_contract = pick_best_contract(symbol)
+        main_contract = pick_best_contract(symbol, vcode)
         if not main_contract:
             return {"iv_level": "unknown", "note": "无合约数据"}
 
@@ -568,7 +621,7 @@ def main():
     contract_map = {}
     for vcode in target:
         try:
-            best = pick_best_contract(VARIETIES[vcode]['symbol'])
+            best = pick_best_contract(VARIETIES[vcode]['symbol'], vcode)
             contract_map[vcode] = best or "未知"
         except Exception:
             contract_map[vcode] = "未知"

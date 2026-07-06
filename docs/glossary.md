@@ -40,6 +40,9 @@
 | Theta | Theta | 过1天，期权掉几元（买方亏，卖方赚）|
 | Vega | Vega | 波动率涨1%，期权涨几元 |
 | Rho | Rho | 利率涨1%，期权涨几元（商品期权忽略）|
+| Delta 中性 | Delta Neutral | Delta 正负对冲后总和为零 |
+| Omega（杠杆倍数）| Omega / Leverage | 标的价格涨 1%，期权涨百分之几 |
+| 买卖权平价 | Put-Call Parity | C + K·e^(-rT) = P + S，同一行权价 Call/Put 的无套利关系 |
 
 ## 波动率
 
@@ -48,6 +51,9 @@
 | 隐含波动率 | Implied Volatility | IV |
 | 历史波动率 | Historical Volatility | HV |
 | 已实现波动率 | Realized Volatility | RV |
+| IV 排名 | IV Rank / IVR | IVR |
+| IV 百分位 | IV Percentile / IVP | IVP |
+| 均值回归 | Mean Reversion | — |
 | IV > HV → 期权贵（卖方优势）| IV > HV → options expensive → sell |
 | IV < HV → 期权便宜（买方优势）| IV < HV → options cheap → buy |
 
@@ -60,6 +66,34 @@
 | 偏度 | Skew |
 | 期限结构 | Term Structure |
 | 波动率微笑 | Volatility Smile |
+
+## 期权价格构成
+
+| 中文 | English | 含义 |
+|------|---------|------|
+| 内在价值 | Intrinsic Value | 立即行权能拿到的钱。虚值 = 0 |
+| 时间价值 | Time Value / Extrinsic Value | 期权价格 − 内在价值。虚值期权全部是时间价值 |
+| 盈亏平衡点 | Break-even Point | 到期时不亏不赚的标的价格 |
+| 到期盈亏图 | Expiration P&L Diagram | 横轴标的价格、纵轴盈亏的到期曲线 |
+
+## 估值与数据
+
+| 中文 | English | 含义 |
+|------|---------|------|
+| 活跃度加权 | Activity Weighting | iv_collector 找 ATM：bid 越高 + Call≈Put → 评分越高 |
+| 主力合约 | Front-Month Contract / Active Contract | 交易最活跃的到期月 |
+| 安全网（5% 偏离回退）| Safety Net | 今天 ATM 偏离昨天 >5% → 用昨天的，防开盘流动性假象 |
+
+## 持仓管理
+
+| 中文 | English |
+|------|---------|
+| 三档监控体系 | Three-Tier Monitoring System |
+| 五步进场检查 | Five-Step Entry Checklist |
+| 指派风险 | Assignment Risk |
+| 末日轮 | Expiration Day Gamma Explosion |
+| 近值过滤 | Near-the-Money Filter |
+| 提前平仓 | Early Close / Exit Before Expiration |
 
 ## 策略
 
