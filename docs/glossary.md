@@ -43,6 +43,8 @@
 | Delta 中性 | Delta Neutral | Delta 正负对冲后总和为零 |
 | Omega（杠杆倍数）| Omega / Leverage | 标的价格涨 1%，期权涨百分之几 |
 | 买卖权平价 | Put-Call Parity | C + K·e^(-rT) = P + S，同一行权价 Call/Put 的无套利关系 |
+| 买方 Greeks | Buyer Greeks | Δ+/Γ+/Θ−/V+（正 Gamma、负 Theta、正 Vega）|
+| 卖方 Greeks | Seller Greeks | Δ−/Γ−/Θ+/V−（负 Gamma、正 Theta、负 Vega）|
 
 ## 波动率
 
@@ -54,8 +56,20 @@
 | IV 排名 | IV Rank / IVR | IVR |
 | IV 百分位 | IV Percentile / IVP | IVP |
 | 均值回归 | Mean Reversion | — |
+| 收盘-收盘波动率 | Close-to-Close Volatility | 最基础的 RV 算法 |
+| Parkinson 估计器 | Parkinson Estimator | 用日内高低点算波动率，比收盘-收盘更准 |
 | IV > HV → 期权贵（卖方优势）| IV > HV → options expensive → sell |
 | IV < HV → 期权便宜（买方优势）| IV < HV → options cheap → buy |
+| 波动率风险溢价 | Volatility Risk Premium / Variance Premium | IV 通常高于 RV，卖方赚的就是这个 |
+
+## BSM 模型
+
+| 中文 | English | 含义 |
+|------|---------|------|
+| 对数正态分布 | Log-normal Distribution | BSM 核心假设：价格变动服从对数正态 |
+| 肥尾 | Fat Tails | 极端事件频率远超正态分布预测 |
+| 随机游走 | Random Walk | BSM 假设价格连续变动无跳跃 |
+| Ito 引理 | Ito's Lemma | BSM 推导用的随机微积分工具（Layer 5 前不需要）|
 
 ## 波动率结构
 
@@ -89,7 +103,7 @@
 | 中文 | English |
 |------|---------|
 | 三档监控体系 | Three-Tier Monitoring System |
-| 五步进场检查 | Five-Step Entry Checklist |
+| 六步进场检查 | Six-Step Entry Checklist（第6步：赚什么钱）|
 | 指派风险 | Assignment Risk |
 | 末日轮 | Expiration Day Gamma Explosion |
 | 近值过滤 | Near-the-Money Filter |
@@ -97,16 +111,21 @@
 
 ## 策略
 
-| 中文 | English |
-|------|---------|
-| 裸卖 | Naked Sell / Short Naked |
-| 信用价差 | Credit Spread |
-| 跨式（同时买 Call + Put）| Straddle |
-| 宽跨式（买 OTM Call + OTM Put）| Strangle |
-| 牛市看涨价差 | Bull Call Spread |
-| 熊市看跌价差 | Bear Put Spread |
-| 日历价差 | Calendar Spread |
-| 盒式价差 | Box Spread |
+| 中文 | English | Layer |
+|------|---------|-------|
+| 裸卖 | Naked Sell / Short Naked | — |
+| 信用价差 | Credit Spread | L1 |
+| 铁鹰 | Iron Condor（卖 Put 价差 + 卖 Call 价差）| L2 |
+| 跨式（同时买 Call + Put）| Straddle | L2 |
+| 宽跨式（买 OTM Call + OTM Put）| Strangle | L2 |
+| 卖出跨式 | Short Straddle | L2 |
+| 卖出宽跨式 | Short Strangle | L2 |
+| 牛市看涨价差 | Bull Call Spread | L2 |
+| 熊市看跌价差 | Bear Put Spread | L2 |
+| 日历价差 | Calendar Spread | L3 |
+| 蝶式 | Butterfly | L3 |
+| 比率价差 | Ratio Spread | L3 |
+| 盒式价差 | Box Spread | L5 |
 
 ## 头寸方向
 
@@ -127,6 +146,12 @@
 | 保证金 | Margin |
 | 止损 | Stop Loss |
 | 平仓 | Close Position |
+| 换月/移仓换月 | Rollover（持仓从近月移到远月）|
+| 行权价间距 | Strike Interval（如豆粕 50 点、铁矿石 10 点）|
+| 挂单量/买量 | Bid Volume（bid 上的手数，不是成交量）|
+| 浮盈/浮亏 | Unrealized P&L / Paper P&L |
+| 滑点 | Slippage（下单到成交之间价格变了）|
+| 做市商 | Market Maker |
 
 ## 绩效
 
