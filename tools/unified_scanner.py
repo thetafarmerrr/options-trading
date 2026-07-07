@@ -200,36 +200,14 @@ def _spread(bid, ask):
 # 模块1: 虚值倒挂扫描
 # ═══════════════════════════════════════════
 
-def scan_deep_otm(vcode, variety, capital=None):
-    """扫描单个品种虚值看跌倒挂"""
-    symbol = variety['symbol']
-    futures = variety['futures']
+def scan_deep_otm(vcode, variety, contract, df, futures, capital=None):
+    """
+    扫描单个品种虚值看跌倒挂。
+    contract, df, futures 由 main() 预取传入，本函数不再自行拉取数据。
+    """
     mult = variety['multiplier']
 
-    # 只扫流动性最好的合约，期货价从它自己的期权链推断
-    contract = pick_best_contract(symbol, vcode)
-    if not contract:
-        return [], f"❌ 获取失败"
-
     all_signals = []
-
-    try:
-        df = ak.option_commodity_contract_table_sina(symbol=symbol, contract=contract)
-    except Exception:
-        return [], f"❌ 获取失败"
-
-    if df is None or df.empty:
-        return [], f"❌ 无数据"
-
-    # 从期权链推断期货价格
-    futures = infer_futures_from_chain(df)
-    if futures is None:
-        return [], f"❌ 无法推断期货价"
-
-    df = df.rename(columns={
-        '行权价': 'strike', '看跌合约-最新价': 'p_last',
-        '看跌合约-买价': 'p_bid', '看跌合约-卖价': 'p_ask', '看跌合约-持仓量': 'p_oi',
-        })
 
     otm_boundary = int(futures * (1 - OTM_PCT))
     otm_puts = df[df['strike'] < otm_boundary].copy()
@@ -280,166 +258,120 @@ def scan_deep_otm(vcode, variety, capital=None):
 # 模块2: 虚值信用价差扫描（卖方收租）
 # ═══════════════════════════════════════════
 
-def scan_credit_spreads(vcode, variety, capital=None):
+def _scan_one_side(df, bid_col, ask_col, direction, futures, mult, capital,
+                   vcode, variety_name, contract):
     """
-    扫描虚值 Put 信用价差机会。
-    策略：卖一个虚值 Put + 买一个更虚的 Put = 封顶亏损，收净权利金。
+    单侧信用价差扫描（Put 或 Call）。
+    direction='put': 卖高行权价 Put + 买低行权价 Put（看涨/中性）
+    direction='call': 卖低行权价 Call + 买高行权价 Call（看跌/中性）
+    返回信号列表。
     """
-    symbol = variety['symbol']
-    mult = variety['multiplier']
+    results = []
+    options = df[df[bid_col] > 0].copy()
+    if options.empty:
+        return results
 
-    contract = pick_best_contract(symbol, vcode)
-    if not contract:
-        return [], f"❌ 获取失败"
+    options = options.sort_values('strike')
+    for i in range(len(options) - 1):
+        low_row = options.iloc[i]
+        high_row = options.iloc[i + 1]
+
+        if direction == 'put':
+            sell_row, buy_row = high_row, low_row
+            sell_strike = int(high_row['strike'])
+            buy_strike = int(low_row['strike'])
+            if sell_strike >= futures or buy_strike >= futures:
+                continue
+            otm_pct = (futures - sell_strike) / futures * 100
+        else:  # call
+            sell_row, buy_row = low_row, high_row
+            sell_strike = int(low_row['strike'])
+            buy_strike = int(high_row['strike'])
+            if sell_strike <= futures or buy_strike <= futures:
+                continue
+            otm_pct = (sell_strike - futures) / futures * 100
+
+        strike_width = buy_strike - sell_strike
+        if strike_width > futures * 0.05:
+            continue
+
+        sell_bid = _safe(sell_row[bid_col])
+        buy_ask = _safe(buy_row[ask_col])
+        if sell_bid <= 0 or buy_ask <= 0 or sell_bid <= buy_ask:
+            continue
+
+        net_premium = round(sell_bid - buy_ask, 2)
+        max_profit = net_premium * mult
+        max_loss = round((strike_width * mult) - max_profit, 0)
+        if capital and max_loss > capital * 0.05:
+            continue
+        if max_loss <= 0:
+            continue
+
+        rr_ratio = round(max_profit / max_loss, 2)
+        if rr_ratio < 0.15:
+            continue
+
+        sell_spread = _spread(sell_row[bid_col], sell_row[ask_col])
+        buy_spread = _spread(buy_row[bid_col], buy_row[ask_col])
+        if sell_spread > MAX_SPREAD_PCT or buy_spread > MAX_SPREAD_PCT:
+            continue
+
+        # 行权价宽度三档分类（锚 ¥1000 风险预算）
+        width_pct = strike_width / futures * 100
+        if width_pct <= 2:
+            tier = 'green'
+        elif width_pct <= 4:
+            tier = 'yellow'
+        else:
+            tier = 'red'
+
+        # 近值降级：卖腿 OTM < 2% → 无论宽度一律红档
+        if otm_pct < 2:
+            tier = 'red'
+
+        tradeable = tier in ('green', 'yellow')
+        results.append({
+            'variety': vcode,
+            'name': variety_name,
+            'contract': contract,
+            'sell_strike': sell_strike,
+            'buy_strike': buy_strike,
+            'sell_bid': round(float(sell_bid), 2),
+            'buy_ask': round(float(buy_ask), 2),
+            'net_premium': net_premium,
+            'max_profit': round(max_profit, 0),
+            'max_loss': max_loss,
+            'rr_ratio': rr_ratio,
+            'tier': tier,
+            'strike_width_pct': round(width_pct, 1),
+            'otm_pct': round(otm_pct, 1),
+            'tradeable': tradeable,
+        })
+
+    return results
+
+
+def scan_credit_spreads(vcode, variety, contract, df, futures, capital=None):
+    """
+    扫描虚值信用价差机会（Put + Call）。
+    contract, df, futures 由 main() 预取传入。
+    """
+    mult = variety['multiplier']
+    name = variety['name']
 
     all_signals = []
-
-    try:
-        df = ak.option_commodity_contract_table_sina(symbol=symbol, contract=contract)
-    except Exception:
-        return [], f"❌ 获取失败"
-
-    if df is None or df.empty:
-        return [], f"❌ 无数据"
-
-    futures = infer_futures_from_chain(df)
-    if futures is None:
-        return [], f"❌ 无法推断期货价"
-
-    df = df.rename(columns={
-        '行权价': 'strike',
-        '看跌合约-买价': 'p_bid', '看跌合约-卖价': 'p_ask',
-        '看跌合约-最新价': 'p_last', '看跌合约-持仓量': 'p_oi',
-        '看涨合约-买价': 'c_bid', '看涨合约-卖价': 'c_ask',
-    })
-
-    # 找出所有有流动性的虚值 Put（买价 > 0）
-    puts = df[df['p_bid'] > 0].copy()
-    if not puts.empty:
-        puts = puts.sort_values('strike')
-        for i in range(len(puts) - 1):
-            high_row = puts.iloc[i + 1]
-            low_row = puts.iloc[i]
-            strike_high = int(high_row['strike'])
-            strike_low = int(low_row['strike'])
-            if strike_high >= futures or strike_low >= futures:
-                continue
-            strike_width = strike_high - strike_low
-            if strike_width > futures * 0.05:
-                continue
-            sell_premium = _safe(high_row['p_bid'])
-            buy_premium = _safe(low_row['p_ask'])
-            if sell_premium <= 0 or buy_premium <= 0:
-                continue
-            if sell_premium <= buy_premium:
-                continue
-            net_premium = round(sell_premium - buy_premium, 2)
-            max_profit = net_premium * mult
-            max_loss = round((strike_width * mult) - max_profit, 0)
-            if capital and max_loss > capital * 0.05:
-                continue
-            if max_loss <= 0:
-                continue
-            rr_ratio = round(max_profit / max_loss, 2)
-            if rr_ratio < 0.15:
-                continue
-            sell_spread = _spread(high_row['p_bid'], high_row['p_ask'])
-            buy_spread = _spread(low_row['p_bid'], low_row['p_ask'])
-            if sell_spread > MAX_SPREAD_PCT or buy_spread > MAX_SPREAD_PCT:
-                continue
-            # 近值过滤：卖腿离期货 < 2% → 慎做
-            otm_pct = (futures - strike_high) / futures * 100
-            near_money = otm_pct < 2
-
-            tradeable = (
-                net_premium > 0
-                and max_loss > 0
-                and (not capital or max_loss <= capital * 0.05)
-                and rr_ratio >= 0.15
-                and not near_money
-            )
-            all_signals.append({
-                'variety': vcode,
-                'name': variety['name'],
-                'contract': contract,
-                'sell_strike': strike_high,
-                'buy_strike': strike_low,
-                'sell_bid': round(float(high_row['p_bid']), 2),
-                'buy_ask': round(float(low_row['p_ask']), 2),
-                'net_premium': net_premium,
-                'max_profit': round(max_profit, 0),
-                'max_loss': max_loss,
-                'rr_ratio': rr_ratio,
-                'tradeable': tradeable,
-            })
-
-    # ── 虚值 Call 信用价差（同一个合约，看跌方向）──
-    try:
-        df = ak.option_commodity_contract_table_sina(symbol=symbol, contract=contract)
-    except Exception:
-        df = None
-
-    if df is not None and not df.empty:
-        df = df.rename(columns={
-            '行权价': 'strike',
-            '看涨合约-买价': 'c_bid', '看涨合约-卖价': 'c_ask',
-            '看涨合约-最新价': 'c_last', '看涨合约-持仓量': 'c_oi',
-        })
-        calls = df[df['c_bid'] > 0].copy()
-        if not calls.empty:
-            calls = calls.sort_values('strike')
-            for i in range(len(calls) - 1):
-                low_row = calls.iloc[i]
-                high_row = calls.iloc[i + 1]
-                sell_strike = int(low_row['strike'])
-                buy_strike = int(high_row['strike'])
-                if sell_strike <= futures or buy_strike <= futures:
-                    continue
-                strike_width = buy_strike - sell_strike
-                if strike_width > futures * 0.05:
-                    continue
-                sell_bid = _safe(low_row['c_bid'])
-                buy_ask = _safe(high_row['c_ask'])
-                if sell_bid <= 0 or buy_ask <= 0 or sell_bid <= buy_ask:
-                    continue
-                net_premium = round(sell_bid - buy_ask, 2)
-                max_profit = net_premium * mult
-                max_loss = round((strike_width * mult) - max_profit, 0)
-                if capital and max_loss > capital * 0.05:
-                    continue
-                if max_loss <= 0:
-                    continue
-                rr_ratio = round(max_profit / max_loss, 2)
-                if rr_ratio < 0.15:
-                    continue
-                sell_spread = _spread(low_row['c_bid'], low_row['c_ask'])
-                buy_spread = _spread(high_row['c_bid'], high_row['c_ask'])
-                if sell_spread > MAX_SPREAD_PCT or buy_spread > MAX_SPREAD_PCT:
-                    continue
-                # 近值过滤：Call 卖腿离期货 < 2% → 慎做
-                call_otm_pct = (sell_strike - futures) / futures * 100
-                call_near = call_otm_pct < 2
-
-                tradeable = (
-                    net_premium > 0 and max_loss > 0
-                    and (not capital or max_loss <= capital * 0.05)
-                    and rr_ratio >= 0.15
-                    and not call_near
-                )
-                all_signals.append({
-                    'variety': vcode, 'name': variety['name'], 'contract': contract,
-                    'sell_strike': sell_strike, 'buy_strike': buy_strike,
-                    'sell_bid': round(float(sell_bid), 2),
-                    'buy_ask': round(float(buy_ask), 2),
-                    'net_premium': net_premium,
-                    'max_profit': round(max_profit, 0), 'max_loss': max_loss,
-                    'rr_ratio': rr_ratio, 'tradeable': tradeable,
-                })
+    all_signals.extend(_scan_one_side(
+        df, 'p_bid', 'p_ask', 'put', futures, mult, capital, vcode, name, contract))
+    all_signals.extend(_scan_one_side(
+        df, 'c_bid', 'c_ask', 'call', futures, mult, capital, vcode, name, contract))
 
     tradeable = [s for s in all_signals if s['tradeable']]
-    nc = len([s for s in tradeable if s['sell_strike'] > futures])  # Call 信号数
-    np = len([s for s in tradeable if s['sell_strike'] < futures])  # Put 信号数
-    summary = f"{len(all_signals)}信号({len(tradeable)}可做: {np}Puts {nc}Calls)" if all_signals else "无信号"
+    green_n = len([s for s in tradeable if s.get('tier') == 'green'])
+    yellow_n = len([s for s in tradeable if s.get('tier') == 'yellow'])
+    nc = len([s for s in tradeable if s['sell_strike'] > futures])
+    np = len([s for s in tradeable if s['sell_strike'] < futures])
+    summary = f"{len(all_signals)}信号({len(tradeable)}可做: {np}P {nc}C | 🟢{green_n} 🟡{yellow_n})" if all_signals else "无信号"
     return all_signals, summary
 
 
@@ -447,50 +379,32 @@ def scan_credit_spreads(vcode, variety, capital=None):
 # 模块3: IV 环境判断
 # ═══════════════════════════════════════════
 
-def assess_iv_environment(vcode, variety):
+def assess_iv_environment(vcode, variety, contract, df, futures):
     """
     用 ATM 期权的价格水平做简易 IV 代理判断。
-    规则: 比较 ATM Put 买价 vs 历史大致范围。
-    真正 IV 分位数需要积累数周数据后才能启用。
+    contract, df, futures 由 main() 预取传入，本函数不再自行拉取数据。
     """
-    symbol = variety['symbol']
-    futures = variety['futures']
+    atm = df.iloc[(df['strike'] - futures).abs().argsort()[:1]]
+    p_bid = atm['p_bid'].values[0] if not pd.isna(atm['p_bid'].values[0]) else 0
+    p_ask = atm['p_ask'].values[0] if not pd.isna(atm['p_ask'].values[0]) else 0
+    c_bid = atm['c_bid'].values[0] if not pd.isna(atm['c_bid'].values[0]) else 0
+    c_ask = atm['c_ask'].values[0] if not pd.isna(atm['c_ask'].values[0]) else 0
 
-    try:
-        main_contract = pick_best_contract(symbol, vcode)
-        if not main_contract:
-            return {"iv_level": "unknown", "note": "无合约数据"}
+    if p_bid <= 0 or p_ask <= 0:
+        return {"iv_level": "unknown", "note": "ATM无流动性"}
 
-        df = ak.option_commodity_contract_table_sina(symbol=symbol, contract=main_contract)
-        df = df.rename(columns={
-            '行权价': 'strike', '看跌合约-买价': 'p_bid', '看跌合约-卖价': 'p_ask',
-            '看涨合约-买价': 'c_bid', '看涨合约-卖价': 'c_ask',
-        })
+    spread_pct = round((p_ask - p_bid) / p_bid * 100, 1)
 
-        # 找最接近平值的行权价
-        atm = df.iloc[(df['strike'] - futures).abs().argsort()[:1]]
-        p_bid = atm['p_bid'].values[0] if not pd.isna(atm['p_bid'].values[0]) else 0
-        p_ask = atm['p_ask'].values[0] if not pd.isna(atm['p_ask'].values[0]) else 0
-        c_bid = atm['c_bid'].values[0] if not pd.isna(atm['c_bid'].values[0]) else 0
-        c_ask = atm['c_ask'].values[0] if not pd.isna(atm['c_ask'].values[0]) else 0
-
-        if p_bid <= 0 or p_ask <= 0:
-            return {"iv_level": "unknown", "note": "ATM无流动性"}
-
-        spread_pct = round((p_ask - p_bid) / p_bid * 100, 1)
-
-        return {
-            "iv_level": "normal",  # 暂时不做分位判断，积累数据后启用
-            "atm_strike": int(atm['strike'].values[0]),
-            "atm_put_bid": round(float(p_bid), 2),
-            "atm_put_ask": round(float(p_ask), 2),
-            "atm_call_bid": round(float(c_bid), 2),
-            "atm_call_ask": round(float(c_ask), 2),
-            "put_spread_pct": spread_pct,
-            "note": "ATM流动性良好" if spread_pct < 10 else f"ATM价差{spread_pct}%偏宽",
-        }
-    except Exception as e:
-        return {"iv_level": "unknown", "note": str(e)[:60]}
+    return {
+        "iv_level": "normal",  # 暂时不做分位判断，积累数据后启用
+        "atm_strike": int(atm['strike'].values[0]),
+        "atm_put_bid": round(float(p_bid), 2),
+        "atm_put_ask": round(float(p_ask), 2),
+        "atm_call_bid": round(float(c_bid), 2),
+        "atm_call_ask": round(float(c_ask), 2),
+        "put_spread_pct": spread_pct,
+        "note": "ATM流动性良好" if spread_pct < 10 else f"ATM价差{spread_pct}%偏宽",
+    }
 
 
 # ═══════════════════════════════════════════
@@ -530,20 +444,30 @@ def generate_conclusion(otm_results, cs_results, events, iv_data, capital=None):
                 all_cs_tradeable.append(s)
 
     if all_cs_tradeable:
+        green_n = len([s for s in all_cs_tradeable if s.get('tier') == 'green'])
+        yellow_n = len([s for s in all_cs_tradeable if s.get('tier') == 'yellow'])
         all_cs_tradeable.sort(key=lambda s: s['rr_ratio'], reverse=True)
         top = all_cs_tradeable[0]
-        print(f"\n  🟡 信用价差: 有{len(all_cs_tradeable)}个可交易信号")
-        print(f"     最佳: {top['name']} {top['contract']} 卖P{top['sell_strike']}/买P{top['buy_strike']}")
+        top_tier = "🟢" if top.get('tier') == 'green' else "🟡"
+        opt_type = "C" if top['sell_strike'] < top['buy_strike'] else "P"
+        print(f"\n  🟡 信用价差: 有{len(all_cs_tradeable)}个可交易信号 (🟢{green_n} 🟡{yellow_n})")
+        print(f"     最佳: {top_tier} {top['name']} {top['contract']} 卖{opt_type}{top['sell_strike']}/买{opt_type}{top['buy_strike']}")
         print(f"     净收 ¥{top['net_premium']} | 最大盈利 ¥{top['max_profit']:.0f} | 最大亏损 ¥{top['max_loss']:.0f}")
+        tp = round(top['max_profit'] * 0.5, 0)
+        print(f"     止盈 ¥{tp:.0f}/手 | 止损预警: 期货触及 {opt_type}{top['buy_strike']}")
         print(f"     盈亏比 1:{round(1/top['rr_ratio'],1)} (亏¥1赚¥{round(1/top['rr_ratio'],1)})")
         if capital:
-            print(f"     建议: 最多{int(capital*0.05/top['max_loss'])}手 (单笔风险≤5%本金)")
+            max_hands = int(capital * 0.05 / top['max_loss'])
+            if top.get('tier') == 'yellow' and max_hands >= 2:
+                max_hands = max(1, max_hands // 2)
+            suffix = " (黄档减半)" if top.get('tier') == 'yellow' else ""
+            print(f"     建议: 最多{max_hands}手{suffix}")
     else:
         print(f"\n  ⚫ 信用价差: 今日无信号")
 
     # 3. 事件
     high_events = [e for e in events if e['impact'] == 'high' and e['days_until'] <= 5]
-    medium_events = [e for e in events if e['impact'] == 'high' and e['days_until'] <= 10]
+    high_events_wide = [e for e in events if e['impact'] == 'high' and e['days_until'] <= 10]
     near_events = [e for e in events if e['days_until'] <= 3]
 
     if high_events:
@@ -560,12 +484,12 @@ def generate_conclusion(otm_results, cs_results, events, iv_data, capital=None):
             print(f"     ⚡ 可以进场了")
         elif ev['days_until'] <= 5:
             print(f"     ⏳ 准备资金中")
-    elif medium_events:
-        ev = medium_events[0]
+    elif high_events_wide:
+        ev = high_events_wide[0]
         print(f"\n  🟡 事件层: D-{ev['days_until']} {ev['title']}")
         print(f"     还有时间，先跟踪品种流动性")
     elif near_events:
-        print(f"\n  🟡 事件层: 有{days_until}天内的中等事件，但非高影响")
+        print(f"\n  🟡 事件层: 有{near_events[0]['days_until']}天内的中等事件，但非高影响")
     else:
         print(f"\n  ⚫ 事件层: 近期无高影响事件")
 
@@ -626,8 +550,9 @@ def main():
         except Exception:
             contract_map[vcode] = "未知"
 
-    # ── 推断期货价格 + 批量修正 ──
+    # ── 推断期货价格 + 保存链数据供下游复用 ──
     print(f"\n  📡 从期权链推断各品种期货价格：")
+    chain_data = {}  # {vcode: (contract, df_renamed)}
     for vcode in target:
         v = VARIETIES[vcode]
         fut_contract = contract_map.get(vcode, "未知")
@@ -638,6 +563,15 @@ def main():
             inferred = None
         if inferred and inferred > 0:
             VARIETIES[vcode]['futures'] = inferred
+            # 预改列名，下游 scan_* / assess_* 直接用
+            df_renamed = df_pre.rename(columns={
+                '行权价': 'strike',
+                '看跌合约-最新价': 'p_last',
+                '看跌合约-买价': 'p_bid', '看跌合约-卖价': 'p_ask',
+                '看跌合约-持仓量': 'p_oi',
+                '看涨合约-买价': 'c_bid', '看涨合约-卖价': 'c_ask',
+            })
+            chain_data[vcode] = (fut_contract, df_renamed)
             print(f"     ✅ {v['name']:6s} {fut_contract} → 推断期货价 {inferred}")
         else:
             print(f"     ❌ {v['name']:6s} {fut_contract} → 无法推断，需手动输入")
@@ -664,7 +598,11 @@ def main():
         print(f"\n  ┌─ 虚值倒挂扫描 ({len(target)}品种)")
         for vcode in target:
             variety = VARIETIES[vcode]
-            signals, summary = scan_deep_otm(vcode, variety, args.capital)
+            if vcode in chain_data:
+                contract, df = chain_data[vcode]
+                signals, summary = scan_deep_otm(vcode, variety, contract, df, variety['futures'], args.capital)
+            else:
+                signals, summary = [], "❌ 无链数据"
             otm_results[vcode] = (signals, summary)
             tradeable_n = len([s for s in signals if s['tradeable']])
             icon = "🟢" if tradeable_n > 0 else "⚫"
@@ -677,7 +615,11 @@ def main():
         print(f"\n  ┌─ 信用价差扫描 ({len(target)}品种)")
         for vcode in target:
             variety = VARIETIES[vcode]
-            signals, summary = scan_credit_spreads(vcode, variety, args.capital)
+            if vcode in chain_data:
+                contract, df = chain_data[vcode]
+                signals, summary = scan_credit_spreads(vcode, variety, contract, df, variety['futures'], args.capital)
+            else:
+                signals, summary = [], "❌ 无链数据"
             cs_results[vcode] = (signals, summary)
             tradeable_n = len([s for s in signals if s['tradeable']])
             icon = "🟡" if tradeable_n > 0 else "⚫"
@@ -705,11 +647,16 @@ def main():
     if not args.quick:
         print(f"\n  ┌─ IV/流动性采样 (关键品种ATM)")
         for vcode in key_varieties[:5]:
-            iv = assess_iv_environment(vcode, VARIETIES[vcode])
+            variety = VARIETIES[vcode]
+            if vcode in chain_data:
+                contract, df = chain_data[vcode]
+                iv = assess_iv_environment(vcode, variety, contract, df, variety['futures'])
+            else:
+                iv = {"iv_level": "unknown", "note": "无链数据"}
             iv_data[vcode] = iv
             sp = iv.get('put_spread_pct', 999)
             icon = "✅" if sp < 10 else ("⚠️" if sp < 20 else "❌")
-            print(f"  │ {icon} {VARIETIES[vcode]['name']:6s}: ATM价差 {sp}% | {iv.get('note','')}")
+            print(f"  │ {icon} {variety['name']:6s}: ATM价差 {sp}% | {iv.get('note','')}")
         print(f"  └─")
 
     # ── 结论 ──
@@ -749,14 +696,21 @@ def main():
                     filtered_label = "（已去重+筛选）" if not args.raw else "（原始）"
                     print(f"\n  ┌─ 可交易信用价差详情 {filtered_label}")
                     if not args.raw:
-                        print(f"  │ 筛选：单品种单合约仅显示最佳 | 盈亏比≥0.25(亏¥1赚¥0.25+) | ⚠️=7日内有高影响事件")
+                        print(f"  │ 筛选：单品种单合约仅显示最佳 | 盈亏比≥0.25 | ⚠️=7日内有高影响事件")
+                        print(f"  │ 三档：🟢 ≤2%正常仓位 | 🟡 2-4%减半仓位 | 🔴 >4%已过滤")
                     limit = args.show if args.show > 0 else len(display_cs)
                     for i, s in enumerate(display_cs[:limit], 1):
                         warn = " ⚠️有事件" if s.get('_event_warning') else ""
+                        tier_icon = "🟢" if s.get('tier') == 'green' else "🟡"
                         opt_type = "C" if s['sell_strike'] < s['buy_strike'] else "P"
-                        print(f"  │ [{i}] {s['name']} {s['contract']} "
+                        width_str = f"宽度{s.get('strike_width_pct', '?')}%"
+                        otm_str = f"OTM{s.get('otm_pct', '?')}%"
+                        print(f"  │ [{i}] {tier_icon} {s['name']} {s['contract']} "
                               f"卖{opt_type}{s['sell_strike']}({s['sell_bid']}) / 买{opt_type}{s['buy_strike']}({s['buy_ask']}){warn}")
-                        print(f"  │     净收 ¥{s['net_premium']} | 最大盈 ¥{s['max_profit']:.0f} | 最大亏 ¥{s['max_loss']:.0f}")
+                        tp = round(s['max_profit'] * 0.5, 0)
+                        opt_type = "C" if s['sell_strike'] < s['buy_strike'] else "P"
+                        print(f"  │     净收 ¥{s['net_premium']} | 最大盈 ¥{s['max_profit']:.0f} | 最大亏 ¥{s['max_loss']:.0f} | {width_str} | {otm_str}")
+                        print(f"  │     止盈 ¥{tp:.0f}/手 | 止损预警: 期货触及 {opt_type}{s['buy_strike']}")
                     print(f"  └─")
 
         # 展开所有虚值信号详情
