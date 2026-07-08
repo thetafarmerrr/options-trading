@@ -12,6 +12,7 @@ iv_collector.py — 每日 IV 数据采集
 
 import sys, os, csv, argparse
 from datetime import datetime
+import numpy as np
 import pandas as pd
 
 SCRIPT_DIR = os.path.dirname(os.path.abspath(__file__))
@@ -29,12 +30,59 @@ DEFAULT_VARIETIES = {
     "ma": {"symbol": "甲醇期权",  "name": "甲醇"},
 }
 
+# 中国商品期货年交易日数 ≈ 242
+TRADING_DAYS = 242
+PARKINSON_WINDOW = 20
+MIN_VALID_DAYS = 15
+
 OUTPUT_FILE = os.path.join(os.path.dirname(SCRIPT_DIR), "data", "iv_history.csv")
 os.makedirs(os.path.dirname(OUTPUT_FILE), exist_ok=True)
 
 
 def _safe(v):
     return v if not pd.isna(v) else 0
+
+
+def calc_parkinson_hv(contract, window=PARKINSON_WINDOW):
+    """用 Parkinson 估计量计算历史波动率（替代收盘价法）。
+
+    Parkinson 比收盘价法效率高 5 倍，用最高/最低价捕捉日内波动。
+    跳空时低估——Yang-Zhang 会修正这个问题，Phase 3 切换。
+    """
+    try:
+        # 拉单一合约日线（无换月跳空）
+        df = ak.futures_daily_sina(contract)
+        if df is None or len(df) == 0:
+            return None
+
+        # 统一列名
+        df = df.rename(columns={
+            "日期": "date", "开盘价": "open", "最高价": "high",
+            "最低价": "low", "收盘价": "close",
+        })
+
+        # 取最近 window 根日线，按日期排序
+        df = df.sort_values("date").tail(window)
+
+        # 过滤异常 K 线：停牌、涨跌停无成交、数据异常
+        valid = df[(df["high"] > df["low"]) & (df["high"] / df["low"] > 1.0005)]
+        n = len(valid)
+
+        if n < MIN_VALID_DAYS:
+            return None  # 数据不足，不输出不可靠的 HV
+
+        high = valid["high"].values.astype(float)
+        low = valid["low"].values.astype(float)
+
+        # Parkinson 公式
+        ln_ratio = np.log(high / low)
+        sigma_daily = np.sqrt(np.sum(ln_ratio ** 2) / (4 * n * np.log(2)))
+        hv = sigma_daily * np.sqrt(TRADING_DAYS)  # 年化（√242）
+
+        return round(float(hv), 4)
+
+    except Exception:
+        return None
 
 
 def get_last_atm(vcode):
@@ -136,6 +184,7 @@ def collect_variety(vcode, vinfo):
         "put_bid": round(float(p_bid), 2),
         "put_ask": round(float(p_ask), 2),
         "spread_pct": spread_pct,
+        "hv_parkinson": calc_parkinson_hv(main_contract),
         "inferred_futures": best_strike,
     }
 
@@ -163,10 +212,12 @@ def main():
             if result:
                 rows.append(result)
                 icon = "✅" if result["spread_pct"] < 10 else "⚠️"
+                hv_str = f"{result['hv_parkinson']:.1%}" if result['hv_parkinson'] else "N/A"
                 print(f"  {icon} {result['name']} {result['contract']} "
                       f"ATM={result['atm_strike']} "
                       f"P bid/ask={result['put_bid']}/{result['put_ask']} "
-                      f"价差={result['spread_pct']}%")
+                      f"价差={result['spread_pct']}% "
+                      f"Parkinson={hv_str}")
             else:
                 print(f"  ❌ {vinfo['name']}: 无有效 ATM 数据")
         except Exception as e:
@@ -176,9 +227,24 @@ def main():
         print("\n  无数据，未写入 CSV\n")
         return
 
-    # 追加写入 CSV
+    # 追加写入 CSV（兼容旧文件无 hv_parkinson 列）
     fieldnames = list(rows[0].keys())
     file_exists = os.path.exists(OUTPUT_FILE)
+
+    # 如果旧 CSV 缺少 hv_parkinson 列，补齐头部
+    if file_exists:
+        with open(OUTPUT_FILE, "r", encoding="utf-8") as f:
+            existing_fields = f.readline().strip().split(",")
+        missing = [f for f in fieldnames if f not in existing_fields]
+        if missing:
+            # 重写头部，插入缺失列（放在 inferred_futures 之前）
+            insert_pos = existing_fields.index("inferred_futures")
+            new_header = existing_fields[:insert_pos] + missing + existing_fields[insert_pos:]
+            with open(OUTPUT_FILE, "r", encoding="utf-8") as f:
+                old_rows = f.readlines()[1:]
+            with open(OUTPUT_FILE, "w", encoding="utf-8") as f:
+                f.write(",".join(new_header) + "\n")
+                f.writelines(old_rows)
 
     with open(OUTPUT_FILE, "a", newline="", encoding="utf-8") as f:
         writer = csv.DictWriter(f, fieldnames=fieldnames)
