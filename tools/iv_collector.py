@@ -51,7 +51,7 @@ def calc_parkinson_hv(contract, window=PARKINSON_WINDOW):
     """
     try:
         # 拉单一合约日线（无换月跳空）
-        df = ak.futures_daily_sina(contract)
+        df = ak.futures_zh_daily_sina(contract.upper())
         if df is None or len(df) == 0:
             return None
 
@@ -117,6 +117,33 @@ def get_last_contract(vcode):
         return None
 
 
+def _est_dte(contract):
+    """估算期权距到期天数（商品期权通常为标的月份前一个月到期）"""
+    try:
+        month = int(contract[-2:])
+        year = 2000 + int(contract[-4:-2])
+        expiry = datetime(year, month, 1)
+        dte = (expiry - datetime.now()).days - 5  # 到期月首日前 5 天
+        return max(dte, 5)
+    except Exception:
+        return 30
+
+
+def _est_iv(S, p_bid, p_ask, c_bid, c_ask, dte):
+    """用 ATM 跨式价格近似反推隐含波动率。
+
+    ATM 跨式 ≈ 0.8 × S × σ × √(T/365) → σ ≈ 跨式 / (0.8 × S × √(T/365))
+    这个方法精确度有限，但 IV-HV 对比够用。Phase 3 可换精确求解器。
+    """
+    p_mid = (p_bid + p_ask) / 2
+    c_mid = (c_bid + c_ask) / 2
+    straddle = p_mid + c_mid
+    if S <= 0 or straddle <= 0:
+        return None
+    iv = straddle / (0.8 * S * (dte / 365) ** 0.5)
+    return round(float(iv), 4)
+
+
 def collect_variety(vcode, vinfo):
     """拉取单个品种的主力合约 ATM 期权数据"""
     symbol = vinfo["symbol"]
@@ -172,6 +199,11 @@ def collect_variety(vcode, vinfo):
     c_ask = _safe(best_row["c_ask"])
     spread_pct = round((p_ask - p_bid) / p_bid * 100, 1) if p_bid > 0 else 999
 
+    # 估算 IV（ATM 跨式反推，近似值）
+    dte = _est_dte(main_contract)
+    iv = _est_iv(float(best_strike), p_bid, p_ask, c_bid, c_ask, dte)
+    hv = calc_parkinson_hv(main_contract)
+
     return {
         "date": datetime.now().strftime("%Y-%m-%d"),
         "time": datetime.now().strftime("%H:%M"),
@@ -184,7 +216,9 @@ def collect_variety(vcode, vinfo):
         "put_bid": round(float(p_bid), 2),
         "put_ask": round(float(p_ask), 2),
         "spread_pct": spread_pct,
-        "hv_parkinson": calc_parkinson_hv(main_contract),
+        "iv_est": iv,
+        "hv_parkinson": hv,
+        "dte": dte,
         "inferred_futures": best_strike,
     }
 
@@ -212,12 +246,13 @@ def main():
             if result:
                 rows.append(result)
                 icon = "✅" if result["spread_pct"] < 10 else "⚠️"
+                iv_str = f"{result['iv_est']:.1%}" if result['iv_est'] else "N/A"
                 hv_str = f"{result['hv_parkinson']:.1%}" if result['hv_parkinson'] else "N/A"
                 print(f"  {icon} {result['name']} {result['contract']} "
-                      f"ATM={result['atm_strike']} "
+                      f"ATM={result['atm_strike']} DTE={result['dte']}d "
                       f"P bid/ask={result['put_bid']}/{result['put_ask']} "
                       f"价差={result['spread_pct']}% "
-                      f"Parkinson={hv_str}")
+                      f"IV≈{iv_str} HV={hv_str}")
             else:
                 print(f"  ❌ {vinfo['name']}: 无有效 ATM 数据")
         except Exception as e:
