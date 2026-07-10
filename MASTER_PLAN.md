@@ -97,13 +97,11 @@ Phase 1-6（9周）→ Layer 1（3-6月）→ Layer 2（2-3月）
 
 ## 七、当前状态
 
-- Phase 2 Day 18。模拟盘 6 笔（5 平 1 持），总亏损 ¥483
-- 当前持仓：菜粕 2609 Put 信用价差（P2225/P2200），浮盈 ¥25
-- 训练 B：88%/3.0s。A：90%/8.9s。C：90%。E：100%。G：87%
-- 工具：scanner v8（数据流重构+三档分类+止盈止损+离场六步）、drill（A-G 七模块）、iv_collector（8 天）
-- 进场+离场规则：`docs/monitoring-rules.md`（各六步检查）
-- 阅读：Sinclair Volatility Trading 第 1-2 章推进中
-- GitHub: thetafarmerrr/options-trading。隔日 commit
+> 可变状态（Phase / 持仓 / 训练分 / 进度）**单一真相源：`memory/quant-plan-state.md`**（每次会话加载）。此处不再复制，避免三处漂移。
+
+- GitHub: thetafarmerrr/options-trading
+- 进场 / 离场规则：`docs/monitoring-rules.md`（各六步检查 + 手续费）
+- 工具：`tools/unified_scanner.py`、`drill_system.py`、`iv_collector.py`
 
 ## 已搁置讨论（按 Layer 激活）
 
@@ -123,6 +121,7 @@ Phase 1-6（9周）→ Layer 1（3-6月）→ Layer 2（2-3月）
 | 放宽 OTM 到平值（允许 ATM 信用价差） | Layer 3 | 2026-07-07 |
 | 盘中自动监控（替代手动扫描） | Layer 5 | 2026-07-07 |
 | 高频 RV 估计（30min bar + 隔夜跳空校正）替代 Parkinson | Layer 3-4（日历价差/曲面/事件交易需要精度时） | 2026-07-08 |
+| tqsdk 实时平仓监控（止盈净价埋伏告警，只报警不自动下单） | **提前激活** → 周六(7/11)复盘后建，周一/夜盘验证。理由=解决盯盘+埋伏止盈，是"盘中自动监控"的只读子集 | 2026-07-10 |
 
 ---
 
