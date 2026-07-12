@@ -2,9 +2,8 @@ __pycache__/
 .DS_Store
 *.pyc
 
-# 私人：AI 指令 + 日志 + 数据 + 错题
+# 私人：AI 指令 + 数据 + 错题
 .claude/
-journal/
 mistakes.md
 data/
 drill_state/
