@@ -56,13 +56,28 @@
 
 ## 波动率结构
 
-| 中文 | English |
-|------|---------|
-| 正向市场（远月IV > 近月）| Contango |
-| 倒挂（近月IV > 远月）| Backwardation |
-| 偏度 | Skew |
-| 期限结构 | Term Structure |
-| 波动率微笑 | Volatility Smile |
+| 中文 | English | 一句话 |
+|------|---------|--------|
+| 正向市场（远月IV > 近月）| Contango | 市场平静，远期保险更贵 |
+| 倒挂（近月IV > 远月）| Backwardation | 恐慌——大家都在抢近期保险 |
+| 偏度 | Skew | OTM Put IV > OTM Call IV，下跌风险被定价更高 |
+| 期限结构 | Term Structure | IV 随到期时间变化的曲线 |
+| 波动率微笑 | Volatility Smile | 不同行权价的 IV 连成 U 形曲线 |
+| 杠杆效应 | Leverage Effect | 价格跌 → IV 涨（价格驱动波动率） |
+| 波动率反馈 | Volatility Feedback | IV 涨 → 恐慌抛售 → 价格跌（波动率反驱价格） |
+| 尖峰厚尾 | Leptokurtic / Fat Tails | 极端行情发生频率远高于正态分布预测 |
+| 波动率聚集 | Volatility Clustering | 大波动后跟大波动，小波动后跟小波动 |
+| Parkinson 波动率 | Parkinson HV | 用日内最高/最低价估计波动率，比收盘价法准 5 倍 |
+
+## 量价分析
+
+| 中文 | English | 一句话 |
+|------|---------|--------|
+| HV₂₀ vs HV₆₀ | 20d vs 60d HV | 20d > 60d = 近期波动加剧，卖方谨慎 |
+| ⚡ 标记 | HV gap alert | iv_collector 自动标记：HV₂₀−HV₆₀ > 3% |
+| IV 斜率 | IV Slope | 近 3 天 IV 斜率：⬆加速 ⬇回落 ➡企稳 |
+| 放量真贵 | Real IV expansion | 放量+IV高 → 分歧真实，不追卖 |
+| 缩量虚高 | Fake IV spike | 缩量+IV高 → 虚张声势，可卖 |
 
 ## 策略
 
