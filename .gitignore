@@ -2,10 +2,8 @@ __pycache__/
 .DS_Store
 *.pyc
 
-# 私人：AI 指令 + 数据 + 错题
-.claude/
+# 私人：数据 + 错题
 mistakes.md
 data/
 drill_state/
-docs/conversation-log.md
 content-backlog.md
