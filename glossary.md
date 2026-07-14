@@ -126,6 +126,86 @@
 | 尾部风险 | Tail Risk | 小概率大损失（USDA 跳空那种）|
 | 事件驱动 | Event-Driven | 报告/数据前后的波动 |
 
+## 策略（补充）
+
+| 中文 | English | 一句话 |
+|------|---------|--------|
+| 铁秃鹰 | Iron Condor | 同时卖出 OTM Put Spread + OTM Call Spread，收双份权利金 |
+| 铁蝴蝶 | Iron Butterfly | ATM Short Straddle 加两端保护腿 |
+| 备兑看涨 | Covered Call | 持标的同时卖 Call |
+| 现金担保 Put | Cash-Secured Put | 预留全额现金卖 Put（卖方入门首选）|
+| 对角价差 | Diagonal Spread | 不同行权价 + 不同到期日的组合 |
+
+## 期权估值
+
+| 中文 | English | 一句话 |
+|------|---------|--------|
+| 内在价值 | Intrinsic Value | 立即行权能拿到的钱（ITM 才有，OTM = 0）|
+| 外在价值 / 时间价值 | Extrinsic Value / Time Value | Premium − Intrinsic Value，到期归零的部分 |
+| 时间流逝 / 时间衰减 | Time Decay / Theta Decay | DTE 越短 Theta 越快，卖方的主要收入来源 |
+| 平值点 / 中间价 | Mid Price / Mark | (Bid + Ask) / 2，理论参考价 |
+
+## 交易执行与持仓管理
+
+| 中文 | English | 一句话 |
+|------|---------|--------|
+| 行权 | Exercise | 买方行使权利（买入/卖出标的） |
+| 指派 / 被指派 | Assignment | 卖方被要求履约——买方行权，你被配对 |
+| 提前指派 | Early Assignment | 到期前被指派（美式期权，深度 ITM 或分红前） |
+| 距到期天数 | Days to Expiration (DTE) | Tastytrade 偏好 30-45 DTE 开仓 |
+| 盈亏平衡点 | Breakeven | Strike ± Premium，期权到期时不赚不赔的价格 |
+| 最大盈利 | Max Profit | = 净权利金收入（信用价差卖方） |
+| 最大亏损 | Max Loss | = 价差宽度 − 净权利金收入（信用价差卖方） |
+| 移仓 | Roll / Rolling | 平仓当前头寸 + 开同方向更远月/不同行权价的仓位 |
+| 向上移（Roll 成更高行权价）| Roll Up | 同样方向，调到更高行权价 |
+| 向下移（Roll 成更低行权价）| Roll Down | 同样方向，调到更低行权价 |
+| 展期（Roll 到更远月）| Roll Out | 同样行权价，拉到更远到期日 |
+| 移仓收钱 | Roll for a Credit | Tastytrade 铁律：移仓必须是净收权利金 |
+| 提前止盈 | Take Profit / Manage Winner | Tastytrade 标准：到 50% 最大盈利时平仓 |
+| 固定风险 vs 无限风险 | Defined Risk vs Undefined Risk | 价差=固定风险；裸卖=无限风险 |
+
+## 风险与概率
+
+| 中文 | English | 一句话 |
+|------|---------|--------|
+| 盈利概率 | Probability of Profit (POP) | 到期时有盈利的概率 |
+| 被触碰概率 | Probability of Touching | 到期前任一时刻碰到某价位的概率（≈ 2×Delta） |
+| 预期波动幅度 | Expected Move | 市场对标的在未来一段时间内波动幅度的定价（≈ Strike × IV × √DTE/365） |
+| 针形风险 | Pin Risk | 到期日标的恰好收盘在行权价上——卖方不知道会不会被指派 |
+| 隔夜跳空风险 | Overnight Gap Risk | 收盘后到第二天开盘之间发生大跳空（卖方最大的风险源） |
+| 行权指派风险 | Assignment Risk | 被提前指派后仓位移到裸腿（腿序反了） |
+| 滑点 | Slippage | 实际成交价和预期价的差，流动性差的时候更严重 |
+| 成交 | Fill / Getting Filled | 订单执行成功的口语说法 |
+
+## 账户与资金
+
+| 中文 | English | 一句话 |
+|------|---------|--------|
+| 购买力 | Buying Power | 账户能开新仓位的上限 |
+| 购买力占用 | Buying Power Reduction (BPR) | 开一个仓位被锁住的资金 |
+| 名义价值 | Notional Value | 标的当前价格 × 合约乘数 |
+| 组合保证金 | Portfolio Margin | 按组合整体风险算保证金（比 Reg-T 宽松） |
+| Delta 中性 | Delta Neutral | 多腿组合 Delta 互相抵消 ≈ 0，不受标的方向影响 |
+| Beta 加权 | Beta-Weighting | 把所有持仓的 Delta 换算成对标普 500 的 Beta 暴露 |
+
+## Tastytrade / Mike 高频短语
+
+| 英文 | 中文 | 什么时候听到 |
+|------|------|-------------|
+| "Sell premium" / "Be a net seller of premium" | 做权利金的净卖方 | 每集都会说 |
+| "Collect theta" / "Collect theta decay" | 收时间价值 | 解释为什么卖方的胜率高 |
+| "Trade small, trade often" | 每次下小仓位，高频交易 | Tastytrade 核心口诀 |
+| "Stay small" | 控制单笔仓位（1-5%） | 风控重复提醒 |
+| "Mechanical approach" | 机械化执行，不凭感觉 | 进场/离场规则的哲学 |
+| "Manage winners early" | 盈利到了就平，不要贪 | 50% 止盈背后的逻辑 |
+| "Manage at 21 DTE" | 持有到距到期 21 天时关仓 | Tastytrade 标准离场规则 |
+| "Put the probabilities on your side" | 让概率站在你这边 | 解释为什么卖虚值期权胜率高 |
+| "IV tends to overstate RV" | 隐含波动率倾向于高估实际波动 | 卖方存在的理论基础 |
+| "The market is mean-reverting" | 市场有均值回归倾向 | 解释波动率回归 |
+| "All else being equal..." | 其他条件不变的情况下… | Mike 开始一段分析的口头禅 |
+| "Think of it this way..." | 换一种方式理解… | Mike 切换解释角度的信号 |
+| "At the end of the day..." | 说到底/归根结底 | 总结要点时的过渡语 |
+
 ## 绩效
 
 | 中文 | English |
@@ -140,3 +220,5 @@
 ---
 
 > 每天扫描器输出里出现的英文词，这张表都有。碰到了回来看一眼，三天就记住了。
+>
+> **Mike 系列看视频时**：碰到表里没有的术语或短语，签到时说一声，随时追加。

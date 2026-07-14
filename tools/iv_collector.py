@@ -18,8 +18,8 @@ import pandas as pd
 SCRIPT_DIR = os.path.dirname(os.path.abspath(__file__))
 sys.path.insert(0, SCRIPT_DIR)
 
-import akshare as ak
-from unified_scanner import pick_best_contract
+from _ak_data import (pick_best_contract, fetch_option_chain, fetch_futures_daily,
+                      estimate_iv_from_chain, DEFAULT_FUTURES, STRIKE_INTERVAL)
 
 # ── 配置 ──
 DEFAULT_VARIETIES = {
@@ -43,46 +43,22 @@ def _safe(v):
     return v if not pd.isna(v) else 0
 
 
-def calc_parkinson_hv(contract, window=PARKINSON_WINDOW):
-    """用 Parkinson 估计量计算历史波动率（替代收盘价法）。
-
-    Parkinson 比收盘价法效率高 5 倍，用最高/最低价捕捉日内波动。
-    跳空时低估——Yang-Zhang 会修正这个问题，Phase 3 切换。
-    """
-    try:
-        # 拉单一合约日线（无换月跳空）
-        df = ak.futures_zh_daily_sina(contract.upper())
-        if df is None or len(df) == 0:
-            return None
-
-        # 统一列名
-        df = df.rename(columns={
-            "日期": "date", "开盘价": "open", "最高价": "high",
-            "最低价": "low", "收盘价": "close",
-        })
-
-        # 取最近 window 根日线，按日期排序
-        df = df.sort_values("date").tail(window)
-
-        # 过滤异常 K 线：停牌、涨跌停无成交、数据异常
-        valid = df[(df["high"] > df["low"]) & (df["high"] / df["low"] > 1.0005)]
-        n = len(valid)
-
-        if n < MIN_VALID_DAYS:
-            return None  # 数据不足，不输出不可靠的 HV
-
-        high = valid["high"].values.astype(float)
-        low = valid["low"].values.astype(float)
-
-        # Parkinson 公式
-        ln_ratio = np.log(high / low)
-        sigma_daily = np.sqrt(np.sum(ln_ratio ** 2) / (4 * n * np.log(2)))
-        hv = sigma_daily * np.sqrt(TRADING_DAYS)  # 年化（√242）
-
-        return round(float(hv), 4)
-
-    except Exception:
+def calc_parkinson_hv(vcode, window=PARKINSON_WINDOW):
+    """用 Parkinson 估计量计算历史波动率。akshare 日线。"""
+    df = fetch_futures_daily(vcode, window + 10)
+    if df is None or len(df) == 0:
         return None
+    df = df.sort_values("date").tail(window)
+    valid = df[(df["high"] > df["low"]) & (df["high"] / df["low"] > 1.0005)]
+    n = len(valid)
+    if n < MIN_VALID_DAYS:
+        return None
+    high = valid["high"].values.astype(float)
+    low = valid["low"].values.astype(float)
+    ln_ratio = np.log(high / low)
+    sigma_daily = np.sqrt(np.sum(ln_ratio ** 2) / (4 * n * np.log(2)))
+    hv = sigma_daily * np.sqrt(TRADING_DAYS)
+    return round(float(hv), 4)
 
 
 def get_last_atm(vcode):
@@ -180,10 +156,8 @@ def _est_iv(S, p_bid, p_ask, c_bid, c_ask, dte):
 
 
 def collect_variety(vcode, vinfo):
-    """拉取单个品种的主力合约 ATM 期权数据"""
+    """用 akshare 拉取单个品种的主力合约 ATM 期权数据"""
     symbol = vinfo["symbol"]
-
-    # 与 scanner 同套逻辑选主力合约。优先沿用历史合约保证连续性
     main_contract = get_last_contract(vcode)
     best_contract = pick_best_contract(symbol, vcode)
     if best_contract and best_contract != main_contract:
@@ -192,39 +166,30 @@ def collect_variety(vcode, vinfo):
     if not main_contract:
         return None
 
-    # 拉期权链
-    df = ak.option_commodity_contract_table_sina(symbol=symbol, contract=main_contract)
-    df = df.rename(columns={
-        "行权价": "strike",
-        "看涨合约-买价": "c_bid", "看涨合约-卖价": "c_ask",
-        "看跌合约-买价": "p_bid", "看跌合约-卖价": "p_ask",
-    })
+    fut_contract, df, futures_price = fetch_option_chain(vcode, symbol, main_contract)
+    if df.empty:
+        return None
 
-    # 找 ATM：加权评分 = 交易活跃度 / Call-Put偏差
-    # 远端行权价（如玉米2640）绝对差值小但bid也极小→活跃度低→评分低
     best_strike, best_score, best_row = None, -1, None
     for _, row in df.iterrows():
         p_bid = _safe(row["p_bid"])
         c_bid = _safe(row["c_bid"])
         if p_bid > 0 and c_bid > 0:
             diff = abs(p_bid - c_bid)
-            activity = (p_bid + c_bid) / 2  # 平均bid = 市场参与度
-            score = activity / max(diff, 0.01)  # 活跃度高 + 偏差小 = 高分
+            activity = (p_bid + c_bid) / 2
+            score = activity / max(diff, 0.01)
             if score > best_score:
                 best_score = score
                 best_strike = int(row["strike"])
                 best_row = row
-
     if best_row is None:
         return None
 
-    # 安全网：如果 ATM 偏离昨天 5% 以上 → 用昨天的（开盘流动性假象）
     yesterday_atm = get_last_atm(vcode)
     if yesterday_atm and yesterday_atm > 0:
         deviation = abs(best_strike - yesterday_atm) / yesterday_atm
         if deviation > 0.05:
             best_strike = yesterday_atm
-            # 从链面找最近的行权价行
             closest = df.iloc[(df["strike"] - yesterday_atm).abs().argsort()[:1]]
             best_row = closest.iloc[0] if len(closest) > 0 else best_row
 
@@ -234,20 +199,18 @@ def collect_variety(vcode, vinfo):
     c_ask = _safe(best_row["c_ask"])
     spread_pct = round((p_ask - p_bid) / p_bid * 100, 1) if p_bid > 0 else 999
 
-    # 估算 IV（ATM 跨式反推，近似值）
-    dte = _est_dte(main_contract)
+    dte = _est_dte(fut_contract)
     iv = _est_iv(float(best_strike), p_bid, p_ask, c_bid, c_ask, dte)
-    hv_20 = calc_parkinson_hv(main_contract, window=20)
-    hv_60 = calc_parkinson_hv(main_contract, window=60)
-
-    iv_slope = calc_iv_slope(vcode)  # 近3天IV斜率（写入前计算，不含本条）
+    hv_20 = calc_parkinson_hv(vcode, window=20)
+    hv_60 = calc_parkinson_hv(vcode, window=60)
+    iv_slope = calc_iv_slope(vcode)
 
     return {
         "date": datetime.now().strftime("%Y-%m-%d"),
         "time": datetime.now().strftime("%H:%M"),
         "variety": vcode,
         "name": vinfo["name"],
-        "contract": main_contract,
+        "contract": fut_contract,
         "atm_strike": best_strike,
         "call_bid": round(float(c_bid), 2),
         "call_ask": round(float(c_ask), 2),
@@ -264,16 +227,13 @@ def collect_variety(vcode, vinfo):
 
 
 # ═══════════════════════════════════════════════════════════════
-# 开盘环境定性（Sinclair 第 3 章 · 五分制）
+# 开盘环境定性 helper 函数
 # ═══════════════════════════════════════════════════════════════
 
 MIN_IV_DAYS = 3
 
-# 品种映射（给 _run_premarket_check 用，避免和 DEFAULT_VARIETIES 重复）
-
 
 def _clean_vol_vals(rows, field):
-    """从 CSV 行中提取有效波动率数值，过滤脏数据"""
     vals = []
     for r in rows:
         try:
@@ -286,7 +246,6 @@ def _clean_vol_vals(rows, field):
 
 
 def _load_iv_history(vcode):
-    """从 CSV 加载某品种的 IV/HV 历史"""
     if not os.path.exists(OUTPUT_FILE):
         return None
     rows = []
@@ -294,13 +253,10 @@ def _load_iv_history(vcode):
         for row in csv.DictReader(f):
             if row["variety"] == vcode:
                 rows.append(row)
-    if len(rows) < 5:
-        return None
-    return rows
+    return rows if len(rows) >= 5 else None
 
 
 def _hv_trend(rows):
-    """#1 HV 5日趋势"""
     vals = _clean_vol_vals(rows[-20:], "hv_20d")
     if len(vals) < 5:
         return None, f"有效HV不足（{len(vals)}天）"
@@ -312,7 +268,6 @@ def _hv_trend(rows):
 
 
 def _hv_regime(rows):
-    """#2 波动环境"""
     vals = _clean_vol_vals(rows[-30:], "hv_20d")
     if len(vals) < 5:
         return None, f"有效HV不足（{len(vals)}天）"
@@ -327,19 +282,14 @@ def _hv_regime(rows):
         return True, f"正常（{ratio:.1f}x 均值）"
 
 
-def _leverage_effect(contract_code):
-    """#3 杠杆效应"""
+def _leverage_effect(vcode):
     try:
-        df = ak.futures_zh_daily_sina(contract_code.upper())
+        df = fetch_futures_daily(vcode, 60)
         if df is None or len(df) < 30:
             return None, "日线不足"
-        df = df.rename(columns={
-            "日期": "date", "开盘价": "open", "最高价": "high",
-            "最低价": "low", "收盘价": "close",
-        })
-        df["close"] = df["close"].astype(float)
-        df["return"] = df["close"].pct_change()
-        df = df.dropna().tail(60)
+        df = df.sort_values("date").tail(60)
+        df["return"] = df["close"].astype(float).pct_change()
+        df = df.dropna()
         up_days = df[df["return"] > 0]
         down_days = df[df["return"] < 0]
         if len(down_days) < 5:
@@ -349,39 +299,29 @@ def _leverage_effect(contract_code):
         asymmetry = avg_down / avg_up if avg_up > 0 else 999
         if asymmetry > 1.3:
             return False, f"不对称明显（跌{avg_down:.2%} vs 涨{avg_up:.2%}，×{asymmetry:.1f}）"
-        else:
-            return True, f"对称（跌{avg_down:.2%} vs 涨{avg_up:.2%}）"
+        return True, f"对称（跌{avg_down:.2%} vs 涨{avg_up:.2%}）"
     except Exception as e:
         return None, f"拉取失败: {e}"
 
 
 def _vol_hv_cross(rows):
-    """#4 量 × HV 方向交叉"""
     hv20_vals = _clean_vol_vals(rows[-5:], "hv_20d")
     hv60_vals = _clean_vol_vals(rows[-5:], "hv_60d")
     hv20 = hv20_vals[-1] if hv20_vals else None
     hv60 = hv60_vals[-1] if hv60_vals else None
-
-    contract_code = rows[-1].get("contract", "")
-    if not contract_code:
-        return None, "无合约代码"
-
-    try:
-        df = ak.futures_zh_daily_sina(contract_code.upper())
-        if df is None or len(df) < 10:
-            return None, "日线不足"
-        df = df.rename(columns={"日期": "date", "成交量": "volume"})
-        df["volume"] = df["volume"].astype(float)
-        recent_vol = df["volume"].tail(5).mean()
-        ma20_vol = df["volume"].tail(20).mean()
-        vol_ratio = recent_vol / ma20_vol if ma20_vol > 0 else 1
-    except Exception as e:
-        return None, f"拉取失败: {e}"
-
-    expanding = (hv20 and hv60 and hv20 > hv60)
+    vcode = rows[-1].get("variety", "")
+    if not vcode:
+        return None, "无品种代码"
+    df = fetch_futures_daily(vcode, 100)
+    if df is None or len(df) < 10:
+        return None, "日线不足"
+    df = df.sort_values("date")
+    recent_vol = df["volume"].astype(float).tail(5).mean()
+    ma20_vol = df["volume"].astype(float).tail(20).mean()
+    vol_ratio = recent_vol / ma20_vol if ma20_vol > 0 else 1
+    expanding = hv20 and hv60 and hv20 > hv60
     vol_high = vol_ratio > 1.2
     vol_low = vol_ratio < 0.8
-
     if expanding and vol_high:
         return False, f"HV扩张+放量{vol_ratio:.1f}x → 信号真实强烈"
     elif expanding and vol_low:
@@ -390,32 +330,17 @@ def _vol_hv_cross(rows):
         return True, f"HV收缩+放量{vol_ratio:.1f}x → 波动退潮，卖方有利"
     elif not expanding and vol_low:
         return True, f"HV收缩+缩量{vol_ratio:.1f}x → 安静收租"
-    else:
-        return True, f"正常 {vol_ratio:.1f}x"
+    return True, f"正常 {vol_ratio:.1f}x"
 
 
 def _iv_rank_volume(rows):
-    """#5 IV 分位 + 加速方向 + 量价真伪
-
-    放量+IV偏高 → 贵是"真贵"（市场分歧真实），不追卖
-    缩量+IV偏高 → 贵是"虚高"（无人参与），可卖
-    """
     vals = _clean_vol_vals(rows, "iv_est")
     if len(vals) < MIN_IV_DAYS:
         return None, f"有效IV不足（{len(vals)}天，需≥{MIN_IV_DAYS}）"
-
     current = vals[-1]
     percentile = sum(1 for v in vals if v <= current) / len(vals) * 100
     iv_high = percentile > 70
-
-    if len(vals) < 5:
-        warn = " ⚠️刚起步"
-    elif len(vals) < 10:
-        warn = " ⚠️样本偏少"
-    else:
-        warn = ""
-
-    # 近 3 天 IV 斜率
+    warn = " ⚠️刚起步" if len(vals) < 5 else (" ⚠️样本偏少" if len(vals) < 10 else "")
     recent = vals[-3:]
     if len(recent) >= 3:
         x = np.arange(3)
@@ -430,32 +355,27 @@ def _iv_rank_volume(rows):
             direction = "➡ 企稳"
             favorable = iv_high
     else:
-        direction = "?"
-        favorable = iv_high
-
-    # ── 量 × IV 交叉：判断贵贱真假 ──
+        direction, favorable = "?", iv_high
     vol_tag = ""
-    contract_code = rows[-1].get("contract", "")
-    if contract_code:
-        try:
-            df = ak.futures_zh_daily_sina(contract_code.upper())
-            if df is not None and len(df) >= 10:
-                df = df.rename(columns={"日期": "date", "成交量": "volume"})
-                df["volume"] = df["volume"].astype(float)
-                vol_ratio = (df["volume"].tail(5).mean() /
-                             df["volume"].tail(20).mean() if df["volume"].tail(20).mean() > 0 else 1)
-                if iv_high:
-                    if vol_ratio > 1.2:
-                        vol_tag = " 放量→真贵慎卖"
-                        favorable = False  # 恶性信号，覆盖之前的有利判断
-                    elif vol_ratio < 0.8:
-                        vol_tag = " 缩量→虚高可卖"
-                        favorable = True
-        except Exception:
-            pass
+    vcode = rows[-1].get("variety", "")
+    if vcode:
+        df = fetch_futures_daily(vcode, 100)
+        if df is not None and len(df) >= 10:
+            df = df.sort_values("date")
+            recent_v = df["volume"].astype(float).tail(5).mean()
+            ma20_v = df["volume"].astype(float).tail(20).mean()
+            vol_ratio = recent_v / ma20_v if ma20_v > 0 else 1
+            if iv_high:
+                if vol_ratio > 1.2:
+                    vol_tag = " 放量→真贵慎卖"
+                    favorable = False
+                elif vol_ratio < 0.8:
+                    vol_tag = " 缩量→虚高可卖"
+                    favorable = True
+    return (favorable, f"分位 {percentile:.0f}% {direction}（{len(vals)}天）{warn}{vol_tag}")
 
-    return (favorable,
-            f"分位 {percentile:.0f}% {direction}（{len(vals)}天）{warn}{vol_tag}")
+
+# ═══════════════════════════════════════════════════════════════
 
 
 def _run_premarket_check(target_vcodes):
@@ -498,7 +418,7 @@ def _run_premarket_check(target_vcodes):
         for num, (label, func, args) in enumerate([
             ("HV 趋势(5d)", _hv_trend, [rows]),
             ("波动环境(vs20d)", _hv_regime, [rows]),
-            ("杠杆效应", _leverage_effect, [contract_code]),
+            ("杠杆效应", _leverage_effect, [vcode]),
             ("量×HV方向", _vol_hv_cross, [rows]),
             ("IV分位+量价", _iv_rank_volume, [rows]),
         ], 1):
@@ -538,13 +458,38 @@ def _run_premarket_check(target_vcodes):
         scores[vcode] = results
 
     if scores:
-        print(f"\n  ── 全局汇总 ──")
+        print(f"\n  ── 卖方全局汇总 ──")
+        buyer_opportunities = []
         for vcode, s in scores.items():
             name = DEFAULT_VARIETIES[vcode]["name"]
             checked = s.get("checked", 0)
             fav = s.get("total", 0)
             bar = "🟢" * fav + "🔴" * (checked - fav) if checked else "❓"
             print(f"  {name:6s}  {bar}  {fav}/{checked}")
+
+            # ── 买方视角：IV 低 = 买方有利 ──
+            rows = _load_iv_history(vcode)
+            if rows:
+                vals = _clean_vol_vals(rows, "iv_est")
+                if len(vals) >= MIN_IV_DAYS:
+                    current_iv = vals[-1]
+                    iv_pct = sum(1 for v in vals if v <= current_iv) / len(vals) * 100
+                    if iv_pct < 30:
+                        buyer_opportunities.append((vcode, name, iv_pct, "🟢 买方黄金窗口"))
+                    elif iv_pct < 50:
+                        buyer_opportunities.append((vcode, name, iv_pct, "🟡 买方可关注"))
+                    else:
+                        buyer_opportunities.append((vcode, name, iv_pct, "🔴 买方不利"))
+
+        if buyer_opportunities:
+            print(f"\n  ── 买方视角（IV 低位=期权便宜，买方有利）──")
+            for vcode, name, iv_pct, tag in buyer_opportunities:
+                print(f"  {name:6s}  IV 分位 {iv_pct:.0f}%  {tag}")
+            active = [b for b in buyer_opportunities if "🟢" in b[3] or "🟡" in b[3]]
+            if active:
+                print(f"  → 买方可关注品种：{', '.join(b[1] for b in active)}")
+            else:
+                print(f"  → 所有品种 IV 偏高，买方无优势。继续卖方或旁观。")
 
     print()
 
