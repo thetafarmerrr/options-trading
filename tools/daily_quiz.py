@@ -1,0 +1,218 @@
+#!/usr/bin/env python3
+"""
+daily_quiz.py — 每日验收题自动出题器
+─────────────────────────────────
+从当日扫描/IV/交易日志中提取数据，自动生成 3 道验收题。
+commit 前答对再 push。防"打卡式签到"。
+
+用法：
+  python3 tools/daily_quiz.py          # 出 3 道题
+  python3 tools/daily_quiz.py --topic greeks  # 指定主题
+"""
+
+import sys, os, random, json, argparse
+from datetime import datetime, date
+from pathlib import Path
+
+SCRIPT_DIR = Path(__file__).parent
+PROJECT_DIR = SCRIPT_DIR.parent
+DATA_DIR = PROJECT_DIR / "data"
+HISTORY_FILE = DATA_DIR / "quiz_history.json"
+
+# ── 题库 ──
+
+QUESTIONS = {
+    "greeks": [
+        {
+            "q": "卖 Put 信用价差。期货跌了 2%，IV 涨了 5%。浮亏主要来自哪个 Greek？",
+            "a": ["delta", "Delta"],
+            "hint": "标的跌了=Delta 亏。IV 涨=Vega 也亏（卖方 Vega 为负），但 2% 的标的移动=Delta 主导",
+        },
+        {
+            "q": "买方买 ATM 跨式，D-3 USDA 报告。赚的是哪两个 Greek？说出来再下单。",
+            "a": ["gamma vega", "Gamma Vega", "vega gamma", "Vega Gamma"],
+            "hint": "买方=多 Gamma（方向对了加速）+ 多 Vega（IV 涨你赚）",
+        },
+        {
+            "q": "卖方信用价差到期前 3 天，期货在卖腿上方安全。持仓还是平？主因是哪个 Greek？",
+            "a": ["平", "gamma", "Gamma"],
+            "hint": "Gamma 爆炸=风险太大。一天 Theta 换不来 Gamma 跳的风险",
+        },
+        {
+            "q": "卖 Call 价差 vs 卖 Put 价差，哪个 Vega 风险天然更小？为什么？",
+            "a": ["卖Call", "sell call", "Call", "call"],
+            "hint": "杠杆效应不对称：跌时 IV 跳 > 涨时 IV 跳。卖 Call 的 Vega 风险天然小",
+        },
+        {
+            "q": "IV 分位 17%，卖方该做什么？买方该做什么？",
+            "a": ["卖方不做买方关注", "卖方旁观买方", "不卖可买"],
+            "hint": "IV 极低=卖方权利金薄=不做。买方期权便宜=关注",
+        },
+        {
+            "q": "Thet 对卖方是___（朋友/敌人），对买方是___（朋友/敌人）",
+            "a": ["朋友敌人", "朋友 敌人"],
+            "hint": "卖方赚 Theta=每天自动收钱。买方亏 Theta=每天自动扣钱",
+        },
+    ],
+    "discipline": [
+        {
+            "q": "纪律计数器归零的五个触发条件，说出至少三个。",
+            "a": ["裸空", "分腿", "止盈", "红线", "直觉"],
+            "hint": "裸空窗口/分腿顺序错/越50%止盈线不平/破'任何情况下'红线/凭直觉赌方向",
+        },
+        {
+            "q": "浮盈到了 credit 的 50%，规则怎么说？平还是等？",
+            "a": ["平"],
+            "hint": "开仓即写死止盈价。50% = 规则线，不讨论",
+        },
+        {
+            "q": "D-1 高影响事件。卖方该做什么？",
+            "a": ["不做", "不平仓", "不做卖方"],
+            "hint": "事件前卖方退场。D-0/D-1 不做卖方",
+        },
+        {
+            "q": "同品种已有持仓，Scanner 出来第二个信号。做还是不做？",
+            "a": ["不做", "不加"],
+            "hint": "同一品种不加同款。风险集中=纪律计数器归零的温床",
+        },
+    ],
+    "strategy": [
+        {
+            "q": "卖 Put 价差 OTM 公式是什么？",
+            "a": ["(期货-卖腿)/期货", "期货-卖腿/期货"],
+            "hint": "(期货−卖腿)÷期货。例：期货 2900 卖 2800 → OTM=3.4%",
+        },
+        {
+            "q": "卖 Call 价差 OTM 公式是什么？和卖 Put 有什么区别？",
+            "a": ["(卖腿-期货)/期货", "卖腿-期货/期货"],
+            "hint": "(卖腿−期货)÷期货。分子反了——卖 Call 期货在卖腿下方是安全的",
+        },
+        {
+            "q": "买方进场三个必要条件是什么？",
+            "a": ["iv低", "事件", "方向"],
+            "hint": "IV<30%分位 + 有事件催化 + 对方向有判断。缺一不减仓",
+        },
+        {
+            "q": "盈亏比 0.25 是什么意思？低于这个数怎么做？",
+            "a": ["不做"],
+            "hint": "亏¥1 赚¥0.25=不值得。低于 0.25=不做",
+        },
+    ],
+    "events": [
+        {
+            "q": "今天有 D-1 中国 GDP。关联品种 PTA/甲醇/铁矿石/橡胶。卖方该做什么？",
+            "a": ["不做", "旁观", "等"],
+            "hint": "D-0/D-1 高影响事件→不做卖方。等 GDP 落地 IV 稳定再扫",
+        },
+        {
+            "q": "USDA WASDE 报告 D-5，豆粕 IV 12%。卖方还是买方有优势？",
+            "a": ["买方"],
+            "hint": "IV 极低=期权便宜 + D-5 事件=买方三项全中",
+        },
+    ],
+}
+
+
+def pick_topic():
+    """根据当日情况自动选题。优先选近期薄弱环节。"""
+    if HISTORY_FILE.exists():
+        try:
+            history = json.loads(HISTORY_FILE.read_text())
+            topics = [h["topic"] for h in history[-10:]]
+            # 最近 10 次出现最少的话题优先
+            for t in ["greeks", "discipline", "strategy", "events"]:
+                if topics.count(t) < 2:
+                    return t
+        except Exception:
+            pass
+    return random.choice(list(QUESTIONS.keys()))
+
+
+def generate_quiz(topic=None):
+    """出 3 道题，返回题目列表"""
+    if topic is None:
+        topic = pick_topic()
+    pool = QUESTIONS.get(topic, QUESTIONS["greeks"])
+    selected = random.sample(pool, min(3, len(pool)))
+    return topic, selected
+
+
+def save_results(topic, results):
+    """记录答题结果"""
+    os.makedirs(DATA_DIR, exist_ok=True)
+    if HISTORY_FILE.exists():
+        history = json.loads(HISTORY_FILE.read_text())
+    else:
+        history = []
+    history.append({
+        "date": datetime.now().isoformat(),
+        "topic": topic,
+        "correct": sum(1 for r in results if r),
+        "total": len(results),
+    })
+    history = history[-200:]
+    HISTORY_FILE.write_text(json.dumps(history, ensure_ascii=False, indent=2))
+
+
+def run_quiz(topic=None):
+    """交互式答题"""
+    topic, questions = generate_quiz(topic)
+    correct = 0
+
+    print(f"\n{'═'*50}")
+    print(f"  📝 每日验收（{topic}）— commit 前答对再 push")
+    print(f"{'═'*50}")
+
+    results = []
+    for i, q in enumerate(questions, 1):
+        print(f"\n  [{i}/3] {q['q']}")
+        answer = input(f"  → ").strip()
+        is_correct = any(a.lower() in answer.lower() for a in q["a"])
+        results.append(is_correct)
+
+        if is_correct:
+            correct += 1
+            print(f"  ✅")
+        else:
+            print(f"  ❌ 提示：{q['hint']}")
+
+    save_results(topic, results)
+
+    print(f"\n  {'─'*40}")
+    print(f"  结果：{correct}/3 正确")
+
+    if correct == 3:
+        print(f"  🎉 全对！可以 commit 了。")
+    elif correct >= 2:
+        print(f"  ⚠️ 差一道。再想想，或者直接 commit（不建议）。")
+    else:
+        print(f"  ❌ 建议重做：python3 tools/daily_quiz.py --topic {topic}")
+
+    print()
+    return correct == 3
+
+
+def main():
+    parser = argparse.ArgumentParser(description="每日验收题自动出题器")
+    parser.add_argument("--topic", type=str, default=None,
+                        help=f"主题：{'/'.join(QUESTIONS.keys())}")
+    parser.add_argument("--stats", action="store_true", help="显示答题历史")
+    args = parser.parse_args()
+
+    if args.stats:
+        if HISTORY_FILE.exists():
+            history = json.loads(HISTORY_FILE.read_text())
+            print(f"\n  📊 答题历史（最近 10 次）：")
+            for h in history[-10:]:
+                bar = "🟢" * h["correct"] + "🔴" * (h["total"] - h["correct"])
+                print(f"    {h['date'][:10]}  {h['topic']:12s}  {bar}  {h['correct']}/{h['total']}")
+            print()
+        else:
+            print("\n  尚无答题记录。跑一次就有了。\n")
+        return
+
+    run_quiz(args.topic)
+
+
+if __name__ == "__main__":
+    main()

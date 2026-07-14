@@ -50,6 +50,25 @@ class CalendarEvent:
     best_strategy: str     # "straddle" | "directional" | "ratio"
 
 # ═══════════════════════════════════════════
+# 持续性地缘事件（无固定日期，始终有效）
+# ═══════════════════════════════════════════
+
+@dataclass
+class OngoingEvent:
+    title: str
+    varieties: List[str]
+    impact: str
+    description: str
+    best_strategy: str
+    expected_move_pct: float
+    started: str  # 开始日期
+
+ONGOING_EVENTS = [
+    # 持续性地缘事件已移除。地缘事件通过趋势触发（5日涨跌>2%）自动捕捉，
+    # 不需要人工维护。日历只保留固定日期事件（USDA/GDP/FOMC等）。
+]
+
+# ═══════════════════════════════════════════
 # 2026 年事件日历
 # ═══════════════════════════════════════════
 
@@ -190,13 +209,34 @@ def resolve_weekly_events(events: List[CalendarEvent], from_date: date, days: in
 
 def get_upcoming_events(from_date: Optional[date] = None, days: int = 7,
                         varieties: Optional[List[str]] = None) -> List[dict]:
-    """获取未来N天的事件列表"""
+    """获取未来N天的事件列表 + 持续性地缘事件"""
     if from_date is None:
         from_date = date.today()
 
     resolved = resolve_weekly_events(EVENTS_2026, from_date, days)
 
     upcoming = []
+
+    # 持续性地缘事件（始终显示，不参与倒计时）
+    for oe in ONGOING_EVENTS:
+        if varieties:
+            v_match = [v for v in oe.varieties if v in varieties]
+            if not v_match:
+                continue
+        upcoming.append({
+            "date": "ongoing",
+            "days_until": -1,  # 特殊标记：持续中
+            "title": oe.title,
+            "varieties": oe.varieties,
+            "variety_names": [VARIETIES[v]["name"] for v in oe.varieties if v in VARIETIES],
+            "impact": oe.impact,
+            "category": "geo",
+            "description": oe.description,
+            "expected_move_pct": oe.expected_move_pct,
+            "best_strategy": oe.best_strategy,
+            "urgency": "🔴 持续中",
+        })
+
     for ev in resolved:
         try:
             ev_date = date.fromisoformat(ev.date)

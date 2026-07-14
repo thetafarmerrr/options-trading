@@ -8,3 +8,4 @@ data/
 drill_state/
 docs/conversation-log.md
 content-backlog.md
+tools/_tq_data.py

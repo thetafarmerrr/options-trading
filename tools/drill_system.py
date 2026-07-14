@@ -73,8 +73,8 @@ def show_progress():
         return
 
     sessions = h["sessions"]
-    modules = ["A", "B", "C", "D", "E", "F", "G"]
-    module_names = {"A": "链面扫异常", "B": "价差判断", "C": "天气→策略", "D": "Greek场景", "E": "信用价差扫描", "F": "持仓管理", "G": "腿位判断"}
+    modules = ["A", "B", "C", "D", "E", "F", "G", "H"]
+    module_names = {"A": "链面扫异常", "B": "价差判断", "C": "天气→策略", "D": "Greek场景", "E": "信用价差扫描", "F": "持仓管理", "G": "腿位判断", "H": "买方方向"}
 
     print(f"\n{'═'*60}")
     print(f"  📊 训练统计（共 {len(sessions)} 次）")
@@ -502,6 +502,57 @@ SCENARIOS_C = [
             ("不做", False, "虽然胜率不确定，但赔率有利"),
         ],
     },
+    # ── 买方场景（IV 低位 + 事件催化）──
+    {
+        "desc": "豆粕 IV 处于历史 12% 分位（极低），USDA WASDE 报告 5 天后，期货在区间底部",
+        "iv": "极低", "event": "5天后",
+        "options": [
+            ("买 ATM 跨式（Call+Put），赌报告后跳空", True, "IV 极低=期权便宜 + D-5 事件=Gamma 爆发机会。买方三项全中。"),
+            ("卖出信用价差收权利金", False, "IV 极低时卖方收的权利金太少，不值得"),
+            ("不做，等 IV 回升", False, "IV 低正是买方的窗口，错过要等很久"),
+            ("买深度虚值 Call 博方向", False, "深度虚值 Gamma 太小。ATM 跨式双向覆盖更直接"),
+        ],
+    },
+    {
+        "desc": "玉米期货窄幅震荡 3 周，IV 跌到 15% 分位（接近两年最低），下周 USDA 报告",
+        "iv": "极低", "event": "下周",
+        "options": [
+            ("买宽跨式（OTM Call+OTM Put），成本低，赌突破", True, "窄幅震荡+IV极低+事件催化=压缩的弹簧。宽跨式比跨式便宜，赔率高。"),
+            ("卖跨式收权利金", False, "IV 极低时卖出是逆势——波动率回归方向是向上"),
+            ("卖出铁秃鹰", False, "区间可能被事件打破，铁秃鹰在事件前=赌不动，矛盾"),
+            ("不做，等方向明确", False, "等方向明确时 IV 已经涨了，买方优势消失"),
+        ],
+    },
+    {
+        "desc": "PTA IV 处于 25% 分位（偏低），EIA 原油库存明天发布，原油近期波动大但期权链还没反应",
+        "iv": "偏低", "event": "明天",
+        "options": [
+            ("买 ATM 跨式，IV 偏低+明天事件=赔率好", True, "市场还没把原油波动定价进 PTA 期权=定价错误窗口。买。"),
+            ("卖跨式", False, "IV 低+事件=卖方双重不利"),
+            ("买虚值 Call 赌涨", False, "原油方向不确定，单向赌太窄"),
+            ("不做", False, "窗口在关——明天之后 IV 可能被推高"),
+        ],
+    },
+    {
+        "desc": "菜籽粕 IV 22% 分位，加拿大油菜籽产区干旱预警，但期权 IV 还没涨",
+        "iv": "极低", "event": "天气持续",
+        "options": [
+            ("买 Call 价差，赌天气炒作推高期货+IV", True, "基本面矛盾+IV滞后=双引擎。Call 价差封顶亏损，成本低。"),
+            ("卖 Put 价差", False, "天气风险下卖方不利，且 IV 低=权利金薄"),
+            ("买跨式", False, "方向偏向上涨（干旱→减产→涨价），Call 价差比跨式更精准"),
+            ("不做，等 IV 起来", False, "等 IV 起来=等便宜变贵再买。逻辑反了"),
+        ],
+    },
+    {
+        "desc": "甲醇 IV 30% 分位（偏低），D-3 中国 GDP 数据发布，宏观数据方向不可预测",
+        "iv": "偏低", "event": "D-3",
+        "options": [
+            ("买宽跨式（OTM 0.5%），GDP 超/低预期都可能跳", True, "宏观数据方向不可预测=需要双向 Gamma。IV偏低+事件距离=买方教科书。"),
+            ("买 Call 赌 GDP 利好", False, "GDP 结果不可预测。单向赌=50%概率错。买方的优势在于不确定性"),
+            ("卖跨式", False, "IV 偏低+事件=卖方回避"),
+            ("不做", False, "三个买方条件（低IV+事件+双向不确定性）全中"),
+        ],
+    },
 ]
 
 
@@ -854,6 +905,67 @@ SCENARIOS_D = [
             ("Vega 主犯（IV 暴涨）+ Gamma 从犯。Delta 没太大关系", False, "5.5% 的标的方向性移动 = Delta 占主导。IV 涨是附加伤害"),
             ("Theta 主犯（时间不够了）+ Delta 从犯", False, "Theta 是卖方的朋友，不是敌人"),
             ("五个 Greek 都没错，是运气不好", False, "不是运气。OTM 仅 0.7% 进场 = 几乎平值 = Gamma/Delta 双重敏感 = 主动承担了过大的风险"),
+        ],
+        "correct_count": 1,
+    },
+    # ── 买方头寸 Greek 场景 ──
+    {
+        "position": "买入豆粕 Call 价差（买 C2900 / 卖 C2950），IV=18%分位（极低），到期 30 天",
+        "event": "USDA 利多，期货从 2850 跳涨 3% 到 2935。IV 从 18% 跳到 35%",
+        "q": "你的 P&L 怎么变的？哪两个 Greek 同时为你工作？",
+        "options": [
+            ("Delta 赚了（涨了方向对）+ Vega 赚了（IV 涨了 17%）= 双引擎。浮盈远超预期", True, "买方双引擎同时启动 = 最好的情况。方向对+波动率涨。"),
+            ("Delta 赚了但 Vega 亏了，互相抵消", False, "买方 Vega 为正——IV 涨你赚，不是亏"),
+            ("Theta 赚了（时间站在买方这边）", False, "买方 Theta 为负。时间从来没有站在买方这边"),
+            ("只赚了 Delta，Vega 没动", False, "IV 从 18%→35%=17 个百分点的 Vega 利润，不能忽略"),
+        ],
+        "correct_count": 1,
+    },
+    {
+        "position": "买入玉米跨式（C2320+P2320），总成本 ¥675，IV=16%（极低），两天后 USDA",
+        "event": "报告后期货只跳 2 点。IV 没涨。浮亏 ¥80",
+        "q": "三个利润来源，哪个赚了、哪个亏了、哪个没触发？",
+        "options": [
+            ("Gamma 没触发（只跳2点）+ Vega 没赚（IV没涨）+ Theta 亏了¥12。两个引擎都熄火", True, "买方靠双引擎。方向不够大+波动率没涨=两个都没赚。只剩 Theta 扣钱。"),
+            ("Gamma 赚了、Vega 赚了、Theta 亏了", False, "只跳 2 点 Gamma 没触发。IV 没涨 Vega 没赚"),
+            ("都赚了还是亏 ¥80——手续费吃了", False, "不是手续费。是 Theta 扣了 2 天 + Gamma/Vega 都缺席"),
+            ("应该持有到到期，还有机会", False, "事件已落地=IV 可能跌。没有催化了=持有只亏 Theta"),
+        ],
+        "correct_count": 1,
+    },
+    {
+        "position": "买入 PTA Call 价差（买 C6000 / 卖 C6100），IV=28%分位，D-3 EIA 报告",
+        "event": "报告前 IV 从 28%涨到 42%。期货还没动但浮盈 ¥35",
+        "q": "期货没动但赚钱了。这笔利润来自哪个 Greek？该不该提前锁利？",
+        "options": [
+            ("Vega 赚了——IV 涨了 14%。可以平了锁 Vega 利润，不等期货方向", True, "IV 涨了=保险变贵=你买的保险升值了。事件还没到 IV 已经涨了=可以兑现离开。不等方向。"),
+            ("Delta 赚了——市场在暗涨", False, "期货没动，Delta 没出力"),
+            ("Theta 赚了", False, "买方 Theta 为负"),
+            ("继续持有等事件——IV 可能涨更多", False, "IV 已经涨了 14%。继续赌=赌 IV 继续涨=贪。锁 Vega 利润是买方的高级纪律"),
+        ],
+        "correct_count": 1,
+    },
+    {
+        "position": "买入菜籽粕 Put 价差（买 P2500 / 卖 P2450），IV=20%分位，到期 25 天",
+        "event": "期货缓慢下跌 1.5%，但 IV 纹丝不动。浮盈 ¥28",
+        "q": "方向对了但赚得不如预期。哪个 Greek 在拖后腿？",
+        "options": [
+            ("Vega 没出力——IV 没涨，你只赚了 Delta。买方需要双引擎但只有单引擎", True, "买方最理想=Delta+Vega 双引擎。IV 不动=单引擎。跌得不够快+波动率没涨。"),
+            ("Theta 赚了——时间站在买方这边", False, "买方 Theta 为负，每天都在扣"),
+            ("Gamma 赚了——应该继续持有", False, "1.5% 的慢跌，Gamma 贡献很小"),
+            ("应该加仓，方向判断对了", False, "方向对但引擎没全开=不是加仓信号。等 IV 启动或换策略"),
+        ],
+        "correct_count": 1,
+    },
+    {
+        "position": "买入甲醇宽跨式（OTM Call+OTM Put），成本 ¥180，IV=22%，D-5 GDP",
+        "event": "GDP 超预期，期货跳涨 4%，IV 从 22% 涨到 38%。Call 腿大赚，Put 腿归零",
+        "q": "Call 腿赚了 ¥520，Put 腿亏了 ¥90（买入成本部分）。总盈 ¥250。该怎么做？",
+        "options": [
+            ("平掉全部。事件落地+IV已涨+方向出来了=两个引擎都兑现了", True, "双引擎都兑现了。继续持有=赌 IV 继续涨+期货继续涨=贪。买方离场不需要完美高点。"),
+            ("平掉 Call 留 Put，等 IV 回落时 Put 可能反弹", False, "事件落地后 IV 大概率回落，Put 腿可能继续亏。分腿=本来封顶风险变裸卖"),
+            ("不平。IV 可能继续涨", False, "事件已落地=IV 大概率均值回归。等=把 Vega 利润吐回去"),
+            ("加仓另一组宽跨式", False, "IV 已经涨了=现在买比之前贵。追涨买期权=买高 IV"),
         ],
         "correct_count": 1,
     },
@@ -1306,9 +1418,69 @@ def run_drill_d(quick=False):
     print()
 
 
+# ═══════════════════════════════════════════
+# 训练 H：买方方向判断
+# ═══════════════════════════════════════════
+
+def run_drill_h(quick=False):
+    """训练 H：买方方向判断 — 看环境决定买/不买/买什么"""
+    print(f"\n{'─'*60}")
+    print(f"  训练 H — 买方方向判断")
+    print(f"  规则：看环境数据，判断该不该买方进场，买哪个策略")
+    print(f"  🛜 买跨式 | 📈 买Call价差 | 📉 买Put价差 | ❌ 不做")
+    print(f"  目标：正确率 > 75%")
+    print(f"{'─'*60}")
+
+    n_rounds = 5 if quick else 10
+    score = 0; total_time = 0; correct = 0
+    labels = {"跨": "🛜 买跨式", "C": "📈 买Call价差", "P": "📉 买Put价差", "不": "❌ 不做"}
+
+    scenarios = [
+        {"desc": "豆粕 IV=12%分位，D-5 USDA，期货区间底部", "expect": "跨"},
+        {"desc": "玉米 IV=15%分位，窄幅3周，下周USDA", "expect": "跨"},
+        {"desc": "PTA IV=25%分位，EIA明天，原油波动大", "expect": "跨"},
+        {"desc": "菜籽粕 IV=22%分位，加拿大干旱，期货偏弱", "expect": "C"},
+        {"desc": "甲醇 IV=28%分位，D-3 GDP，方向不确定", "expect": "跨"},
+        {"desc": "豆粕 IV=65%分位，无事件，期货正常波动", "expect": "不"},
+        {"desc": "PTA IV=88%分位，D-1 GDP，IV加速涨", "expect": "不"},
+        {"desc": "沪金 IV=18%分位，FOMC明天，金价高位", "expect": "跨"},
+        {"desc": "玉米 IV=42%分位，无事件，期货缓慢涨", "expect": "不"},
+        {"desc": "菜籽粕 IV=20%分位，USDA长期利空，期货已跌", "expect": "P"},
+        {"desc": "甲醇 IV=55%分位，D-5 报告，正常波动", "expect": "不"},
+        {"desc": "PTA IV=16%分位，原油暴跌，期货跟跌中", "expect": "P"},
+        {"desc": "豆粕 IV=19%分位，南美天气升水，期货涨", "expect": "C"},
+        {"desc": "玉米 IV=30%分位，D-10 报告，季节性低波动", "expect": "不"},
+        {"desc": "棉花 IV=26%分位，D-3 USDA，期货破位下跌", "expect": "P"},
+    ]
+
+    for r, s in enumerate(random.sample(scenarios, min(n_rounds, len(scenarios))), 1):
+        print(f"\n  [{r}/{n_rounds}] {s['desc']}")
+        t0 = time.time()
+        try:
+            u = input(f"  → 跨/C/P/不 ?: ").strip()
+        except (EOFError, KeyboardInterrupt):
+            print(f"\n  训练中断。")
+            return
+        el = (time.time() - t0) * 1000; total_time += el
+        if u == s["expect"]:
+            correct += 1; score += 3 if el < 5000 else (2 if el < 8000 else 1)
+            print(f"  ✅ {el/1000:.1f}s  {labels[u]}")
+        else:
+            print(f"  ❌ {el/1000:.1f}s  你选{u}  实际{labels[s['expect']]}")
+
+    acc = correct / n_rounds * 100; avg = total_time / n_rounds
+    save_session("H", score, acc, avg, n_rounds)
+    print(f"\n  {'─'*40}")
+    print(f"  训练H完成: {correct}/{n_rounds} 正确 ({acc:.0f}%)")
+    print(f"  平均用时: {avg/1000:.1f}s/题  得分: {score}")
+    rating = "🔮 买方猎手！" if acc >= 80 else ("👍 有判断意识" if acc >= 60 else "📚 多看 iv_collector 买方视角")
+    print(f"  {rating}")
+    print()
+
+
 def today_recommendation():
     dow = date.today().weekday()  # 0=Mon
-    return {0: "A", 1: "B", 2: "C", 3: "A", 4: "F", 5: "C", 6: "D"}[dow]
+    return {0: "A", 1: "B", 2: "C", 3: "H", 4: "F", 5: "C", 6: "D"}[dow]
 
 
 def main():
@@ -1321,7 +1493,7 @@ def main():
     module = args.module
     if module is None or module == "auto":
         module = today_recommendation()
-        names = {"A": "链面扫异常", "B": "价差判断", "C": "天气→策略", "D": "Greek场景", "E": "信用价差扫描", "F": "持仓管理", "G": "腿位判断"}
+        names = {"A": "链面扫异常", "B": "价差判断", "C": "天气→策略", "D": "Greek场景", "E": "信用价差扫描", "F": "持仓管理", "G": "腿位判断", "H": "买方方向"}
         print(f"\n  📅 今日推荐: 训练 {module} — {names[module]}")
         if args.quick:
             print(f"  ⚡ 快速模式(5题)")
@@ -1344,8 +1516,10 @@ def main():
         run_drill_f(quick=args.quick)
     elif module == "G":
         run_drill_g(quick=args.quick)
+    elif module == "H":
+        run_drill_h(quick=args.quick)
     else:
-        print(f"未知模块: {module}。请用 A/B/C/D/E/F/G/stats")
+        print(f"未知模块: {module}。请用 A/B/C/D/E/F/G/H/stats")
         return
 
     # 训练后显示简要统计

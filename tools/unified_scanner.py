@@ -1,25 +1,33 @@
 #!/usr/bin/env python3
 """
-统一扫描器：虚值倒挂 + 信用价差 + 事件驱动 + IV环境 — 四合一
+统一扫描器：虚值倒挂 + 信用价差/买方机会 + 事件驱动 + IV环境 — 四合一
 ─────────────────────────────────────────────
 每天跑一次，告诉你四件事：
   1. 今天有没有虚值倒挂可以做？（买入套利）
-  2. 今天有没有信用价差可以做？（卖方收租）
+  2. 今天有没有信用价差可以做？（卖方收租）—— 默认模式
   3. 近期有没有事件值得蹲？
   4. 当前 IV 环境适合买方还是卖方？
+
+买方模式（--buyer）额外扫描：
+  -  debit call/put spread（牛市/熊市看涨价差）
+  -  long straddle（买入跨式，赌大波动）
+  -  long strangle（买入宽跨式，低成本赌波动）
 
 输出结论：「今天做什么、不做什么、为什么」
 
 用法:
-  python3 unified_scanner.py                          # 完整扫描
+  python3 unified_scanner.py                          # 完整扫描（卖方模式）
   python3 unified_scanner.py --capital 10000          # 含资金分配建议
   python3 unified_scanner.py --quick                  # 快速版(只看结论)
   python3 unified_scanner.py --skip-otm               # 跳过虚值倒挂
+  python3 unified_scanner.py --buyer                  # 买方模式扫描
 """
 
 import sys
 import os
 import json
+import re
+import math
 import argparse
 import pandas as pd
 from datetime import datetime, date
@@ -27,163 +35,39 @@ from datetime import datetime, date
 SCRIPT_DIR = os.path.dirname(os.path.abspath(__file__))
 sys.path.insert(0, SCRIPT_DIR)
 
-import akshare as ak
+from _ak_data import (pick_best_contract, fetch_option_chain, estimate_iv_from_chain,
+                      VALID_MONTHS, DEFAULT_FUTURES, STRIKE_INTERVAL)
 from event_calendar import get_upcoming_events, VARIETIES as EV_VARIETIES
 
-# ═══════════════════════════════════════════
-# 配置
-# ═══════════════════════════════════════════
-
 VARIETIES = {
-    "au": {"symbol": "黄金期权",   "futures": 870,  "name": "沪金",    "multiplier": 1000, "fut_code": "AU"},
-    "m":  {"symbol": "豆粕期权",   "futures": 2800, "name": "豆粕",    "multiplier": 10,   "fut_code": "M"},
-    "c":  {"symbol": "玉米期权",   "futures": 2300, "name": "玉米",    "multiplier": 10,   "fut_code": "C"},
-    "cf": {"symbol": "棉花期权",   "futures": 13500,"name": "棉花",    "multiplier": 5,    "fut_code": "CF"},
-    "sr": {"symbol": "白糖期权",   "futures": 5600, "name": "白糖",    "multiplier": 10,   "fut_code": "SR"},
-    "ta": {"symbol": "PTA期权",    "futures": 4800, "name": "PTA",     "multiplier": 5,    "fut_code": "TA"},
-    "i":  {"symbol": "铁矿石期权", "futures": 780,  "name": "铁矿石",  "multiplier": 100,  "fut_code": "I"},
-    "ru": {"symbol": "橡胶期权",   "futures": 17000,"name": "橡胶",    "multiplier": 10,   "fut_code": "RU"},
-    "ma": {"symbol": "甲醇期权",   "futures": 2450, "name": "甲醇",    "multiplier": 10,   "fut_code": "MA"},
-    "rm": {"symbol": "菜籽粕期权", "futures": 2500, "name": "菜籽粕",  "multiplier": 10,   "fut_code": "RM"},
+    "au": {"futures": 870,  "name": "沪金",    "multiplier": 1000},
+    "m":  {"futures": 2800, "name": "豆粕",    "multiplier": 10},
+    "c":  {"futures": 2300, "name": "玉米",    "multiplier": 10},
+    "cf": {"futures": 13500,"name": "棉花",    "multiplier": 5},
+    "sr": {"futures": 5600, "name": "白糖",    "multiplier": 10},
+    "ta": {"futures": 4800, "name": "PTA",     "multiplier": 5},
+    "i":  {"futures": 780,  "name": "铁矿石",  "multiplier": 100},
+    "ru": {"futures": 17000,"name": "橡胶",    "multiplier": 10},
+    "ma": {"futures": 2450, "name": "甲醇",    "multiplier": 10},
+    "rm": {"futures": 2500, "name": "菜籽粕",  "multiplier": 10},
 }
 
+# ── 集中配置（改阈值只改这里）──
 MAX_PREMIUM = 5.0
-MAX_SPREAD_PCT = 10
-OTM_PCT = 0.08
-
-
-# ═══════════════════════════════════════════
-# 从期权链推断期货价格
-# ═══════════════════════════════════════════
-
-# 各品种允许交易的主力月份
-VALID_MONTHS = {
-    # 农产品-标准
-    'm':  [1, 5, 9], 'rm': [1, 5, 9], 'sr': [1, 5, 9], 'cf': [1, 5, 9],
-    # 农产品-全单月
-    'c':  [1, 3, 5, 7, 9, 11],
-    # 能化品
-    'ta': [1, 5, 9], 'ma': [1, 5, 9], 'ru': [1, 5, 9],
-    # 黑色系
-    'i':  [1, 5, 9],
-    # 贵金属
-    'au': [2, 4, 6, 8, 10, 12],
-}
-
-def pick_best_contract(symbol, vcode=None):
-    """
-    L0 指向当前周期合约 → L1 质量验证。
-    L0: 交易所规则 + 当前月份 → 直接指向主力合约
-    L1: ATM ±5 档 bid>0 比例验证。通过 → 用。不通过 → 报警，试下一个。
-    """
-    today = datetime.now()
-    cur_month = today.month
-    cur_year = today.year % 100
-
-    try:
-        cdf = ak.option_commodity_contract_sina(symbol=symbol)
-        all_contracts = cdf['合约'].tolist()
-    except Exception:
-        return None
-
-    if not all_contracts:
-        return None
-
-    # ── L0: 指向当前周期合约 ──
-    if vcode and vcode in VALID_MONTHS:
-        valid_months = sorted(VALID_MONTHS[vcode])
-        # 生成目标月份序列：从当月+1开始，绕一圈
-        ordered_months = [m for m in valid_months if m >= cur_month + 1]
-        ordered_months += [m for m in valid_months if m < cur_month + 1]
-        # 转为合约代码，如 9→"2609", 1→"2701"
-        target_codes = []
-        for m in ordered_months:
-            yr = cur_year if m > cur_month else cur_year + 1
-            target_codes.append(f"{yr:02d}{m:02d}")
-        # 在 all_contracts 中按顺序找
-        candidates = []
-        for tc in target_codes[:3]:
-            match = next((c for c in all_contracts if c.endswith(tc)), None)
-            if match:
-                candidates.append(match)
-        if not candidates:
-            return all_contracts[0] if all_contracts else None
-    else:
-        candidates = all_contracts[:2]
-
-    # ── L1: 验证平值区质量。优先选第一个通过验证的合约 ──
-    def check_quality(contract):
-        """返回 (通过, bid_ratio)"""
-        try:
-            df = ak.option_commodity_contract_table_sina(symbol=symbol, contract=contract)
-            df = df.rename(columns={
-                '行权价': 'strike',
-                '看跌合约-买价': 'p_bid', '看跌合约-买量': 'p_bid_vol',
-                '看涨合约-买价': 'c_bid', '看涨合约-买量': 'c_bid_vol',
-            })
-            df = df.sort_values('strike').reset_index(drop=True)
-
-            atm_idx, best_diff = None, float('inf')
-            for idx, row in df.iterrows():
-                p_bid = _safe(row['p_bid'])
-                c_bid = _safe(row['c_bid'])
-                if p_bid > 0 and c_bid > 0:
-                    diff = abs(p_bid - c_bid)
-                    if diff < best_diff:
-                        best_diff = diff
-                        atm_idx = idx
-            if atm_idx is None:
-                return False, 0
-
-            start = max(0, atm_idx - 5)
-            end = min(len(df), atm_idx + 6)
-            nearby = df.iloc[start:end]
-            bid_ok = sum(1 for _, r in nearby.iterrows()
-                         if _safe(r['p_bid']) > 0 or _safe(r['c_bid']) > 0)
-            ratio = bid_ok / len(nearby)
-            return ratio >= 0.5, ratio
-        except Exception:
-            return False, 0
-
-    for contract in candidates:
-        ok, ratio = check_quality(contract)
-        if ok:
-            return contract
-
-    # 全部未通过 → 用第一个，报警
-    print(f"  ⚠️ {vcode}: 所有候选合约平值区流动性异常，使用 {candidates[0]}")
-    return candidates[0]
-
-
-def infer_futures_from_chain(df):
-    """
-    从期权链数据推断标的期货价格。
-    规则：Call 和 Put 价格最接近的那个行权价 ≈ 期货价格（Put-Call Parity）。
-    不依赖外部数据源，和期权链本身数据时间一致。
-    """
-    if df is None or df.empty:
-        return None
-
-    df = df.rename(columns={
-        '行权价': 'strike', '看跌合约-最新价': 'p_last', '看涨合约-最新价': 'c_last',
-        '看跌合约-买价': 'p_bid', '看跌合约-卖价': 'p_ask',
-        '看涨合约-买价': 'c_bid', '看涨合约-卖价': 'c_ask',
-    })
-
-    best_strike = None
-    best_diff = float('inf')
-    for _, row in df.iterrows():
-        strike = row['strike']
-        p_bid = _safe(row.get('p_bid', 0))
-        c_bid = _safe(row.get('c_bid', 0))
-        if p_bid <= 0 or c_bid <= 0:
-            continue
-        diff = abs(p_bid - c_bid)
-        if diff < best_diff:
-            best_diff = diff
-            best_strike = strike
-
-    return best_strike
+MAX_SPREAD_PCT = 10          # 卖方价差上限
+OTM_PCT = 0.08               # 虚值倒挂边界
+SELLER_CAPITAL_PCT = 0.05    # 卖方单笔最大亏损占本金比
+BUYER_SPREAD_CAP = 0.05      # 买方价差单笔上限
+BUYER_SINGLE_EVENT_CAP = 0.05  # 单腿·事件单笔上限
+BUYER_SINGLE_TREND_CAP = 0.02  # 单腿·趋势单笔上限（OTM更便宜）
+BUYER_IV_THRESHOLD = 30      # 买方 IV 分位阈值
+DELTA_MAX = 0.30             # 卖方 Delta 上限
+RR_MIN = 0.15                # 最低盈亏比
+STRIKE_WIDTH_MAX = 0.05      # 行权价宽度上限（占期货价比）
+OTM_MIN_PCT = 2.0            # 卖方最低 OTM%
+TREND_CHG_MIN = 2.0          # 趋势触发最低涨跌幅%
+TREND_SPREAD_MAX = 15        # 趋势单腿价差上限
+EVENT_SPREAD_MAX = 10        # 事件单腿价差上限
 
 
 def _safe(v):
@@ -194,6 +78,12 @@ def _spread(bid, ask):
     if bid and ask and bid > 0:
         return round((ask - bid) / bid * 100, 1)
     return 999
+
+
+def _make_signal(strategy, variety, name, contract, **kwargs):
+    """统一信号工厂。所有 scan_* 函数通过此函数构造信号字典。"""
+    return {"strategy": strategy, "variety": variety, "name": name,
+            "contract": contract, **kwargs}
 
 
 # ═══════════════════════════════════════════
@@ -238,7 +128,7 @@ def scan_deep_otm(vcode, variety, contract, df, futures, capital=None):
                 ref_sp = _spread(cur['bid'], cur['ask'])
                 if cur['bid'] <= 0 or ref_sp > MAX_SPREAD_PCT:
                     tradeable = False
-                if capital and cost > capital * 0.05:
+                if capital and cost > capital * SELLER_CAPITAL_PCT:
                     continue
                 all_signals.append({
                     'variety': vcode, 'name': variety['name'], 'contract': contract,
@@ -258,8 +148,19 @@ def scan_deep_otm(vcode, variety, contract, df, futures, capital=None):
 # 模块2: 虚值信用价差扫描（卖方收租）
 # ═══════════════════════════════════════════
 
+def _estimate_delta(strike, futures, otm_pct, iv_est=None, dte=30):
+    """近似 Delta（绝对值）。iv_est=None 时用默认 20%。
+    用于过滤 OTM 不够远的卖方信号。"""
+    import math
+    iv = iv_est if iv_est and 0.05 < iv_est < 2.0 else 0.20
+    T = max(dte / 365, 1/365)
+    d1 = (otm_pct / 100) / (iv * math.sqrt(T)) if iv > 0 and T > 0 else 0
+    # N(-d1) ≈ 0.5 * exp(-d1²/2)，对 d1 > 0 近似精度足够
+    return round(0.5 * (1 + math.erf(-d1 / math.sqrt(2))), 3)
+
+
 def _scan_one_side(df, bid_col, ask_col, direction, futures, mult, capital,
-                   vcode, variety_name, contract):
+                   vcode, variety_name, contract, iv_est=None, dte=30):
     """
     单侧信用价差扫描（Put 或 Call）。
     direction='put': 卖高行权价 Put + 买低行权价 Put（看涨/中性）
@@ -292,7 +193,7 @@ def _scan_one_side(df, bid_col, ask_col, direction, futures, mult, capital,
             otm_pct = (sell_strike - futures) / futures * 100
 
         strike_width = buy_strike - sell_strike
-        if strike_width > futures * 0.05:
+        if strike_width > futures * STRIKE_WIDTH_MAX:
             continue
 
         sell_bid = _safe(sell_row[bid_col])
@@ -303,13 +204,13 @@ def _scan_one_side(df, bid_col, ask_col, direction, futures, mult, capital,
         net_premium = round(sell_bid - buy_ask, 2)
         max_profit = net_premium * mult
         max_loss = round((strike_width * mult) - max_profit, 0)
-        if capital and max_loss > capital * 0.05:
+        if capital and max_loss > capital * SELLER_CAPITAL_PCT:
             continue
         if max_loss <= 0:
             continue
 
         rr_ratio = round(max_profit / max_loss, 2)
-        if rr_ratio < 0.15:
+        if rr_ratio < RR_MIN:
             continue
 
         sell_spread = _spread(sell_row[bid_col], sell_row[ask_col])
@@ -327,8 +228,16 @@ def _scan_one_side(df, bid_col, ask_col, direction, futures, mult, capital,
             tier = 'red'
 
         # 近值降级：卖腿 OTM < 2% → 无论宽度一律红档
-        if otm_pct < 2:
+        if otm_pct < OTM_MIN_PCT:
             tier = 'red'
+
+        # Delta 约束：abs(Delta) > 0.30 → 降级（机构卖方标准）
+        delta = _estimate_delta(sell_strike, futures, otm_pct, iv_est, dte)
+        if delta > DELTA_MAX:
+            if tier == 'green':
+                tier = 'yellow'
+            elif tier == 'yellow':
+                tier = 'red'
 
         tradeable = tier in ('green', 'yellow')
         results.append({
@@ -346,6 +255,8 @@ def _scan_one_side(df, bid_col, ask_col, direction, futures, mult, capital,
             'tier': tier,
             'strike_width_pct': round(width_pct, 1),
             'otm_pct': round(otm_pct, 1),
+            'delta': delta,
+            'direction': direction,
             'tradeable': tradeable,
         })
 
@@ -360,11 +271,34 @@ def scan_credit_spreads(vcode, variety, contract, df, futures, capital=None):
     mult = variety['multiplier']
     name = variety['name']
 
+    # 估算 IV（从 ATM 跨式，供 Delta 约束用）和 DTE
+    import math, re
+    iv_est = None
+    dte = 30
+    try:
+        atm_idx = (df['strike'] - futures).abs().idxmin()
+        atm_row = df.loc[atm_idx]
+        p_bid = _safe(atm_row.get('p_bid', 0))
+        p_ask = _safe(atm_row.get('p_ask', 0))
+        c_bid = _safe(atm_row.get('c_bid', 0))
+        c_ask = _safe(atm_row.get('c_ask', 0))
+        straddle = (p_bid + p_ask + c_bid + c_ask) / 2
+        if futures > 0 and straddle > 0:
+            m = re.search(r'(\d{4})$', contract)
+            if m:
+                yy, mm = int(m.group(1)[:2]), int(m.group(1)[2:])
+                expiry = datetime(2000 + yy, mm, 1)
+                dte = max((expiry - datetime.now()).days - 5, 5)
+            iv_est = straddle / (0.8 * futures * math.sqrt(max(dte, 1) / 365))
+            iv_est = round(float(iv_est), 4)
+    except Exception:
+        pass
+
     all_signals = []
     all_signals.extend(_scan_one_side(
-        df, 'p_bid', 'p_ask', 'put', futures, mult, capital, vcode, name, contract))
+        df, 'p_bid', 'p_ask', 'put', futures, mult, capital, vcode, name, contract, iv_est, dte))
     all_signals.extend(_scan_one_side(
-        df, 'c_bid', 'c_ask', 'call', futures, mult, capital, vcode, name, contract))
+        df, 'c_bid', 'c_ask', 'call', futures, mult, capital, vcode, name, contract, iv_est, dte))
 
     tradeable = [s for s in all_signals if s['tradeable']]
     green_n = len([s for s in tradeable if s.get('tier') == 'green'])
@@ -372,6 +306,562 @@ def scan_credit_spreads(vcode, variety, contract, df, futures, capital=None):
     nc = len([s for s in tradeable if s['sell_strike'] > futures])
     np = len([s for s in tradeable if s['sell_strike'] < futures])
     summary = f"{len(all_signals)}信号({len(tradeable)}可做: {np}P {nc}C | 🟢{green_n} 🟡{yellow_n})" if all_signals else "无信号"
+    return all_signals, summary
+
+
+# ═══════════════════════════════════════════
+# 模块2B: 买方机会扫描（debit spread + straddle/strangle）
+# ═══════════════════════════════════════════
+
+def _compute_dte(contract_code):
+    """
+    从合约代码估算到期天数。
+    合约代码如 'au2608' → 2026年8月。使用合约月1日作为近似到期日。
+    返回 (dte, exp_month_label)
+    """
+    match = re.search(r'(\d{2})(\d{2})$', str(contract_code))
+    if match:
+        yy = int(match.group(1)) + 2000
+        mm = int(match.group(2))
+        exp_date = date(yy, mm, 1)
+        dte = (exp_date - date.today()).days
+        return max(dte, 1)
+    return 30  # fallback
+
+
+def _estimate_iv_percentile(df, futures):
+    """
+    用 ATM 跨式成本/期货价格作为 IV 代理，映射到近似分位数。
+    ⚠️ 无历史数据，仅为粗略估计。积累数据后改用真实分位。
+
+    返回近似分位数（0-100），或 None（无法计算）。
+    """
+    if df is None or df.empty:
+        return None
+
+    atm_idx = (df['strike'] - futures).abs().argsort()
+    if len(atm_idx) == 0:
+        return None
+
+    atm_row = df.iloc[atm_idx.values[0] if hasattr(atm_idx, 'values') else atm_idx.iloc[0]]
+
+    p_ask = _safe(atm_row.get('p_ask', 0))
+    c_ask = _safe(atm_row.get('c_ask', 0))
+
+    if p_ask <= 0 or c_ask <= 0:
+        return None
+
+    atm_straddle_cost = p_ask + c_ask
+    iv_proxy = atm_straddle_cost / futures
+
+    # 分位映射：proxy = straddle/futures ≈ 0.8*IV*√(DTE/365)
+    # DTE≈60 → √(60/365)≈0.405 → proxy≈0.324*IV
+    # IV=12%→proxy≈0.04, IV=25%→0.08, IV=30%→0.10, IV=40%→0.13, IV=50%→0.16
+    if iv_proxy < 0.03:
+        return 5
+    elif iv_proxy < 0.05:
+        return 15
+    elif iv_proxy < 0.07:
+        return 25
+    elif iv_proxy < 0.10:
+        return 28
+    elif iv_proxy < 0.10:
+        return 50
+    elif iv_proxy < 0.12:
+        return 65
+    elif iv_proxy < 0.16:
+        return 80
+    else:
+        return 95
+
+
+def _filter_events_for_variety(events, vcode, variety_name):
+    """从事件列表中筛选与当前品种相关的事件。"""
+    relevant = []
+    for e in events:
+        ev_vcodes = e.get('varieties', [])
+        ev_names = e.get('variety_names', [])
+        if vcode in ev_vcodes or variety_name in ev_names:
+            relevant.append(e)
+    return relevant
+
+
+def _scan_buyer_debit_side(df, direction, futures, mult, capital,
+                           vcode, variety_name, contract,
+                           events, iv_percentile):
+    """
+    单侧 debit spread 扫描。
+
+    direction='call': 牛市看涨价差（买低行权价Call + 卖高行权价Call）
+        net_debit = buy_ask(low_strike) - sell_bid(high_strike)
+        OTM = (low_strike - futures) / futures
+
+    direction='put': 熊市看跌价差（买高行权价Put + 卖低行权价Put）
+        net_debit = buy_ask(high_strike) - sell_bid(low_strike)
+        OTM = (futures - high_strike) / futures
+
+    信号条件：OTM < 5%, IV < 40th percentile, 无 D-1 高影响事件, profit_ratio >= 1.5
+    """
+    results = []
+
+    if direction == 'call':
+        bid_col, ask_col = 'c_bid', 'c_ask'
+    else:
+        bid_col, ask_col = 'p_bid', 'p_ask'
+
+    options = df[(df[bid_col] > 0) & (df[ask_col] > 0)].copy()
+    if options.empty:
+        return results
+
+    options = options.sort_values('strike')
+
+    # 筛选与品种相关的事件
+    variety_events = _filter_events_for_variety(events, vcode, variety_name)
+
+    # 检查是否有 D-1 高影响事件（排除持续事件和 D-0/D-1 固定事件）
+    has_d1_high_event = any(
+        0 <= e.get('days_until', 0) <= 1 and e['impact'] == 'high'
+        for e in variety_events
+    )
+
+    # 最近的事件天数（排除持续事件 days_until=-1）
+    dated_events = [e for e in variety_events if e.get('days_until', 0) >= 0]
+    nearest_event_days = min(e['days_until'] for e in dated_events) if dated_events else None
+
+    for i in range(len(options) - 1):
+        low_row = options.iloc[i]
+        high_row = options.iloc[i + 1]
+
+        low_strike = int(low_row['strike'])
+        high_strike = int(high_row['strike'])
+
+        if direction == 'call':
+            # 牛市看涨价差：买入低行权价 Call，卖出高行权价 Call
+            if low_strike < futures * 0.98:
+                continue  # 买腿允许近值（≥98%期货价），但不能深度实值
+            buy_ask = _safe(low_row[ask_col])
+            sell_bid = _safe(high_row[bid_col])
+            otm_pct = (low_strike - futures) / futures * 100
+            buy_strike, sell_strike = low_strike, high_strike
+            buy_sp = _spread(low_row[bid_col], low_row[ask_col])
+            sell_sp = _spread(high_row[bid_col], high_row[ask_col])
+        else:
+            # 熊市看跌价差：买入高行权价 Put，卖出低行权价 Put
+            if high_strike > futures * 1.02:
+                continue  # 买腿允许近值（≤102%期货价），但不能深度实值
+            buy_ask = _safe(high_row[ask_col])
+            sell_bid = _safe(low_row[bid_col])
+            otm_pct = (futures - high_strike) / futures * 100
+            buy_strike, sell_strike = high_strike, low_strike
+            buy_sp = _spread(high_row[bid_col], high_row[ask_col])
+            sell_sp = _spread(low_row[bid_col], low_row[ask_col])
+
+        if buy_ask <= 0 or sell_bid <= 0:
+            continue
+
+        net_debit = round(buy_ask - sell_bid, 2)
+        if net_debit <= 0:
+            continue
+
+        strike_width = high_strike - low_strike
+        max_profit = round(strike_width * mult - net_debit * mult, 0)
+        max_loss = round(net_debit * mult, 0)
+
+        if max_loss <= 0 or max_profit <= 0:
+            continue
+
+        profit_ratio = round(max_profit / max_loss, 2)
+
+        # ── 信号条件 ──
+        if otm_pct >= 5:
+            continue  # OTM 太远
+        if profit_ratio < 1.5:
+            continue  # 盈亏比不够
+        if has_d1_high_event:
+            continue  # D-1 有高影响事件，不进场
+        if iv_percentile is not None and iv_percentile >= 40:
+            continue  # IV 不够便宜
+
+        # 检查价差质量
+        if buy_sp > MAX_SPREAD_PCT or sell_sp > MAX_SPREAD_PCT:
+            continue
+
+        # 资金检查
+        if capital and max_loss > capital * SELLER_CAPITAL_PCT:
+            continue
+
+        # ── 颜色编码 ──
+        has_event = len(variety_events) > 0
+        if iv_percentile is not None and iv_percentile < BUYER_IV_THRESHOLD and has_event:
+            color = 'green'
+        else:
+            color = 'yellow'
+
+        # 计算盈亏平衡点
+        if direction == 'call':
+            break_even = round(low_strike + net_debit, 2)
+        else:
+            break_even = round(high_strike - net_debit, 2)
+
+        strategy_label = 'bull_call_spread' if direction == 'call' else 'bear_put_spread'
+
+        results.append({
+            'strategy': strategy_label,
+            'variety': vcode,
+            'name': variety_name,
+            'contract': contract,
+            'buy_strike': buy_strike,
+            'sell_strike': sell_strike,
+            'buy_ask': round(float(buy_ask), 2),
+            'sell_bid': round(float(sell_bid), 2),
+            'net_debit': net_debit,
+            'max_profit': max_profit,
+            'max_loss': max_loss,
+            'profit_ratio': profit_ratio,
+            'otm_pct': round(otm_pct, 1),
+            'break_even': break_even,
+            'iv_percentile': iv_percentile,
+            'event_days': nearest_event_days,
+            'color': color,
+            'tradeable': True,
+        })
+
+    return results
+
+
+def _scan_buyer_straddles_strangles(df, futures, mult, capital,
+                                    vcode, variety_name, contract,
+                                    events, iv_percentile):
+    """
+    扫描买入跨式（straddle）和宽跨式（strangle）机会。
+
+    Straddle: 买入 ATM Call + ATM Put
+      信号：IV < 30th percentile AND D-2 ~ D-7 高影响事件 AND ATM spread < 10%
+
+    Strangle: 买入 ~0.5% OTM Call + ~0.5% OTM Put
+      信号：IV < 30th percentile AND 事件存在 AND 两腿 spread < 15%
+    """
+    results = []
+
+    dte = _compute_dte(contract)
+
+    # 筛选品种相关事件
+    variety_events = _filter_events_for_variety(events, vcode, variety_name)
+
+    # ── Straddle ──
+    atm_idx_series = (df['strike'] - futures).abs().argsort()
+    if len(atm_idx_series) > 0:
+        atm_idx = atm_idx_series.values[0] if hasattr(atm_idx_series, 'values') else atm_idx_series.iloc[0]
+        atm_row = df.iloc[atm_idx]
+        atm_strike = int(atm_row['strike'])
+
+        call_ask = _safe(atm_row.get('c_ask', 0))
+        put_ask = _safe(atm_row.get('p_ask', 0))
+
+        # ATM spread 检查
+        atm_call_spread = _spread(_safe(atm_row.get('c_bid', 0)), call_ask)
+        atm_put_spread = _spread(_safe(atm_row.get('p_bid', 0)), put_ask)
+
+        net_cost = round(call_ask + put_ask, 2)
+
+        # 预期波动 ≈ strike × IV_proxy × √(DTE/365)
+        if iv_percentile is not None:
+            iv_proxy_raw = (call_ask + put_ask) / futures if futures > 0 else 0.05
+        else:
+            iv_proxy_raw = 0.02  # fallback
+        expected_move = round(atm_strike * iv_proxy_raw * (dte / 365) ** 0.5, 2)
+
+        # 检查 straddle 条件（持续事件 days_until=-1 也算，代表持续高波动背景）
+        has_event_d2_d7 = any(
+            e['impact'] == 'high' and (e.get('days_until', 0) == -1 or 2 <= e['days_until'] <= 7)
+            for e in variety_events
+        )
+        atm_spread_ok = atm_call_spread < 10 and atm_put_spread < 10
+        iv_cheap = iv_percentile is not None and iv_percentile < BUYER_IV_THRESHOLD
+
+        nearest_event = None
+        if variety_events:
+            nearest_event = min(variety_events, key=lambda e: e['days_until'])
+
+        if iv_cheap and has_event_d2_d7 and atm_spread_ok:
+            if capital and net_cost * mult > capital * SELLER_CAPITAL_PCT:
+                pass  # skip due to capital
+            else:
+                straddle_color = 'green' if iv_percentile is not None and iv_percentile < BUYER_IV_THRESHOLD and has_event_d2_d7 else 'yellow'
+                event_title = nearest_event['title'] if nearest_event else ''
+                event_days = nearest_event['days_until'] if nearest_event else None
+
+                results.append({
+                    'strategy': 'long_straddle',
+                    'variety': vcode,
+                    'name': variety_name,
+                    'contract': contract,
+                    'strike': atm_strike,
+                    'call_ask': round(float(call_ask), 2),
+                    'put_ask': round(float(put_ask), 2),
+                    'net_cost': net_cost,
+                    'max_profit': None,  # 理论上无限
+                    'max_loss': round(net_cost * mult, 0),
+                    'expected_move': expected_move,
+                    'dte': dte,
+                    'iv_percentile': iv_percentile,
+                    'event_title': event_title,
+                    'event_days': event_days,
+                    'color': straddle_color,
+                    'tradeable': True,
+                })
+
+        # ── Strangle ──
+        otm_target_pct = 0.005  # 0.5% OTM
+        otm_call_target = futures * (1 + otm_target_pct)
+        otm_put_target = futures * (1 - otm_target_pct)
+
+        # 找最接近目标价的 OTM Call
+        call_candidates = df[(df['strike'] > futures) & (df['c_ask'] > 0)].copy()
+        if not call_candidates.empty:
+            call_candidates = call_candidates.copy()
+            call_candidates['dist'] = (call_candidates['strike'] - otm_call_target).abs()
+            call_idx = call_candidates['dist'].idxmin()
+            call_row = call_candidates.loc[call_idx]
+            call_strike = int(call_row['strike'])
+            c_ask_otm = _safe(call_row.get('c_ask', 0))
+            c_bid_otm = _safe(call_row.get('c_bid', 0))
+            call_spread = _spread(c_bid_otm, c_ask_otm) if c_bid_otm > 0 else 999
+        else:
+            call_strike = None
+            c_ask_otm = 0
+            call_spread = 999
+
+        # 找最接近目标价的 OTM Put
+        put_candidates = df[(df['strike'] < futures) & (df['p_ask'] > 0)].copy()
+        if not put_candidates.empty:
+            put_candidates = put_candidates.copy()
+            put_candidates['dist'] = (put_candidates['strike'] - otm_put_target).abs()
+            put_idx = put_candidates['dist'].idxmin()
+            put_row = put_candidates.loc[put_idx]
+            put_strike = int(put_row['strike'])
+            p_ask_otm = _safe(put_row.get('p_ask', 0))
+            p_bid_otm = _safe(put_row.get('p_bid', 0))
+            put_spread = _spread(p_bid_otm, p_ask_otm) if p_bid_otm > 0 else 999
+        else:
+            put_strike = None
+            p_ask_otm = 0
+            put_spread = 999
+
+        # 检查 strangle 条件
+        has_any_event = len(variety_events) > 0
+        strangle_spread_ok = call_spread < 15 and put_spread < 15
+        legs_valid = (call_strike is not None and put_strike is not None
+                      and c_ask_otm > 0 and p_ask_otm > 0)
+
+        if iv_cheap and has_any_event and strangle_spread_ok and legs_valid:
+            strangle_cost = round(c_ask_otm + p_ask_otm, 2)
+            if capital and strangle_cost * mult > capital * SELLER_CAPITAL_PCT:
+                pass
+            else:
+                strangle_color = 'green' if iv_percentile is not None and iv_percentile < BUYER_IV_THRESHOLD else 'yellow'
+                event_title = nearest_event['title'] if nearest_event else ''
+                event_days = nearest_event['days_until'] if nearest_event else None
+
+                results.append({
+                    'strategy': 'long_strangle',
+                    'variety': vcode,
+                    'name': variety_name,
+                    'contract': contract,
+                    'call_strike': call_strike,
+                    'put_strike': put_strike,
+                    'call_ask': round(float(c_ask_otm), 2),
+                    'put_ask': round(float(p_ask_otm), 2),
+                    'net_cost': strangle_cost,
+                    'max_profit': None,
+                    'max_loss': round(strangle_cost * mult, 0),
+                    'expected_move': expected_move,
+                    'dte': dte,
+                    'iv_percentile': iv_percentile,
+                    'event_title': event_title,
+                    'event_days': event_days,
+                    'color': strangle_color,
+                    'tradeable': True,
+                })
+
+    return results
+
+
+def scan_single_leg_buyer(df, futures, variety_name, contract, vcode,
+                           events, capital, mult, iv_percentile):
+    """单腿买方 — 统一入口。事件/趋势触发，向外走直到流动性尽头。
+    
+    事件触发（🔥）：持续地缘 OR D-2~D-7 高影响事件 → ATM ± 向外走，≤5%本金，≤10%价差
+    趋势触发（📈）：5日涨跌>2% + IV<30% → OTM 向外走，≤2%本金，≤15%价差
+    走到 bid=0 或价差>15% → 停。"""
+    results = []
+    if iv_percentile is None or iv_percentile >= 30:
+        return results
+
+    # ── 事件数据 ──
+    variety_events = _filter_events_for_variety(events, vcode, variety_name)
+    has_event = any(
+        e['impact'] == 'high' and (e.get('days_until', 0) == -1 or 2 <= e['days_until'] <= 7)
+        for e in variety_events)
+
+    # ── 趋势数据 ──
+    change_5d = None
+    try:
+        from _ak_data import fetch_futures_daily
+        daily = fetch_futures_daily(vcode, 10)
+        if daily is not None and len(daily) >= 6:
+            daily = daily.sort_values("date")
+            closes = daily["close"].astype(float)
+            change_5d = (closes.iloc[-1] - closes.iloc[-6]) / closes.iloc[-6] * 100
+    except Exception:
+        pass
+    has_trend = change_5d is not None and abs(change_5d) > 2
+
+    if not has_event and not has_trend:
+        return results
+
+    # ── 扫描 Call 侧（OTM call: strike > futures）──
+    otm_calls = df[(df['strike'] > futures) & (df['c_bid'] > 0)].sort_values('strike')
+    # ── 扫描 Put 侧（OTM put: strike < futures）──
+    otm_puts  = df[(df['strike'] < futures) & (df['p_bid'] > 0)].sort_values('strike', ascending=False)
+
+    # ━━ 事件触发：Call/Put 各独立，不合并 ━━
+    if has_event:
+        for _, row in otm_calls.iterrows():
+            ask = _safe(row.get('c_ask', 0))
+            bid = _safe(row.get('c_bid', 0))
+            sp = _spread(bid, ask)
+            if sp > EVENT_SPREAD_MAX:
+                continue
+            cost = ask * mult
+            if capital and cost > capital * SELLER_CAPITAL_PCT:
+                continue
+            results.append({
+                'strategy': 'buy_call_event', 'trigger': '🔥事件',
+                'variety': vcode, 'name': variety_name, 'contract': contract,
+                'strike': int(row['strike']), 'ask': round(float(ask), 2),
+                'cost': round(cost, 0), 'max_loss': round(cost, 0),
+                'otm_pct': round((int(row['strike'])-futures)/futures*100, 1),
+                'iv_percentile': round(iv_percentile),
+                'color': 'green' if iv_percentile < 20 else 'yellow',
+                'tradeable': True,
+            })
+            break
+        for _, row in otm_puts.iterrows():
+            ask = _safe(row.get('p_ask', 0))
+            bid = _safe(row.get('p_bid', 0))
+            sp = _spread(bid, ask)
+            if sp > EVENT_SPREAD_MAX:
+                continue
+            cost = ask * mult
+            if capital and cost > capital * SELLER_CAPITAL_PCT:
+                continue
+            results.append({
+                'strategy': 'buy_put_event', 'trigger': '🔥事件',
+                'variety': vcode, 'name': variety_name, 'contract': contract,
+                'strike': int(row['strike']), 'ask': round(float(ask), 2),
+                'cost': round(cost, 0), 'max_loss': round(cost, 0),
+                'otm_pct': round((futures-int(row['strike']))/futures*100, 1),
+                'iv_percentile': round(iv_percentile),
+                'color': 'green' if iv_percentile < 20 else 'yellow',
+                'tradeable': True,
+            })
+            break
+
+    # ━━ 趋势触发（走到底，取最深 OTM 杠杆最大那一档）━━
+    if has_trend:
+        if change_5d > 2:
+            best = None
+            for _, row in otm_calls.iterrows():
+                ask = _safe(row.get('c_ask', 0))
+                bid = _safe(row.get('c_bid', 0))
+                sp = _spread(bid, ask)
+                if sp > TREND_SPREAD_MAX or bid <= 0:
+                    continue  # 跳过没流动性或价差太宽的，继续往外走
+                cost = ask * mult
+                if cost <= 0:
+                    continue
+                if capital and cost > capital * BUYER_SINGLE_TREND_CAP:
+                    continue  # 太贵，继续往外
+                # 找到一档符合的，记录但不 break——继续走找更深的
+                best = {'strike': int(row['strike']), 'ask': round(float(ask), 2),
+                        'cost': round(cost, 0), 'otm': round((int(row['strike'])-futures)/futures*100, 1)}
+            if best:
+                results.append({
+                    'strategy': 'buy_call_trend', 'trigger': f'📈5日+{change_5d:.1f}%',
+                    'variety': vcode, 'name': variety_name, 'contract': contract,
+                    'strike': best['strike'], 'ask': best['ask'],
+                    'cost': best['cost'], 'max_loss': best['cost'],
+                    'otm_pct': best['otm'],
+                    'iv_percentile': round(iv_percentile),
+                    'color': 'green' if iv_percentile < 20 else 'yellow',
+                    'tradeable': True,
+                })
+        if change_5d < -2:
+            best = None
+            for _, row in otm_puts.iterrows():
+                ask = _safe(row.get('p_ask', 0))
+                bid = _safe(row.get('p_bid', 0))
+                sp = _spread(bid, ask)
+                if sp > TREND_SPREAD_MAX or bid <= 0:
+                    continue
+                cost = ask * mult
+                if cost <= 0:
+                    continue
+                if capital and cost > capital * BUYER_SINGLE_TREND_CAP:
+                    continue
+                best = {'strike': int(row['strike']), 'ask': round(float(ask), 2),
+                        'cost': round(cost, 0), 'otm': round((futures-int(row['strike']))/futures*100, 1)}
+            if best:
+                results.append({
+                    'strategy': 'buy_put_trend', 'trigger': f'📈5日{change_5d:.1f}%',
+                    'variety': vcode, 'name': variety_name, 'contract': contract,
+                    'strike': best['strike'], 'ask': best['ask'],
+                    'cost': best['cost'], 'max_loss': best['cost'],
+                    'otm_pct': best['otm'],
+                    'iv_percentile': round(iv_percentile),
+                    'color': 'green' if iv_percentile < 20 else 'yellow',
+                    'tradeable': True,
+                })
+
+    return results
+
+
+def scan_buyer_opportunities(vcode, variety, contract, df, futures,
+                             events, capital=None):
+    """
+    买方机会统一扫描：debit spread + straddle/strangle。
+    contract, df, futures 由 main() 预取传入。
+    """
+    mult = variety['multiplier']
+    name = variety['name']
+
+    all_signals = []
+
+    # IV 分位估计（所有买方策略共用）
+    iv_pct = _estimate_iv_percentile(df, futures)
+
+    # 1. Debit Call Spread（牛市看涨）
+    all_signals.extend(_scan_buyer_debit_side(
+        df, 'call', futures, mult, capital, vcode, name, contract, events, iv_pct))
+
+    # 2. Debit Put Spread（熊市看跌）
+    all_signals.extend(_scan_buyer_debit_side(
+        df, 'put', futures, mult, capital, vcode, name, contract, events, iv_pct))
+
+    # 3. Straddle + Strangle
+    all_signals.extend(_scan_buyer_straddles_strangles(
+        df, futures, mult, capital, vcode, name, contract, events, iv_pct))
+
+    tradeable = [s for s in all_signals if s['tradeable']]
+    green_n = len([s for s in tradeable if s.get('color') == 'green'])
+    yellow_n = len([s for s in tradeable if s.get('color') == 'yellow'])
+    debit_n = len([s for s in tradeable if 'spread' in s.get('strategy', '')])
+    vol_n = len([s for s in tradeable if 'straddle' in s.get('strategy', '') or 'strangle' in s.get('strategy', '')])
+
+    iv_str = f"IV≈P{iv_pct}" if iv_pct is not None else "IV?"
+    summary = (f"{len(all_signals)}信号({len(tradeable)}可做: {debit_n}价差 {vol_n}波动率 | "
+               f"🟢{green_n} 🟡{yellow_n} | {iv_str})" if all_signals else f"无信号 ({iv_str})")
     return all_signals, summary
 
 
@@ -408,111 +898,108 @@ def assess_iv_environment(vcode, variety, contract, df, futures):
 
 
 # ═══════════════════════════════════════════
-# 模块3: 生成每日结论
+# 模块4: 生成每日结论
 # ═══════════════════════════════════════════
 
-def generate_conclusion(otm_results, cs_results, events, iv_data, capital=None):
-    """根据四个模块的结果，生成今日行动建议"""
-    print(f"\n{'═'*70}")
-    print(f"  📋 今日结论")
-    print(f"{'═'*70}")
+# ═══════════════════════════════════════════
+# [OBSERVE] 铁秃鹰 + 日历价差 — 只计数
+# ═══════════════════════════════════════════
 
-    # 1. 虚值倒挂
-    all_otm_tradeable = []
-    for vcode, (signals, _) in otm_results.items():
-        for s in signals:
-            if s['tradeable']:
-                all_otm_tradeable.append(s)
+def scan_observe_tier(vcode, variety, cs_results, events, iv_data, chain_data):
+    """扫描高级策略：只返回计数，不显示具体参数。
+    日历用 IV 期限结构（非 HV），铁蝴蝶/蝶式/比率用现有链数据。
+    返回 {strategy_name: count} 或 0。"""
+    result = {"iron_condor": 0, "iron_butterfly": 0, "butterfly": 0,
+              "ratio_spread": 0, "calendar": 0,
+              "variety": vcode, "name": variety["name"]}
 
-    if all_otm_tradeable:
-        all_otm_tradeable.sort(key=lambda s: s['net_pct'], reverse=True)
-        top = all_otm_tradeable[0]
-        print(f"\n  🟢 虚值倒挂: 有{len(all_otm_tradeable)}个可交易信号")
-        print(f"     最佳: {top['name']} {top['contract']} P{top['buy_strike']}@{top['buy_price']:.2f}")
-        print(f"     净利 +{top['net_pct']}% | 成本 ¥{top['cost']:.0f}/手")
-        if capital:
-            max_position = int(capital * 0.05 / top['cost']) if top['cost'] > 0 else 0
-            print(f"     建议: 最多买{max_position}手 (≤5%本金)")
-    else:
-        print(f"\n  ⚫ 虚值倒挂: 今日无信号")
+    # 铁秃鹰：同品种同时有卖 Put 和卖 Call 信号
+    if vcode in cs_results and cs_results[vcode]:
+        signals = cs_results[vcode][0] if cs_results[vcode] else []
+        puts = [s for s in signals if s.get("tradeable") and s.get("direction") == "put"]
+        calls = [s for s in signals if s.get("tradeable") and s.get("direction") == "call"]
+        if puts and calls:
+            result["iron_condor"] = 1
 
-    # 2. 信用价差
-    all_cs_tradeable = []
-    for vcode, (signals, _) in cs_results.items():
-        for s in signals:
-            if s['tradeable']:
-                all_cs_tradeable.append(s)
+    # 链数据检查
+    if vcode not in chain_data:
+        return result
+    _, df = chain_data[vcode]
 
-    if all_cs_tradeable:
-        green_n = len([s for s in all_cs_tradeable if s.get('tier') == 'green'])
-        yellow_n = len([s for s in all_cs_tradeable if s.get('tier') == 'yellow'])
-        all_cs_tradeable.sort(key=lambda s: s['rr_ratio'], reverse=True)
-        top = all_cs_tradeable[0]
-        top_tier = "🟢" if top.get('tier') == 'green' else "🟡"
-        opt_type = "C" if top['sell_strike'] < top['buy_strike'] else "P"
-        print(f"\n  🟡 信用价差: 有{len(all_cs_tradeable)}个可交易信号 (🟢{green_n} 🟡{yellow_n})")
-        print(f"     最佳: {top_tier} {top['name']} {top['contract']} 卖{opt_type}{top['sell_strike']}/买{opt_type}{top['buy_strike']}")
-        print(f"     净收 ¥{top['net_premium']} | 最大盈利 ¥{top['max_profit']:.0f} | 最大亏损 ¥{top['max_loss']:.0f}")
-        tp = round(top['max_profit'] * 0.5, 0)
-        print(f"     止盈 ¥{tp:.0f}/手 | 止损预警: 期货触及 {opt_type}{top['buy_strike']}")
-        print(f"     盈亏比 1:{round(1/top['rr_ratio'],1)} (亏¥1赚¥{round(1/top['rr_ratio'],1)})")
-        if capital:
-            max_hands = int(capital * 0.05 / top['max_loss'])
-            if top.get('tier') == 'yellow' and max_hands >= 2:
-                max_hands = max(1, max_hands // 2)
-            suffix = " (黄档减半)" if top.get('tier') == 'yellow' else ""
-            print(f"     建议: 最多{max_hands}手{suffix}")
-    else:
-        print(f"\n  ⚫ 信用价差: 今日无信号")
+    # 铁蝴蝶：ATM 跨式收 > OTM 保护成本
+    try:
+        atm_idx = (df['strike'] - variety['futures']).abs().idxmin()
+        atm = df.loc[atm_idx]
+        p_bid, p_ask = _safe(atm.get('p_bid', 0)), _safe(atm.get('p_ask', 0))
+        c_bid, c_ask = _safe(atm.get('c_bid', 0)), _safe(atm.get('c_ask', 0))
+        straddle_credit = p_bid + c_bid  # 卖跨式收的钱
+        # OTM 保护腿（距 ATM 2 档）
+        interval = abs(df['strike'].diff()).median()
+        wing_strike_low = atm['strike'] - interval * 2
+        wing_strike_high = atm['strike'] + interval * 2
+        wing_low = df[df['strike'] == wing_strike_low]
+        wing_high = df[df['strike'] == wing_strike_high]
+        if not wing_low.empty and not wing_high.empty:
+            wing_cost = _safe(wing_low.iloc[0].get('p_ask', 0)) + _safe(wing_high.iloc[0].get('c_ask', 0))
+            if straddle_credit > wing_cost:
+                result["iron_butterfly"] = 1
+    except Exception:
+        pass
 
-    # 3. 事件
-    high_events = [e for e in events if e['impact'] == 'high' and e['days_until'] <= 5]
-    high_events_wide = [e for e in events if e['impact'] == 'high' and e['days_until'] <= 10]
-    near_events = [e for e in events if e['days_until'] <= 3]
+    # 蝶式：三连续行权价，净支出 < 价差宽度
+    try:
+        strikes = sorted(df['strike'].unique())
+        for i in range(len(strikes) - 2):
+            s1, s2, s3 = strikes[i], strikes[i+1], strikes[i+2]
+            r1, r2, r3 = df[df['strike'] == s1], df[df['strike'] == s2], df[df['strike'] == s3]
+            if r1.empty or r2.empty or r3.empty:
+                continue
+            cost = (_safe(r1.iloc[0].get('p_ask', 0)) + _safe(r3.iloc[0].get('p_ask', 0)))  # 买两翼
+            credit = 2 * _safe(r2.iloc[0].get('p_bid', 0))  # 卖2倍中
+            net_debit = cost - credit
+            if net_debit < (s2 - s1) * 0.8 and net_debit > 0:
+                result["butterfly"] += 1
+                break  # 每个品种只计一次
+    except Exception:
+        pass
 
-    if high_events:
-        ev = high_events[0]
-        print(f"\n  🔴 事件层: D-{ev['days_until']} {ev['title']}")
-        vars_str = ", ".join(ev['variety_names'])
-        print(f"     关联品种: {vars_str}")
-        print(f"     历史波动: ±{ev['expected_move_pct']}%")
-        print(f"     建议策略: {ev['best_strategy']}")
-        if capital and ev['days_until'] <= 3:
-            event_budget = capital * 0.20
-            print(f"     预算: ≤¥{event_budget:.0f} (20%本金)")
-        if ev['days_until'] <= 2:
-            print(f"     ⚡ 可以进场了")
-        elif ev['days_until'] <= 5:
-            print(f"     ⏳ 准备资金中")
-    elif high_events_wide:
-        ev = high_events_wide[0]
-        print(f"\n  🟡 事件层: D-{ev['days_until']} {ev['title']}")
-        print(f"     还有时间，先跟踪品种流动性")
-    elif near_events:
-        print(f"\n  🟡 事件层: 有{near_events[0]['days_until']}天内的中等事件，但非高影响")
-    else:
-        print(f"\n  ⚫ 事件层: 近期无高影响事件")
+    # 比率价差：卖 2×OTM > 买 1×近值，净收
+    try:
+        for i in range(len(df) - 2):
+            near_row = df.iloc[i]
+            otm_row = df.iloc[i + 2] if i + 2 < len(df) else None
+            if otm_row is None:
+                continue
+            credit = 2 * _safe(otm_row.get('p_bid', 0))
+            cost = _safe(near_row.get('p_ask', 0))
+            if credit > cost and cost > 0:
+                result["ratio_spread"] = 1
+                break
+    except Exception:
+        pass
 
-    # 4. IV 环境
-    good_liquidity = sum(1 for v, d in iv_data.items() if d.get('put_spread_pct', 999) < 10)
-    print(f"\n  🔵 环境层: {good_liquidity}/{len(iv_data)}品种ATM流动性良好 (价差<10%)")
-    if good_liquidity < 3:
-        print(f"     ⚠️ 多数品种流动性偏紧，缩小挂单规模")
+    # 日历价差：需要近月+远月两个合约的 IV — 当前只有单合约数据，强制返回 0
+    # 时序 IV 不能替代期限结构。等 S2 多合约数据到位后再激活。
 
-    # 5. 综合建议
-    print(f"\n{'─'*70}")
-    any_signal = all_otm_tradeable or all_cs_tradeable
-    if any_signal and high_events:
-        print(f"  🎯 今日: 有交易信号 + 事件在接近 → 优先信用价差，事件资金预留")
-    elif all_cs_tradeable:
-        print(f"  🎯 今日: 信用价差有信号 → 小仓位练手，单笔风险≤5%本金")
-    elif all_otm_tradeable:
-        print(f"  🎯 今日: 虚值倒挂有信号 → 小仓位练手，不超过5%本金")
-    elif high_events:
-        print(f"  🎯 今日: 无交易信号但事件在接近 → 准备事件资金，今天不做")
-    else:
-        print(f"  🎯 今日: 两层都不触发 → 跑训练，积累品种认知。正常的一天。")
-    print(f"{'─'*70}\n")
+    return result
+
+
+def _save_observe_log(observe_results):
+    """后台 CSV：只积累数据，不提供多巴胺"""
+    from pathlib import Path
+    import csv as _csv
+    log_file = Path(__file__).parent.parent / "data" / "observe_signals.csv"
+    today = datetime.now().strftime("%Y-%m-%d")
+    file_exists = log_file.exists()
+    with open(log_file, "a", newline="", encoding="utf-8") as f:
+        writer = _csv.writer(f)
+        if not file_exists:
+            writer.writerow(["date", "variety", "name", "strategy", "count", "note"])
+        for r in observe_results:
+            if r["iron_condor"] > 0:
+                writer.writerow([today, r["variety"], r["name"], "iron_condor", r["iron_condor"], "仅计数"])
+            if r["calendar"] > 0:
+                writer.writerow([today, r["variety"], r["name"], "calendar", r["calendar"], "期限结构倾斜"])
 
 
 # ═══════════════════════════════════════════
@@ -520,12 +1007,13 @@ def generate_conclusion(otm_results, cs_results, events, iv_data, capital=None):
 # ═══════════════════════════════════════════
 
 def main():
-    parser = argparse.ArgumentParser(description="统一扫描器: 虚值倒挂 + 信用价差 + 事件 + IV 四合一")
+    parser = argparse.ArgumentParser(description="统一扫描器: 虚值倒挂 + 信用价差/买方机会 + 事件 + IV 四合一")
     parser.add_argument('--capital', type=float, default=20000, help='本金(元)，默认20000')
     parser.add_argument('--quick', action='store_true', help='快速模式(只看结论)')
     parser.add_argument('--variety', type=str, default='all', help='指定品种')
     parser.add_argument('--skip-otm', action='store_true', help='跳过虚值倒挂扫描')
     parser.add_argument('--skip-cs', action='store_true', help='跳过信用价差扫描')
+    parser.add_argument('--buyer', action='store_true', help='买方模式：扫描 debit spread + straddle/strangle')
     parser.add_argument('--show', type=int, default=10, help='信号详情显示数量，默认10。填0显示全部')
     parser.add_argument('--raw', action='store_true', help='不过滤，显示全部原始信号')
     args = parser.parse_args()
@@ -536,64 +1024,36 @@ def main():
         target = [v.strip() for v in args.variety.split(',')]
 
     now = datetime.now()
+    buyer_detail = args.buyer
     print(f"\n{'█'*70}")
-    print(f"  🔭 统一扫描器 — {now.strftime('%Y-%m-%d %H:%M')}")
+    print(f"  🔭 全策略扫描 v3 — {now.strftime('%Y-%m-%d %H:%M')}")
     print(f"  {'█'*70}")
 
-    # ── 先拉期权合约列表，提取对应期货合约号 ──
-    print(f"\n  📡 正在获取各品种期权合约列表...")
-    contract_map = {}
+    # ── akshare 拉取期权链（REST，不挂）──
+    print(f"\n  📡 akshare 拉取期权链中...")
+    AK_SYMBOLS = {"沪金": "黄金期权", "铁矿石": "铁矿石期权", "橡胶": "橡胶期权"}
+    chain_data = {}
     for vcode in target:
+        vname = VARIETIES[vcode]['name']
+        symbol = AK_SYMBOLS.get(vname, vname + "期权")
         try:
-            best = pick_best_contract(VARIETIES[vcode]['symbol'], vcode)
-            contract_map[vcode] = best or "未知"
-        except Exception:
-            contract_map[vcode] = "未知"
+            contract, df, fp = fetch_option_chain(vcode, symbol)
+            VARIETIES[vcode]['futures'] = fp
+            chain_data[vcode] = (contract, df)
+            iv_est, dte = estimate_iv_from_chain(df, fp, contract)
+            print(f"     ✅ {vname:6s} {contract} → 期货 {fp} | 链 {len(df)} 档"
+                  f"{' | IV≈' + f'{iv_est:.1%}' if iv_est else ''}")
+        except Exception as e:
+            print(f"     ❌ {vname:6s} → {str(e)[:50]}")
+    print()
 
-    # ── 推断期货价格 + 保存链数据供下游复用 ──
-    print(f"\n  📡 从期权链推断各品种期货价格：")
-    chain_data = {}  # {vcode: (contract, df_renamed)}
-    for vcode in target:
-        v = VARIETIES[vcode]
-        fut_contract = contract_map.get(vcode, "未知")
-        try:
-            df_pre = ak.option_commodity_contract_table_sina(symbol=v['symbol'], contract=fut_contract)
-            inferred = infer_futures_from_chain(df_pre)
-        except Exception:
-            inferred = None
-        if inferred and inferred > 0:
-            VARIETIES[vcode]['futures'] = inferred
-            # 预改列名，下游 scan_* / assess_* 直接用
-            df_renamed = df_pre.rename(columns={
-                '行权价': 'strike',
-                '看跌合约-最新价': 'p_last',
-                '看跌合约-买价': 'p_bid', '看跌合约-卖价': 'p_ask',
-                '看跌合约-持仓量': 'p_oi',
-                '看涨合约-买价': 'c_bid', '看涨合约-卖价': 'c_ask',
-            })
-            chain_data[vcode] = (fut_contract, df_renamed)
-            print(f"     ✅ {v['name']:6s} {fut_contract} → 推断期货价 {inferred}")
-        else:
-            print(f"     ❌ {v['name']:6s} {fut_contract} → 无法推断，需手动输入")
-    print()
-    corrections = input(f"  修正（如 au2608=875 m2609=2966，正确回车跳过）: ").strip()
-    if corrections:
-        for part in corrections.split():
-            if '=' in part:
-                code, price_str = part.split('=', 1)
-                for vcode in target:
-                    if contract_map.get(vcode) == code:
-                        try:
-                            VARIETIES[vcode]['futures'] = float(price_str)
-                            print(f"     ✅ {VARIETIES[vcode]['name']} {code} → {price_str}")
-                        except ValueError:
-                            pass
-                        break
-    print()
+    # ── 事件数据（买方模式需要提前获取） ──
+    events = get_upcoming_events(days=14, varieties=target)
 
     # ── 模块1: 虚值倒挂 ──
     otm_results = {}
     cs_results = {}
+    buyer_results = {}
     if not args.skip_otm:
         print(f"\n  ┌─ 虚值倒挂扫描 ({len(target)}品种)")
         for vcode in target:
@@ -610,7 +1070,7 @@ def main():
         print(f"  └─ 共 {sum(len(s[0]) for s in otm_results.values())} 信号, "
               f"{sum(1 for s in otm_results.values() for s2 in s[0] if s2['tradeable'])} 可交易")
 
-    # ── 模块2: 信用价差 ──
+    # ── 模块2a: 信用价差（卖方）──
     if not args.skip_cs:
         print(f"\n  ┌─ 信用价差扫描 ({len(target)}品种)")
         for vcode in target:
@@ -628,21 +1088,83 @@ def main():
         total_cs_ok = sum(1 for s in cs_results.values() for s2 in s[0] if s2['tradeable'])
         print(f"  └─ 共 {total_cs} 信号, {total_cs_ok} 可交易")
 
+    # ── 模块2b: 买方价差+跨式（分两组存，统一扫描）──
+    buyer_results = {}
+    if not args.skip_cs:
+        for vcode in target:
+            variety = VARIETIES[vcode]
+            if vcode in chain_data:
+                contract, df = chain_data[vcode]
+                signals, summary = scan_buyer_opportunities(
+                    vcode, variety, contract, df, variety['futures'], events, args.capital)
+            else:
+                signals, summary = [], "❌ 无链数据"
+            buyer_results[vcode] = (signals, summary)
+
+    # ── 模块2c: 单腿买方 ──
+    single_leg_results = {}
+    if not args.skip_cs:
+        for vcode in target:
+            variety = VARIETIES[vcode]
+            if vcode in chain_data:
+                contract, df = chain_data[vcode]
+                iv_pct = _estimate_iv_percentile(df, variety['futures'])
+                signals = scan_single_leg_buyer(
+                    df, variety['futures'], variety['name'], contract, vcode,
+                    events, args.capital, variety['multiplier'], iv_pct)
+            else:
+                signals = []
+            single_leg_results[vcode] = signals
+
+    # ── PAPER 扫描汇总 ──
+    all_buyer_signals = []
+    for vcode, (signals, _) in buyer_results.items():
+        all_buyer_signals.extend(signals)
+    buyer_ok = [s for s in all_buyer_signals if s['tradeable']]
+    spreads_n = len([s for s in buyer_ok if 'spread' in str(s.get('strategy',''))])
+    straddles_n = len([s for s in buyer_ok if 'straddle' in str(s.get('strategy','')) or 'strangle' in str(s.get('strategy',''))])
+
+    all_sl = []
+    for vcode, signals in single_leg_results.items():
+        all_sl.extend(signals)
+    sl_ok = [s for s in all_sl if s['tradeable']]
+    sl_events_n = len([s for s in sl_ok if 'event' in str(s.get('strategy',''))])
+    sl_trends_n = len([s for s in sl_ok if 'trend' in str(s.get('strategy',''))])
+
+    print(f"\n  ┌─ [PAPER] 买方价差: {spreads_n}个 | 跨式/宽跨式: {straddles_n}个 | 单腿·事件: {sl_events_n}个 | 单腿·趋势: {sl_trends_n}个")
+
+    # ── 模块2d: 铁秃鹰 + 铁蝴蝶 + 蝶式 + 比率 + 日历 [OBSERVE] ──
+    iv_data = {}  # 提前初始化，IV 评估在后面填充
+    observe_results = []
+    for vcode in target:
+        variety = VARIETIES[vcode]
+        observe_results.append(scan_observe_tier(vcode, variety, cs_results, events, iv_data, chain_data))
+    try:
+        _save_observe_log(observe_results)
+    except Exception:
+        pass
+
     # ── 模块3: 事件 ──
-    events = get_upcoming_events(days=14, varieties=target)
-    print(f"\n  ┌─ 事件日历 (未来14天)")
-    high_events = [e for e in events if e['impact'] == 'high']
+    print(f"\n  ┌─ 事件日历")
+    # 持续性地缘事件（始终显示，无倒计时）
+    ongoing = [e for e in events if e.get('days_until') == -1]
+    for ev in ongoing:
+        print(f"  │ 🔥🔄 {ev['title']}  [{', '.join(ev['variety_names'])}]")
+        if ev.get('description'):
+            print(f"  │    {ev['description'][:80]}")
+    # 固定日期事件
+    high_events = [e for e in events if e['impact'] == 'high' and e.get('days_until', -1) >= 0]
     for ev in high_events[:5]:
         print(f"  │ D-{ev['days_until']:<3} 🔥 {ev['title']}  [{', '.join(ev['variety_names'])}]")
-    medium_in_window = [e for e in events if e['impact'] == 'medium' and e['days_until'] <= 5]
+    medium_in_window = [e for e in events if e['impact'] == 'medium' and 0 <= e.get('days_until', -1) <= 5]
     for ev in medium_in_window[:3]:
         print(f"  │ D-{ev['days_until']:<3} ⚡ {ev['title']}  [{', '.join(ev['variety_names'])}]")
-    if not high_events and not medium_in_window:
+    if not ongoing and not high_events and not medium_in_window:
         print(f"  │ 无近期高影响事件")
-    print(f"  └─ 共 {len(events)} 个事件")
+    total = len(ongoing) + len(high_events) + len(medium_in_window)
+    print(f"  └─ 共 {len(events)} 个事件（含 {len(ongoing)} 个持续中）")
 
     # ── 模块4: IV（仅快速采样关键品种）
-    iv_data = {}
     key_varieties = [v for v in target if v in ['c', 'm', 'ta', 'au', 'rm']]
     if not args.quick:
         print(f"\n  ┌─ IV/流动性采样 (关键品种ATM)")
@@ -655,81 +1177,168 @@ def main():
                 iv = {"iv_level": "unknown", "note": "无链数据"}
             iv_data[vcode] = iv
             sp = iv.get('put_spread_pct', 999)
-            icon = "✅" if sp < 10 else ("⚠️" if sp < 20 else "❌")
+            icon = "✅" if sp < EVENT_SPREAD_MAX else ("⚠️" if sp < 20 else "❌")
             print(f"  │ {icon} {variety['name']:6s}: ATM价差 {sp}% | {iv.get('note','')}")
         print(f"  └─")
 
-    # ── 结论 ──
-    if not args.quick:
-        # 事件品种（用于标记）
-        event_vcodes = set()
-        for e in events:
-            if e['impact'] == 'high' and e['days_until'] <= 7:
-                for vn in e.get('variety_names', []):
-                    for vc, vi in VARIETIES.items():
-                        if vi['name'] == vn:
-                            event_vcodes.add(vc)
+    # ── 三层结论 ──
+    # 事件品种标记
+    event_vcodes = set()
+    for e in events:
+        if e['impact'] == 'high' and e['days_until'] <= 7:
+            for vn in e.get('variety_names', []):
+                for vc, vi in VARIETIES.items():
+                    if vi['name'] == vn:
+                        event_vcodes.add(vc)
 
-        # 展开信用价差信号详情
-        all_cs = []
-        for vcode, (signals, _) in cs_results.items():
-            all_cs.extend(signals)
-        if all_cs:
-            cs_ok = [s for s in all_cs if s['tradeable']]
-            if cs_ok:
-                if not args.raw:
-                    # 过滤：去重 + 盈亏比 + 事件标记
-                    seen = {}
-                    filtered = []
-                    for s in sorted(cs_ok, key=lambda x: x['rr_ratio'], reverse=True):
-                        key = f"{s['variety']}_{s['contract']}"
-                        if key not in seen:
-                            seen[key] = s
-                            if s['rr_ratio'] >= 0.25:
-                                s['_event_warning'] = s['variety'] in event_vcodes
-                                filtered.append(s)
-                    display_cs = filtered
-                else:
-                    display_cs = cs_ok
+    buyer_detail = args.buyer
 
-                if display_cs:
-                    filtered_label = "（已去重+筛选）" if not args.raw else "（原始）"
-                    print(f"\n  ┌─ 可交易信用价差详情 {filtered_label}")
-                    if not args.raw:
-                        print(f"  │ 筛选：单品种单合约仅显示最佳 | 盈亏比≥0.25 | ⚠️=7日内有高影响事件")
-                        print(f"  │ 三档：🟢 ≤2%正常仓位 | 🟡 2-4%减半仓位 | 🔴 >4%已过滤")
-                    limit = args.show if args.show > 0 else len(display_cs)
-                    for i, s in enumerate(display_cs[:limit], 1):
-                        warn = " ⚠️有事件" if s.get('_event_warning') else ""
-                        tier_icon = "🟢" if s.get('tier') == 'green' else "🟡"
-                        opt_type = "C" if s['sell_strike'] < s['buy_strike'] else "P"
-                        width_str = f"宽度{s.get('strike_width_pct', '?')}%"
-                        otm_str = f"OTM{s.get('otm_pct', '?')}%"
-                        print(f"  │ [{i}] {tier_icon} {s['name']} {s['contract']} "
-                              f"卖{opt_type}{s['sell_strike']}({s['sell_bid']}) / 买{opt_type}{s['buy_strike']}({s['buy_ask']}){warn}")
-                        tp = round(s['max_profit'] * 0.5, 0)
-                        opt_type = "C" if s['sell_strike'] < s['buy_strike'] else "P"
-                        print(f"  │     净收 ¥{s['net_premium']} | 最大盈 ¥{s['max_profit']:.0f} | 最大亏 ¥{s['max_loss']:.0f} | {width_str} | {otm_str}")
-                        print(f"  │     止盈 ¥{tp:.0f}/手 | 止损预警: 期货触及 {opt_type}{s['buy_strike']}")
-                    print(f"  └─")
+    print(f"\n{'═'*70}")
+    print(f"  📊 三层信号汇总")
+    print(f"  {'═'*70}")
 
-        # 展开所有虚值信号详情
-        all_signals = []
-        for vcode, (signals, _) in otm_results.items():
-            all_signals.extend(signals)
-        if all_signals:
-            tradeable_signals = [s for s in all_signals if s['tradeable']]
-            if tradeable_signals:
-                print(f"\n  ┌─ 可交易虚值倒挂详情")
-                olimit = args.show if args.show > 0 else len(tradeable_signals)
-                for i, s in enumerate(sorted(tradeable_signals, key=lambda x: x['net_pct'], reverse=True)[:olimit], 1):
-                    print(f"  │ [{i}] {s['name']} {s['contract']} "
-                          f"P{s['buy_strike']}({s['buy_price']:.2f}) < P{s['ref_strike']}({s['ref_price']:.2f})")
-                    print(f"  │     净利 +{s['net_pct']}% | 成本 ¥{s['cost']:.0f} | "
-                          f"买{s['buy_bid']:.2f}/卖{s['buy_ask']:.2f}")
-                print(f"  └─")
+    # ── [EXEC] 卖方 ──
+    print(f"\n  🟢 [EXEC] 卖方信用价差 — 可执行")
+    all_cs = []
+    for vcode, (signals, _) in cs_results.items():
+        all_cs.extend(signals)
+    cs_ok = [s for s in all_cs if s['tradeable'] and s.get('rr_ratio', 0) >= 0.25]
+    if cs_ok:
+        seen = {}
+        filtered = []
+        for s in sorted(cs_ok, key=lambda x: x['rr_ratio'], reverse=True):
+            key = f"{s['variety']}_{s['contract']}"
+            if key not in seen:
+                seen[key] = s
+                s['_event_warning'] = s['variety'] in event_vcodes
+                filtered.append(s)
+        limit = args.show if args.show > 0 else len(filtered)
+        for i, s in enumerate(filtered[:limit], 1):
+            warn = " ⚠️有事件" if s.get('_event_warning') else ""
+            tier_icon = "🟢" if s.get('tier') == 'green' else "🟡"
+            opt_type = "C" if s['sell_strike'] < s['buy_strike'] else "P"
+            print(f"    [{i}] {tier_icon} {s['name']} {s['contract']} "
+                  f"卖{opt_type}{s['sell_strike']}/{s['buy_strike']}  "
+                  f"净收 ¥{s['net_premium']}  盈亏比 1:{s['rr_ratio']}  OTM {s.get('otm_pct','?')}%{warn}")
+            tp = round(s['max_profit'] * 0.5, 0)
+            print(f"        止盈 ¥{tp:.0f}/手  止损预警: {opt_type}{s['buy_strike']}")
+    else:
+        iv_note_parts = []
+        for vcode in target:
+            if vcode in iv_data:
+                iv = iv_data[vcode]
+                if isinstance(iv, dict) and iv.get("iv_level"):
+                    iv_note_parts.append(f"{VARIETIES[vcode]['name']} IV {iv.get('iv_level','?')}")
+        if iv_note_parts:
+            print(f"    今日无卖方机会。{'; '.join(iv_note_parts[:4])}")
+        else:
+            print(f"    今日无卖方机会。")
 
-    generate_conclusion(otm_results, cs_results, events, iv_data, args.capital)
+    # ── [PAPER] 买方 ──
+    print(f"\n  🟡 [PAPER] 买方组合（价差/跨式/宽跨式）— 纸面跟踪")
+    all_buyer = []
+    for vcode, (signals, _) in buyer_results.items():
+        all_buyer.extend(signals)
+    buyer_ok = [s for s in all_buyer if s['tradeable']]
+    spreads_ok = [s for s in buyer_ok if 'spread' in str(s.get('strategy',''))]
+    straddles_ok = [s for s in buyer_ok if 'straddle' in str(s.get('strategy','')) or 'strangle' in str(s.get('strategy',''))]
+
+    # ── 买方价差（2腿·有保护）──
+    if spreads_ok:
+        print(f"\n  🟡 [PAPER] 买方价差（2腿·封顶亏损）— 纸面跟踪")
+        seen = {}
+        for s in sorted(spreads_ok, key=lambda x: (x.get('color')=='green', x.get('profit_ratio',0)), reverse=True):
+            key = f"{s['variety']}_{s['contract']}_{s.get('strategy','')}"
+            if key not in seen:
+                seen[key] = s
+        for s in list(seen.values())[:args.show or 5]:
+            color = "🟢" if s.get('color')=='green' else "🟡"
+            opt_t = "C" if 'call' in str(s.get('strategy','')).lower() else "P"
+            ev_str = f"D-{s.get('event_days','?')}" if s.get('event_days') else ""
+            print(f"    {color} {s['name']} 买{opt_t}价差  成本≈¥{s.get('net_debit','?')}  "
+                  f"盈亏比 1:{s.get('profit_ratio','?')}  IV≈P{s.get('iv_percentile','?')}  {ev_str}")
+        print(f"    ⚠️ 共 {len(spreads_ok)} 个。不执行，仅纸面。")
+    else:
+        print(f"\n  🟡 [PAPER] 买方价差（2腿·封顶亏损）— 今日无")
+
+    # ── 买方跨式/宽跨式（2腿·赌波动）──
+    if straddles_ok:
+        print(f"\n  🟡 [PAPER] 买方跨式/宽跨式（2腿·赌波动）— 纸面跟踪")
+        for s in straddles_ok[:args.show or 3]:
+            color = "🟢" if s.get('color')=='green' else "🟡"
+            ev_str = f"D-{s.get('event_days','?')}" if s.get('event_days') else ""
+            print(f"    {color} {s['name']} {s.get('strategy','')}  成本≈¥{s.get('net_cost','?')}  "
+                  f"预期波动 ¥{s.get('expected_move','?')}  {ev_str}")
+        print(f"    ⚠️ 共 {len(straddles_ok)} 个。不执行，仅纸面。")
+    else:
+        print(f"\n  🟡 [PAPER] 买方跨式/宽跨式（2腿·赌波动）— 今日无（缺IV<30%+事件）")
+
+    # ── [PAPER] 单腿买方 ──
+    all_sl = []
+    for vcode, signals in single_leg_results.items():
+        all_sl.extend(signals)
+    sl_ok = [s for s in all_sl if s['tradeable']]
+    if sl_ok:
+        events_sl = [s for s in sl_ok if 'event' in str(s.get('strategy',''))]
+        trends_sl = [s for s in sl_ok if 'trend' in str(s.get('strategy',''))]
+        if events_sl:
+            print(f"\n  🟡 [PAPER] 买单腿·事件触发 — 纸面跟踪")
+            for s in events_sl[:5]:
+                color = "🟢" if s.get('color')=='green' else "🟡"
+                opt_t = "Call" if 'call' in str(s.get('strategy','')) else "Put"
+                print(f"    {color} {s['name']} 买{opt_t} {s.get('strike','?')}  "
+                      f"OTM {s.get('otm_pct','?')}%  权利金≈¥{s.get('cost','?')}  "
+                      f"IV≈P{s.get('iv_percentile','?')}")
+            print(f"    ⚠️ {len(events_sl)} 个事件触发。不执行，仅纸面。")
+        else:
+            print(f"\n  🟡 [PAPER] 买单腿·事件触发 — 今日无（日历无D-2~D-7事件）")
+        if trends_sl:
+            print(f"\n  🟡 [PAPER] 买单腿·趋势触发 — 纸面跟踪")
+            for s in trends_sl[:5]:
+                color = "🟢" if s.get('color')=='green' else "🟡"
+                opt_t = "Call" if 'call' in str(s.get('strategy','')) else "Put"
+                print(f"    {color} {s['name']} 买{opt_t} {s.get('strike','?')}  "
+                      f"OTM {s.get('otm_pct','?')}%  权利金≈¥{s.get('cost','?')}  "
+                      f"{s.get('trigger','')}  IV≈P{s.get('iv_percentile','?')}")
+            print(f"    ⚠️ {len(trends_sl)} 个趋势触发单腿信号。不执行，仅纸面。")
+
+    # ── [OBSERVE] 铁秃鹰 + 铁蝴蝶 + 蝶式 + 比率 + 日历 ──
+    print(f"\n  ⚪ [OBSERVE] 高级策略 — 仅计数，S2 解锁")
+    obs_strategies = {
+        "iron_condor": "铁秃鹰", "iron_butterfly": "铁蝴蝶",
+        "butterfly": "蝶式", "ratio_spread": "比率价差", "calendar": "日历价差"}
+    obs_total = 0
+    obs_lines = []
+    for key, label in obs_strategies.items():
+        total = sum(r.get(key, 0) for r in observe_results)
+        obs_total += total
+        if total > 0:
+            names = [r["name"] for r in observe_results if r.get(key, 0) > 0]
+            obs_lines.append(f"    {label}：{total} 个（{', '.join(names)}）")
+    if obs_lines:
+        for line in obs_lines:
+            print(line)
+        print(f"    → 共 {obs_total} 个机会。仅计数，不做。后台 CSV 在积累。")
+    else:
+        print(f"    今日无 OBSERVE 信号。数据积累中。")
+
+    # ── [IGNORE] S1 不扫，仅提示策略存在 ──
+    print(f"\n  🔘 [IGNORE] 未扫描（需额外数据或S2+解锁）")
+    print(f"    合成期货 · 备兑Call · 品种间价差 · 对角价差 · 跨市场套利 · 期货对冲")
+
+    # ── 汇总行 ──
+    print(f"\n  {'─'*70}")
+    exec_n = len(cs_ok)
+    paper_n = len(buyer_ok) + len(sl_ok)
+    print(f"  📊 {exec_n} 可执行 + {paper_n} 纸面 + {obs_total} 观察 + 6 未扫描")
+    if exec_n == 0:
+        msg = "卖方没机会=正常。"
+        if paper_n > 0:
+            msg += "买方/单腿窗口已标出。"
+        msg += "系统在运转，等数据到位。"
+        print(f"  💡 {msg}")
+    print(f"  {'═'*70}\n")
+
 
 
 if __name__ == '__main__':
