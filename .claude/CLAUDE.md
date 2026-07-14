@@ -43,6 +43,7 @@ Ti 分析的对象从"可能性"改成"已经发生的结果"。不是不思考�
 ## 每日规则
 - 说"签到"→ 我查 `docs/weekly-rhythm.md`（当天该做什么 + 当前模式）+ 从 memory 拎纪律计数器和门进度，出任务单。**任务单最上面先摆 `X/20` 零 override 计数器**
 - 说"收尾"→ 逐个过并更新（有变动才改）：memory + conversation-log + CLAUDE.md + MASTER_PLAN + journal + mistakes + glossary + 确认 commit/push
+- **conversation-log 更新规则**：用 `cat >>` 追加到 `docs/conversation-log.md` 末尾，**不读文件以省 token**。记录对话要点（决策、认知突破、系统变更），不含具体代码。日期+标题+详细叙述
 - 说"讨论"→ 自由聊
 - 先执行当天计划，再讨论其他。有想法记日志里，不打断执行
 - 日志"今日学到"用户自己写，我负责填机械部分（成交价/bid/ask/训练分数）。用户笔记不删不改，要改先问
