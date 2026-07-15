@@ -1337,6 +1337,7 @@ def main():
             msg += "买方/单腿窗口已标出。"
         msg += "系统在运转，等数据到位。"
         print(f"  💡 {msg}")
+        print(f"  📋 无信号日 → 执行操作规程：monitoring-rules.md「无信号日操作规程」")
     print(f"  {'═'*70}\n")
 
 
