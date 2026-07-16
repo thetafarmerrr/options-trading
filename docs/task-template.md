@@ -23,6 +23,7 @@
 
 | # | 做什么 | 具体操作 |
 |---|--------|---------|
+| ☀️ | **英语·四步**（盘前 8:00）| ①视频：打开 Mike 播放列表https://youtube.com/playlist?list=PLPVve34yolHY43YaBegHMzN9WjrTnQfFr 从上次停的地方继续 1 集。看画面+字幕抓大意→张嘴跟读不停。不重播不查词。②挖矿：抓 3 个整句，追加到 `glossary.md` 底部 `## 句型库`。格式：`- 整句  （来源）`。③炸弹：张嘴 90 秒说刚看的内容——不停、不改、不查词。录音→语音转文字→瞥一眼差异。④笔译：把昨天的市场结论翻译成英文 2-3 句（当天 Scanner 还没跑，用昨天的） |
 | 1 | **Scanner** | `cd ~/Documents/AIcode/gold_option_tools && python3 tools/unified_scanner.py`。看输出 [EXEC] 部分：有信号→复制出来，进六步进场（monitoring-rules.md 第三节）；无信号→输出末尾会提示操作规程，记下干旱天数 |
 | 1b | **纸面挑信号** | Scanner 输出的 PAPER 区（买方价差/跨式/单腿），挑 1-2 个记到 `docs/paper-tracker.md`。**判据三条**：① IV 分位低（P30↓ 买方便宜）② 盈亏比≥5:1 ③ 近期事件/趋势配合。按星级（⭐~⭐⭐⭐）记一行。不挑也行——写"今日纸面无亮点"。15 秒。周六复盘回看 |
 | 2 | **IV 采集** | `python3 tools/iv_collector.py`。看每个品种五条打分：≥3 条有利=可做卖方；≥3 条不利=今天不交易。看买方视角：哪些品种 IV 分位 <30%→买方黄金窗口 |
@@ -31,12 +32,8 @@
 | 3c | **D-Drill** | `python3 tools/d_drill.py`。17题，答「做/不做」+一句原因。原因写规则内容不是编号（写"下跌趋势不卖Put"不写"禁止8"） |
 | 4 | **Sinclair** | 带一个今天 Scanner 碰到的问题找教练。教练把问题压缩成一句话 → 你翻书定位到那一页 → 读到答案发回来 → 教练接上今天的信号拆解。**不从头读、不读 60 分钟**——每次只读能回答当前问题的那一段。读完在 journal 写：读到的概念 + 今天哪个信号验证了它 |
 | 4b | **Douglas** | 打开《Trading in the Zone》读 1 段（不要多）。读完写一句话：「今天交易/决策里有没有这个心理？」。有就写，没有就写"今日无关" |
-| 5a | **英语·视频** | 打开 Mike 播放列表https://youtube.com/playlist?list=PLPVve34yolHY43YaBegHMzN9WjrTnQfFr 从上次停的地方继续 1 集。①看画面+字幕抓大意→②张嘴跟读不停。不重播不查词 |
-| 5b | **英语·挖矿** | 从刚看的视频抓 3 个整句，追加到 `glossary.md` 底部 `## 句型库` 区块。格式：`- 整句  （来源）`。按场景分组，已有场景用现成的，没有就新建 |
-| 5c | **英语·炸弹** | 张嘴 90 秒说刚看的内容——不停、不改、不查词。录音→语音转文字→看一眼和原文的差异，不修改 |
-| 5d | **英语·笔译** | 把今天 Scanner 的结论翻译成英文，2-3 句。例：No EXEC signals today. IV remains below P30 across all five products. Wait. |
-| 6 | **影响力** | 今天 Scanner/IV/训练/D-Drill 里有什么值得截个图配一句话的？有→记在 journal 草稿区标日期，周末发。没有→过。例：PTA IV 分位 86% 但 IV<HV，假信号——来源：iv_collector + 五条卡分析 |
-| 7 | **收尾** | ① `python3 tools/daily_quiz.py` 3 题验收→② journal 底部写两行：**今天我有没有主动放弃的收益机会？（包括没去争取的）怕麻烦/回避少赚了吗？**→③ 训练分数、Scanner结论写进 `journal/YYYY-MM-DD.md`→④ `git add -A && git commit -m "YYYY-MM-DD" && git push` |
+| 5 | **影响力** | 今天 Scanner/IV/训练/D-Drill 里有什么值得截个图配一句话的？有→记在 journal 草稿区标日期，周末发。没有→过。例：PTA IV 分位 86% 但 IV<HV，假信号——来源：iv_collector + 五条卡分析 |
+| 6 | **收尾** | ① `python3 tools/daily_quiz.py` 3 题验收→② journal 底部写两行：**今天我有没有主动放弃的收益机会？（包括没去争取的）怕麻烦/回避少赚了吗？**→③ 训练分数、Scanner结论写进 `journal/YYYY-MM-DD.md`→④ `git add -A && git commit -m "YYYY-MM-DD" && git push` |
 
 > 特殊行——干旱 ≥3 天时插入：
 | * | **无信号日操作** | 打开 `trade_log.md`，随机抽一笔历史交易，重读进场离场逻辑。问自己：现在回头看当时该做吗？写一行答案进 journal。或打开 `docs/tail-events.md` 随机选一个事件，用今天的 IV 数据推演如果今天发生会怎样 |
