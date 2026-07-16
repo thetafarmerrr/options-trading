@@ -143,6 +143,7 @@ Sinclair 回到 30 min 底线
 - [ ] **内容产出**：
   - [ ] 从本周碎片草稿挑 2-3 条发 Twitter（5 min/条）
   - [ ] Reddit 回帖 1 条（3-5 句英文）
+- [ ] **纸面信号回看**：本周每天挑的纸面信号，翻一遍 → 哪些真走了、哪些没动、为什么？挑的时候的判据准不准？写 3 行结论进当周 journal
 - [ ] 四道门进度更新（memory/quant-plan-state.md）
 - [ ] **content-backlog 检查**（`content-backlog.md`）：本周有新选题吗？旧选题有过期的吗？挑 1 个最高分的标为"下月发"
 - [ ] weekly-rhythm.md 是否过期（Sinclair 进度/模式切换）
