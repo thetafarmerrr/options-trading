@@ -222,3 +222,51 @@
 > 每天扫描器输出里出现的英文词，这张表都有。碰到了回来看一眼，三天就记住了。
 >
 > **Mike 系列看视频时**：碰到表里没有的术语或短语，签到时说一声，随时追加。
+
+---
+
+## 句型库
+
+So any contracts that are just out there open, they haven't been assigned, they haven't been exercised, they haven't been closed. So how I like to think of it is basically open contracts that are out there that I can become a part of in some way. So volume is essentially tracking the number of contracts that were closed or traded that day。
+
+1. 无伤大雅的口语松散点（日常聊天完全能用）
+just out there open
+纯口语，书面应改为 outstanding open（金融标准术语：未平仓）；out there 属于口头填充词，正式文本要删掉。
+they haven't been assigned, they haven't been exercised, they haven't been closed
+重复主语 they，口语没问题；书面可合并精简。
+how I like to think of it is basically open contracts
+轻微句式杂糅：主干是 What I think of it is...，原句省略引导词 What，口语允许，正式写作需要补全。
+that I can become a part of in some way
+语义模糊：读者看不出 “参与开仓做多 / 做空”，属于口语省略细节。
+2. 一处轻微语法瑕疵（书面会扣分）
+how I like to think of it is basically open contracts
+主语从句缺失先行引导词，规范书面必须改为：
+What I like to think of them as is basically outstanding open contracts
+原句 how 使用错误：how 表 “方式”，此处想表达 “我对它们的理解是…”，要用 what。
+3. 专业术语小不规范（交易语境）
+描述未平仓合约行业标准词：outstanding contracts / open interest contracts，不用 open contracts that are out there
+volume 定义句语法无错，金融表述准确：成交量 = 当日成交平仓 / 换手合约数，这句是整段最标准、无问题的一句。
+
+
+So again, open interest is the number of contracts open or outstanding.
+
+In any case, as long as this transaction happens and this contract opens between these
+two people, open interest will increase by one. So, this is important because when peo
+ple are opening contracts and closing contracts,open interest can actually go up and go
+down. And in some cases, it can even stay flat,which we'll get into a little bit later.
+
+ on the next slide here, we'll talk about volume. And volume is essentially the number
+of contracts traded per day. So essentially, if Brad sells two puts to Sarah or if Sara
+h buys two puts from Brad, then there's going to be two ticks for volume going into tha
+t volume container. So what's interesting with volume is that volume can really only go
+ up. Unlike open interest where it can go up, go down, or stay the same, since volume i
+s really only tracking the number of sheer transactions that are completed, it can only
+ go up. So even if a contract is open and closed, it's still going to count as volume f
+or each of those transactions.
+
+### 解释概念
+- Open interest is the number of contracts open or outstanding.  （Mike E08）
+- Volume is the number of contracts traded per day.  （Mike E08）
+- Unlike open interest, volume can only go up — it tracks sheer transactions.  （Mike E08）
+- Unlike open interest where it can go up, go down, or stay the same, volume can only go up — it's only tracking the number of sheer transactions.  （Mike E08, Volume vs OI）
+

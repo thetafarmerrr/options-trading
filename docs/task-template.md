@@ -24,6 +24,7 @@
 | # | 做什么 | 具体操作 |
 |---|--------|---------|
 | 1 | **Scanner** | `cd ~/Documents/AIcode/gold_option_tools && python3 tools/unified_scanner.py`。看输出 [EXEC] 部分：有信号→复制出来，进六步进场（monitoring-rules.md 第三节）；无信号→输出末尾会提示操作规程，记下干旱天数 |
+| 1b | **纸面挑信号** | Scanner 输出的 PAPER 区（买方价差/跨式/单腿），挑 1-2 个记到 `docs/paper-tracker.md`。**判据三条**：① IV 分位低（P30↓ 买方便宜）② 盈亏比≥5:1 ③ 近期事件/趋势配合。按星级（⭐~⭐⭐⭐）记一行。不挑也行——写"今日纸面无亮点"。15 秒。周六复盘回看 |
 | 2 | **IV 采集** | `python3 tools/iv_collector.py`。看每个品种五条打分：≥3 条有利=可做卖方；≥3 条不利=今天不交易。看买方视角：哪些品种 IV 分位 <30%→买方黄金窗口 |
 | 3 | **Drill B** | `python3 tools/drill_system.py B`。每天必做。报正确率和速度 |
 | 3b | **Drill 轮转** | `python3 tools/drill_system.py <今日模块>`。周三=H(买方方向)，周四=A(链面)，周五=F(持仓管理)，周六=D(Greek)，周日=D，周一=A，周二=C(天气→策略)。报分数 |

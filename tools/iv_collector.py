@@ -543,6 +543,21 @@ def main():
                       f"P bid/ask={result['put_bid']}/{result['put_ask']} "
                       f"价差={result['spread_pct']}% "
                       f"IV≈{iv_str}{iv_dir} HV₂₀={hv20_str} HV₆₀={hv60_str} {hv_gap}")
+                # IV-HV 分层标签
+                if result['iv_est'] and result['hv_20d'] and result['hv_20d'] > 0:
+                    sp = result['iv_est'] - result['hv_20d']
+                    if sp >= 0.05:
+                        tier_lbl = "≥5% · 重仓窗口"
+                    elif sp >= 0.03:
+                        tier_lbl = "3-5% · 正常卖方"
+                    elif sp >= 0.01:
+                        tier_lbl = "1-3% · 减半/仅价差"
+                    elif sp >= 0:
+                        tier_lbl = "<1% · 不执行"
+                    else:
+                        tier_lbl = "折价 · 不执行"
+                    print(f"         {' ' * (len(result['name']) + len(result['contract']) - 1)}"
+                          f"IV-HV {sp*100:+.1f}% → {tier_lbl}")
             else:
                 print(f"  ❌ {vinfo['name']}: 无有效 ATM 数据")
         except Exception as e:

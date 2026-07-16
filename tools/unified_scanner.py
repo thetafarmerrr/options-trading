@@ -74,6 +74,50 @@ def _safe(v):
     return v if not pd.isna(v) else 0
 
 
+def load_latest_iv_hv():
+    """读 iv_history.csv 返回 {contract: {iv_est, hv_20d, hv_60d}} 最新一条"""
+    import csv as _csv
+    hist = {}
+    csv_path = os.path.join(SCRIPT_DIR, "..", "data", "iv_history.csv")
+    if not os.path.exists(csv_path):
+        return hist
+    with open(csv_path, "r", encoding="utf-8") as f:
+        for row in _csv.DictReader(f):
+            c = row.get("contract", "")
+            if not c:
+                continue
+            try:
+                hv20 = float(row.get("hv_20d", 0) or 0)
+                hv60 = float(row.get("hv_60d", 0) or 0)
+                iv = float(row.get("iv_est", 0) or 0)
+                hist[c] = {"iv_est": iv, "hv_20d": hv20, "hv_60d": hv60, "date": row.get("date", ""), "time": row.get("time", "")}
+            except (ValueError, TypeError):
+                pass
+    return hist
+
+
+def iv_hv_tier(iv_est, hv_20d):
+    """返回 (spread_float, tier_str, action_str)。iv_est/hv_20d 可能是 None。"""
+    NO_DATA = (None, "⚠️无HV数据", "")
+    if iv_est is None or hv_20d is None or hv_20d == 0:
+        return NO_DATA
+    try:
+        spread = float(iv_est) - float(hv_20d)
+    except (TypeError, ValueError):
+        return NO_DATA
+    pct = spread * 100  # → 百分点
+    if spread >= 0.05:
+        return spread, f"≥5%", "重仓/裸卖"
+    elif spread >= 0.03:
+        return spread, f"3-5%", "正常仓位"
+    elif spread >= 0.01:
+        return spread, f"1-3%", "减半仓位"
+    elif spread >= 0:
+        return spread, f"<1%", "不执行"
+    else:
+        return spread, f"<0% · 折价", "不执行"
+
+
 def _spread(bid, ask):
     if bid and ask and bid > 0:
         return round((ask - bid) / bid * 100, 1)
@@ -1203,6 +1247,7 @@ def main():
     for vcode, (signals, _) in cs_results.items():
         all_cs.extend(signals)
     cs_ok = [s for s in all_cs if s['tradeable'] and s.get('rr_ratio', 0) >= 0.25]
+    iv_hv = load_latest_iv_hv()  # 读最新 IV-HV 数据，给每个信号打分
     if cs_ok:
         seen = {}
         filtered = []
@@ -1211,15 +1256,26 @@ def main():
             if key not in seen:
                 seen[key] = s
                 s['_event_warning'] = s['variety'] in event_vcodes
+                # 查 IV-HV 分层
+                hv_info = iv_hv.get(s['contract'])
+                if hv_info:
+                    s['_iv_hv_spread'], s['_iv_hv_tier'], s['_iv_hv_action'] = iv_hv_tier(
+                        hv_info['iv_est'], hv_info['hv_20d'])
+                else:
+                    s['_iv_hv_spread'], s['_iv_hv_tier'], s['_iv_hv_action'] = None, "⚠️无HV数据", ""
                 filtered.append(s)
         limit = args.show if args.show > 0 else len(filtered)
         for i, s in enumerate(filtered[:limit], 1):
             warn = " ⚠️有事件" if s.get('_event_warning') else ""
             tier_icon = "🟢" if s.get('tier') == 'green' else "🟡"
             opt_type = "C" if s['sell_strike'] < s['buy_strike'] else "P"
+            # IV-HV 分层标签
+            spread_str = f"IV-HV {s['_iv_hv_spread']*100:+.1f}% " if s['_iv_hv_spread'] is not None else ""
+            tier_str = f"[{spread_str}| {s['_iv_hv_tier']} · {s['_iv_hv_action']}]" if s['_iv_hv_action'] else f"[{s['_iv_hv_tier']}]"
             print(f"    [{i}] {tier_icon} {s['name']} {s['contract']} "
                   f"卖{opt_type}{s['sell_strike']}/{s['buy_strike']}  "
-                  f"净收 ¥{s['net_premium']}  盈亏比 1:{s['rr_ratio']}  OTM {s.get('otm_pct','?')}%{warn}")
+                  f"净收 ¥{s['net_premium']}  盈亏比 {s['rr_ratio']}:1  OTM {s.get('otm_pct','?')}%{warn}")
+            print(f"        {tier_str}")
             tp = round(s['max_profit'] * 0.5, 0)
             print(f"        止盈 ¥{tp:.0f}/手  止损预警: {opt_type}{s['buy_strike']}")
     else:
