@@ -36,7 +36,7 @@
 | 5c | **英语·炸弹** | 张嘴 90 秒说刚看的内容——不停、不改、不查词。录音→语音转文字→看一眼和原文的差异，不修改 |
 | 5d | **英语·笔译** | 把今天 Scanner 的结论翻译成英文，2-3 句。例：No EXEC signals today. IV remains below P30 across all five products. Wait. |
 | 6 | **影响力** | 今天 Scanner/IV/训练/D-Drill 里有什么值得截个图配一句话的？有→记在 journal 草稿区标日期，周末发。没有→过。例：PTA IV 分位 86% 但 IV<HV，假信号——来源：iv_collector + 五条卡分析 |
-| 7 | **收尾** | ① `python3 tools/daily_quiz.py` 3 题验收→② 把今天训练分数、Scanner结论、学到的东西写进 `journal/YYYY-MM-DD.md`→③ `git add -A && git commit -m "YYYY-MM-DD" && git push` |
+| 7 | **收尾** | ① `python3 tools/daily_quiz.py` 3 题验收→② journal 底部写两行：**今天我有没有主动放弃的收益机会？（包括没去争取的）怕麻烦/回避少赚了吗？**→③ 训练分数、Scanner结论写进 `journal/YYYY-MM-DD.md`→④ `git add -A && git commit -m "YYYY-MM-DD" && git push` |
 
 > 特殊行——干旱 ≥3 天时插入：
 | * | **无信号日操作** | 打开 `trade_log.md`，随机抽一笔历史交易，重读进场离场逻辑。问自己：现在回头看当时该做吗？写一行答案进 journal。或打开 `docs/tail-events.md` 随机选一个事件，用今天的 IV 数据推演如果今天发生会怎样 |
