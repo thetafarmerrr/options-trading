@@ -270,3 +270,13 @@ or each of those transactions.
 - Unlike open interest, volume can only go up — it tracks sheer transactions.  （Mike E08）
 - Unlike open interest where it can go up, go down, or stay the same, volume can only go up — it's only tracking the number of sheer transactions.  （Mike E08, Volume vs OI）
 
+
+### 给判据 / 下标准
+- I want to make sure that either open interest or volume has over a thousand contracts open or a thousand contracts traded that day.  （Mike E05 后半段）
+- That's just going to give me a good indication that there's a fair market for that specific strike.  （Mike E05 后半段）
+- The more options that are traded, the more people agree upon the bid and ask spread, which is going to make that spread narrow and give me a more fair market price.  （Mike E05 后半段）
+
+### 自产·笔译修正
+- Today all three short call spread signals got killed: IV is below HV, so I'd be selling insurance at a discount.  （7/17 笔译修正）
+- Even though the environment score was 4/5, I still passed.  （7/17 笔译修正）
+- The IV–HV check outranks the environment check — there's no variance premium to sell.  （7/17 笔译修正）
