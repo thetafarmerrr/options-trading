@@ -1248,9 +1248,9 @@ def main():
         all_cs.extend(signals)
     cs_ok = [s for s in all_cs if s['tradeable'] and s.get('rr_ratio', 0) >= 0.25]
     iv_hv = load_latest_iv_hv()  # 读最新 IV-HV 数据，给每个信号打分
+    filtered = []  # 去重后的真实机会数——汇总行与显示同口径
     if cs_ok:
         seen = {}
-        filtered = []
         for s in sorted(cs_ok, key=lambda x: x['rr_ratio'], reverse=True):
             key = f"{s['variety']}_{s['contract']}"
             if key not in seen:
@@ -1311,7 +1311,9 @@ def main():
             color = "🟢" if s.get('color')=='green' else "🟡"
             opt_t = "C" if 'call' in str(s.get('strategy','')).lower() else "P"
             ev_str = f"D-{s.get('event_days','?')}" if s.get('event_days') else ""
-            print(f"    {color} {s['name']} 买{opt_t}价差  成本≈¥{s.get('net_debit','?')}  "
+            print(f"    {color} {s['name']} {s['contract']} "
+                  f"买{opt_t}{s.get('buy_strike','?')}/卖{opt_t}{s.get('sell_strike','?')}  "
+                  f"成本≈¥{s.get('net_debit','?')}  "
                   f"盈亏比 1:{s.get('profit_ratio','?')}  IV≈P{s.get('iv_percentile','?')}  {ev_str}")
         print(f"    ⚠️ 共 {len(spreads_ok)} 个。不执行，仅纸面。")
     else:
@@ -1323,7 +1325,13 @@ def main():
         for s in straddles_ok[:args.show or 3]:
             color = "🟢" if s.get('color')=='green' else "🟡"
             ev_str = f"D-{s.get('event_days','?')}" if s.get('event_days') else ""
-            print(f"    {color} {s['name']} {s.get('strategy','')}  成本≈¥{s.get('net_cost','?')}  "
+            # strangle 两腿分开，straddle 同一 ATM 行权价
+            if s.get('call_strike') is not None:
+                legs = f"C{s.get('call_strike')}/P{s.get('put_strike')}"
+            else:
+                legs = f"ATM {s.get('strike','?')}"
+            print(f"    {color} {s['name']} {s['contract']} {s.get('strategy','')} {legs}  "
+                  f"成本≈¥{s.get('net_cost','?')}  "
                   f"预期波动 ¥{s.get('expected_move','?')}  {ev_str}")
         print(f"    ⚠️ 共 {len(straddles_ok)} 个。不执行，仅纸面。")
     else:
@@ -1384,7 +1392,7 @@ def main():
 
     # ── 汇总行 ──
     print(f"\n  {'─'*70}")
-    exec_n = len(cs_ok)
+    exec_n = len(filtered)
     paper_n = len(buyer_ok) + len(sl_ok)
     print(f"  📊 {exec_n} 可执行 + {paper_n} 纸面 + {obs_total} 观察 + 6 未扫描")
     if exec_n == 0:
