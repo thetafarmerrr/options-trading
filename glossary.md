@@ -251,18 +251,14 @@ volume 定义句语法无错，金融表述准确：成交量 = 当日成交平�
 So again, open interest is the number of contracts open or outstanding.
 
 In any case, as long as this transaction happens and this contract opens between these
-two people, open interest will increase by one. So, this is important because when peo
-ple are opening contracts and closing contracts,open interest can actually go up and go
+two people, open interest will increase by one. So, this is important because when people are opening contracts and closing contracts,open interest can actually go up and go
 down. And in some cases, it can even stay flat,which we'll get into a little bit later.
 
- on the next slide here, we'll talk about volume. And volume is essentially the number
-of contracts traded per day. So essentially, if Brad sells two puts to Sarah or if Sara
-h buys two puts from Brad, then there's going to be two ticks for volume going into tha
-t volume container. So what's interesting with volume is that volume can really only go
- up. Unlike open interest where it can go up, go down, or stay the same, since volume i
-s really only tracking the number of sheer transactions that are completed, it can only
- go up. So even if a contract is open and closed, it's still going to count as volume f
-or each of those transactions.
+on the next slide here, we'll talk about volume. And volume is essentially the number of contracts traded per day. So essentially, if Brad sells two puts to Sarah or if Sarah buys two puts from Brad, then there's going to be two ticks for volume going into that volume container. So what's interesting with volume is that volume can really only go up. Unlike open interest where it can go up, go down, or stay the same, since volume is really only tracking the number of sheer transactions that are completed, it can only
+go up. So even if a contract is open and closed, it's still going to count as volume for each of those transactions.
+
+when we look at hedging, we're basically looking at minimizing risk. So when we're looking at minimizing risk, when we're talking about long stock, I've got this full circle here and it's signifying directional risk. So if I'm just buying long stock and I'm fully exposed with long stock, I'm also fully exposed to that directional risk. However, if I use a covered call instead, which is buying stock and selling a call against it, which havet differing assumptions in terms of direction, what I do is I take a chunk of that directional risk out of the equation and it reduces that directional risk for me. So, this is great for a few reasons and we're going to talk about
+
 
 ### 解释概念
 - Open interest is the number of contracts open or outstanding.  （Mike E08）

@@ -1193,16 +1193,19 @@ def main():
     # 持续性地缘事件（始终显示，无倒计时）
     ongoing = [e for e in events if e.get('days_until') == -1]
     for ev in ongoing:
-        print(f"  │ 🔥🔄 {ev['title']}  [{', '.join(ev['variety_names'])}]")
+        tag = "[例行]" if ev.get('routine', True) else "[⚠非例行]"
+        print(f"  │ 🔥🔄 {tag} {ev['title']}  [{', '.join(ev['variety_names'])}]")
         if ev.get('description'):
             print(f"  │    {ev['description'][:80]}")
     # 固定日期事件
     high_events = [e for e in events if e['impact'] == 'high' and e.get('days_until', -1) >= 0]
     for ev in high_events[:5]:
-        print(f"  │ D-{ev['days_until']:<3} 🔥 {ev['title']}  [{', '.join(ev['variety_names'])}]")
+        tag = "[例行]" if ev.get('routine', True) else "[⚠非例行]"
+        print(f"  │ D-{ev['days_until']:<3} 🔥 {tag} {ev['title']}  [{', '.join(ev['variety_names'])}]")
     medium_in_window = [e for e in events if e['impact'] == 'medium' and 0 <= e.get('days_until', -1) <= 5]
     for ev in medium_in_window[:3]:
-        print(f"  │ D-{ev['days_until']:<3} ⚡ {ev['title']}  [{', '.join(ev['variety_names'])}]")
+        tag = "[例行]" if ev.get('routine', True) else "[⚠非例行]"
+        print(f"  │ D-{ev['days_until']:<3} ⚡ {tag} {ev['title']}  [{', '.join(ev['variety_names'])}]")
     if not ongoing and not high_events and not medium_in_window:
         print(f"  │ 无近期高影响事件")
     total = len(ongoing) + len(high_events) + len(medium_in_window)
@@ -1314,7 +1317,7 @@ def main():
             print(f"    {color} {s['name']} {s['contract']} "
                   f"买{opt_t}{s.get('buy_strike','?')}/卖{opt_t}{s.get('sell_strike','?')}  "
                   f"成本≈¥{s.get('net_debit','?')}  "
-                  f"盈亏比 1:{s.get('profit_ratio','?')}  IV≈P{s.get('iv_percentile','?')}  {ev_str}")
+                  f"盈亏比 {s.get('profit_ratio','?')}:1  IV≈P{s.get('iv_percentile','?')}  {ev_str}")
         print(f"    ⚠️ 共 {len(spreads_ok)} 个。不执行，仅纸面。")
     else:
         print(f"\n  🟡 [PAPER] 买方价差（2腿·封顶亏损）— 今日无")

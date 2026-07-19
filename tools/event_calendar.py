@@ -48,6 +48,7 @@ class CalendarEvent:
     description: str       # 一句话说明
     expected_move_pct: float  # 历史平均波动幅度(%)
     best_strategy: str     # "straddle" | "directional" | "ratio"
+    routine: bool = True   # True=例行(已消化) False=非例行(意外·不可预知)
 
 # ═══════════════════════════════════════════
 # 持续性地缘事件（无固定日期，始终有效）
@@ -260,6 +261,7 @@ def get_upcoming_events(from_date: Optional[date] = None, days: int = 7,
                 "variety_names": [VARIETIES[v]["name"] for v in ev.varieties if v in VARIETIES],
                 "impact": ev.impact,
                 "category": ev.category,
+                "routine": getattr(ev, 'routine', True),
                 "description": ev.description,
                 "expected_move_pct": ev.expected_move_pct,
                 "best_strategy": ev.best_strategy,
