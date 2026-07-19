@@ -259,6 +259,13 @@ go up. So even if a contract is open and closed, it's still going to count as vo
 
 when we look at hedging, we're basically looking at minimizing risk. So when we're looking at minimizing risk, when we're talking about long stock, I've got this full circle here and it's signifying directional risk. So if I'm just buying long stock and I'm fully exposed with long stock, I'm also fully exposed to that directional risk. However, if I use a covered call instead, which is buying stock and selling a call against it, which havet differing assumptions in terms of direction, what I do is I take a chunk of that directional risk out of the equation and it reduces that directional risk for me. So, this is great for a few reasons and we're going to talk about
 
+### 表达"降低/消除某个因素"
+- I take a chunk of that directional risk out of the equation.  （Mike E06, covered call 讲解）
+- It reduces that directional risk for me.  （Mike E06）
+
+### 表达"完全暴露于某风险"
+- I'm fully exposed to that directional risk.  （Mike E06, 讲裸持股票）
+
 
 ### 解释概念
 - Open interest is the number of contracts open or outstanding.  （Mike E08）
@@ -276,3 +283,11 @@ when we look at hedging, we're basically looking at minimizing risk. So when we'
 - Today all three short call spread signals got killed: IV is below HV, so I'd be selling insurance at a discount.  （7/17 笔译修正）
 - Even though the environment score was 4/5, I still passed.  （7/17 笔译修正）
 - The IV–HV check outranks the environment check — there's no variance premium to sell.  （7/17 笔译修正）
+- The sell call on MA609 was killed because IV < HV, so the only EXEC of the day went unexecuted.  （7/19 笔译修正：got killed↗gotten killed, executed↗executed）
+- The buy call spread on SR609 shows a 9.53:1 risk/reward ratio, with IV at the 5th percentile — a textbook buyer's window.  （7/19 笔译修正：P5≠P95, classicific→textbook）
+
+
+## 语言学碎片（周六推送）
+
+### a/an 不是语法规定——是口腔经济学
+两个元音撞在一起舌头打结（"a apple"），塞一个辅音 n 就顺了（"an apple"）。古英语的 ān（=one）末尾有 n，后来丢掉了——但只丢在辅音前面，元音前面留着。所以不是"规则规定元音前用 an"，而是人的嘴淘汰了拗口的版本。中文也有——"天哪"不是"天啊"（前字 n 尾+"啊"→"哪"）。
