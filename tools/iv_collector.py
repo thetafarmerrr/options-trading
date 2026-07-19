@@ -28,6 +28,11 @@ DEFAULT_VARIETIES = {
     "rm": {"symbol": "菜籽粕期权", "name": "菜籽粕"},
     "ta": {"symbol": "PTA期权",   "name": "PTA"},
     "ma": {"symbol": "甲醇期权",  "name": "甲醇"},
+    "au": {"symbol": "沪金期权",  "name": "沪金"},
+    "cf": {"symbol": "棉花期权",  "name": "棉花"},
+    "sr": {"symbol": "白糖期权",  "name": "白糖"},
+    "i":  {"symbol": "铁矿石期权", "name": "铁矿石"},
+    "ru": {"symbol": "橡胶期权",  "name": "橡胶"},
 }
 
 # 中国商品期货年交易日数 ≈ 242
