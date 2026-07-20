@@ -28,7 +28,7 @@ DEFAULT_VARIETIES = {
     "rm": {"symbol": "菜籽粕期权", "name": "菜籽粕"},
     "ta": {"symbol": "PTA期权",   "name": "PTA"},
     "ma": {"symbol": "甲醇期权",  "name": "甲醇"},
-    "au": {"symbol": "沪金期权",  "name": "沪金"},
+    "au": {"symbol": "黄金期权",  "name": "沪金"},
     "cf": {"symbol": "棉花期权",  "name": "棉花"},
     "sr": {"symbol": "白糖期权",  "name": "白糖"},
     "i":  {"symbol": "铁矿石期权", "name": "铁矿石"},
@@ -501,8 +501,8 @@ def _run_premarket_check(target_vcodes):
 
 def main():
     parser = argparse.ArgumentParser(description="每日 IV 数据采集 + 开盘环境定性")
-    parser.add_argument("--variety", type=str, default="m,c,rm,ta,ma",
-                        help="品种代码，逗号分隔。默认 m,c,rm,ta,ma")
+    parser.add_argument("--variety", type=str, default="m,c,rm,ta,ma,au,cf,sr,i,ru",
+                        help="品种代码，逗号分隔。默认全部10品种")
     args = parser.parse_args()
 
     target = [v.strip() for v in args.variety.split(",")]
