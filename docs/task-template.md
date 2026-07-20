@@ -33,6 +33,7 @@
 | 4 | **Sinclair** | 带一个今天 Scanner 碰到的问题找教练。教练把问题压缩成一句话 → 你翻书定位到那一页 → 读到答案发回来 → 教练接上今天的信号拆解。**不从头读、不读 60 分钟**——每次只读能回答当前问题的那一段。读完在 journal 写：读到的概念 + 今天哪个信号验证了它 |
 | 4b | **Douglas** | 打开《Trading in the Zone》读 1 段（不要多）。读完写一句话：「今天交易/决策里有没有这个心理？」。有就写，没有就写"今日无关" |
 | 4c | **翻文档**（4 min） | 只翻不读，不写笔记，2 分钟后关。目的=知道东西在哪，不背。轮换表：**周一** monitoring-rules §零~一(IV-HV+三档) + mistakes 最新 5 条。**周二** glossary 最近 20 条 + monitoring-rules §三~六(进场+离场+禁止)。**周三** monitoring-rules §B(买方三条件+事件映射) + paper-tracker。**周四** mistakes 全部 + glossary 最近 20 条。**周五** monitoring-rules 速查表(§500 卖Put/Call速查) + paper-tracker |
+| 4d | **身体**（20 min） | Sinclair+Douglas 完成后起身。壶铃 S&S（摇摆×100 + 土耳其起立×10），壶铃到货前徒手三样（深蹲×20 + 俯卧撑×10 + 平板 60s）×3 轮。不改动作不改顺序——零选择。下午 journal 写清醒度 1-5 |
 | 5 | **影响力** | 今天 Scanner/IV/训练/D-Drill 里有什么值得截个图配一句话的？有→立刻发，不发就没了。没料→过。格式：1-2 句中文 + 数据点。不攒到周六——每天 ≤1 条，5 分钟搞定。例：甲醇 ATM IV +14% 溢价但 C2850 call wing 被生产商压到折价——卖哪条腿看偏度不是看 ATM |
 | 6 | **收尾** | ① `python3 tools/daily_quiz.py` 3 题验收→② journal 底部写两行：**今天我有没有主动放弃的收益机会？（包括没去争取的）怕麻烦/回避少赚了吗？**→③ 训练分数、Scanner结论写进 `journal/YYYY-MM-DD.md`→④ `git add -A && git commit -m "YYYY-MM-DD" && git push` |
 
