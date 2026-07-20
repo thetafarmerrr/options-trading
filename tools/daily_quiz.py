@@ -109,6 +109,11 @@ QUESTIONS = {
             "a": ["买方"],
             "hint": "IV 极低=期权便宜 + D-5 事件=买方三项全中",
         },
+        {
+            "q": "USDA 作物周报 D-1，白糖买 Call IV P5 盈亏比 9:1。做不做买方？",
+            "a": ["不做", "不做 "],
+            "hint": "①USDA 周报覆盖豆粕/玉米/棉花，不覆盖白糖→假催化剂。②D-1 买方不进。③就算标的对，例行事件已被预期",
+        },
     ],
 }
 
@@ -165,7 +170,7 @@ def run_quiz(topic=None):
 
     results = []
     for i, q in enumerate(questions, 1):
-        print(f"\n  [{i}/3] {q['q']}")
+        print(f"\n  [{i}/{len(questions)}] {q['q']}")
         answer = input(f"  → ").strip()
         is_correct = any(a.lower() in answer.lower() for a in q["a"])
         results.append(is_correct)
@@ -179,7 +184,7 @@ def run_quiz(topic=None):
     save_results(topic, results)
 
     print(f"\n  {'─'*40}")
-    print(f"  结果：{correct}/3 正确")
+    print(f"  结果：{correct}/{len(questions)} 正确")
 
     if correct == 3:
         print(f"  🎉 全对！可以 commit 了。")
