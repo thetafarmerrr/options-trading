@@ -54,9 +54,10 @@ def run():
 
     for i, q in enumerate(use_pool, 1):
         print(f"  [{i}/{total}] {q['s']}")
+        print(f"  ⏸ 反证？", end=" ")
         try:
             t0 = time.time()
-            ans = input("  -> ").strip()
+            ans = input().strip()
             elapsed = time.time() - t0
         except (EOFError, KeyboardInterrupt):
             print("\n  已退出。\n")
