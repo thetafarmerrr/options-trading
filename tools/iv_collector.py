@@ -48,6 +48,22 @@ def _safe(v):
     return v if not pd.isna(v) else 0
 
 
+def _price_trend(vcode):
+    """5 日价格斜率，正=上涨，负=下跌。用于方向限定。"""
+    df = fetch_futures_daily(vcode, 15)
+    if df is None or len(df) < 6:
+        return None, None
+    df = df.sort_values("date").tail(6)
+    closes = df["close"].values.astype(float)
+    pct = (closes[-1] - closes[0]) / closes[0]
+    if pct > 0.005:
+        return "📈单边上涨", "仅卖Put"
+    elif pct < -0.005:
+        return "📉单边下跌", "仅卖Call"
+    else:
+        return None, None  # 震荡不限定
+
+
 def calc_parkinson_hv(vcode, window=PARKINSON_WINDOW):
     """用 Parkinson 估计量计算历史波动率。akshare 日线。"""
     df = fetch_futures_daily(vcode, window + 10)
@@ -458,7 +474,12 @@ def _run_premarket_check(target_vcodes):
             verdict = "❓ 数据不足"
 
         print(f"  {'─'*50}")
-        print(f"  → {verdict}（{total_favorable}/{total_checked}）")
+        # 方向限定
+        trend_icon, limit = _price_trend(vcode)
+        if limit and "开仓" in verdict:
+            print(f"  → {verdict}（{total_favorable}/{total_checked}）· {trend_icon} → {limit}")
+        else:
+            print(f"  → {verdict}（{total_favorable}/{total_checked}）")
 
         scores[vcode] = results
 
