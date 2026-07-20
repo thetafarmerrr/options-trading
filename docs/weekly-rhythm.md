@@ -142,6 +142,7 @@ Sinclair 回到 30 min 底线
 - [ ] **内容产出**：
   - [ ] 本周 Twitter 发了几天？连发天数=正向指标（目标 5/5 交易日≥3 条）
   - [ ] Reddit 回帖 1 条（3-5 句英文）
+- [ ] **文档全扫**：monitoring-rules + glossary + mistakes + paper-tracker 全过一遍（8 min）。查：本周漏了什么？哪篇需要更新？
 - [ ] **纸面信号回看**：本周每天挑的纸面信号，翻一遍 → 哪些真走了、哪些没动、为什么？挑的时候的判据准不准？写 3 行结论进当周 journal
 - [ ] 四道门进度更新（memory/quant-plan-state.md）
 - [ ] **content-backlog 检查**（`content-backlog.md`）：本周有新选题吗？旧选题有过期的吗？挑 1 个最高分的标为"下月发"
