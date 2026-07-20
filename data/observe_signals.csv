@@ -1,0 +1,8 @@
+date,variety,name,strategy,count,note
+2026-07-14,ta,PTA,iron_condor,1,仅计数
+2026-07-14,ma,甲醇,iron_condor,1,仅计数
+2026-07-14,ma,甲醇,calendar,1,期限结构数据0天
+2026-07-14,ta,PTA,calendar,1,期限结构倾斜
+2026-07-14,ma,甲醇,calendar,1,期限结构倾斜
+2026-07-14,ta,PTA,calendar,1,期限结构倾斜
+2026-07-14,ma,甲醇,calendar,1,期限结构倾斜
