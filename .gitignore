@@ -1,0 +1,9 @@
+__pycache__/
+*.pyc
+.DS_Store
+data/*.csv
+data/*.json
+drill_state/
+mistakes.md
+docs/conversation-log.md
+tools/fragment_credentials.json
