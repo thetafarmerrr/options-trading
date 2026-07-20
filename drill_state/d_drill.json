@@ -1,0 +1,69 @@
+{
+  "sessions": [
+    {
+      "date": "2026-07-16",
+      "pool": "B",
+      "correct": 7,
+      "total": 17,
+      "accuracy": 41.2
+    },
+    {
+      "date": "2026-07-16",
+      "pool": "B",
+      "correct": 15,
+      "total": 17,
+      "accuracy": 88.2
+    },
+    {
+      "date": "2026-07-16",
+      "pool": "B",
+      "correct": 14,
+      "total": 17,
+      "accuracy": 82.4
+    },
+    {
+      "date": "2026-07-16",
+      "pool": "B",
+      "correct": 0,
+      "total": 17,
+      "accuracy": 0.0
+    },
+    {
+      "date": "2026-07-17",
+      "pool": "A",
+      "correct": 16,
+      "total": 17,
+      "accuracy": 94.1
+    },
+    {
+      "date": "2026-07-19",
+      "pool": "A",
+      "correct": 0,
+      "total": 17,
+      "accuracy": 0.0
+    },
+    {
+      "date": "2026-07-19",
+      "pool": "A",
+      "correct": 16,
+      "total": 17,
+      "accuracy": 94.1
+    },
+    {
+      "date": "2026-07-20",
+      "pool": "B",
+      "correct": 20,
+      "total": 21,
+      "accuracy": 95.2
+    },
+    {
+      "date": "2026-07-20",
+      "pool": "B",
+      "correct": 19,
+      "total": 21,
+      "accuracy": 90.5
+    }
+  ],
+  "streak": 0,
+  "best_streak": 0
+}

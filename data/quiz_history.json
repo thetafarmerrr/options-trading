@@ -1,0 +1,62 @@
+[
+  {
+    "date": "2026-07-16T22:42:37.593435",
+    "topic": "greeks",
+    "correct": 3,
+    "total": 3
+  },
+  {
+    "date": "2026-07-17T20:57:48.923139",
+    "topic": "greeks",
+    "correct": 2,
+    "total": 3
+  },
+  {
+    "date": "2026-07-17T20:59:52.315227",
+    "topic": "discipline",
+    "correct": 1,
+    "total": 3
+  },
+  {
+    "date": "2026-07-17T21:01:16.621595",
+    "topic": "discipline",
+    "correct": 3,
+    "total": 3
+  },
+  {
+    "date": "2026-07-20T11:59:34.930965",
+    "topic": "strategy",
+    "correct": 1,
+    "total": 3
+  },
+  {
+    "date": "2026-07-20T12:02:49.958107",
+    "topic": "strategy",
+    "correct": 1,
+    "total": 3
+  },
+  {
+    "date": "2026-07-20T12:18:34.401838",
+    "topic": "events",
+    "correct": 1,
+    "total": 2
+  },
+  {
+    "date": "2026-07-20T12:25:54.484221",
+    "topic": "events",
+    "correct": 2,
+    "total": 3
+  },
+  {
+    "date": "2026-07-20T12:27:25.248377",
+    "topic": "discipline",
+    "correct": 2,
+    "total": 3
+  },
+  {
+    "date": "2026-07-20T12:28:04.072474",
+    "topic": "discipline",
+    "correct": 2,
+    "total": 3
+  }
+]
