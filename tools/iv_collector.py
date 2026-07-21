@@ -465,21 +465,22 @@ def _run_premarket_check(target_vcodes):
 
         if total_checked >= 3:
             if total_favorable >= 3:
-                verdict = "🟢 开仓"
+                verdict = "🟢 卖方窗口开放"
             elif total_favorable <= 1:
-                verdict = "🔴 旁观"
+                verdict = "🔴 卖方窗口关闭"
             else:
-                verdict = "🟡 谨慎"
+                verdict = "🟡 卖方窗口边际"
         else:
             verdict = "❓ 数据不足"
 
+        # 样本不足警告
+        sample_warn = ""
+        if len(vals) < 15:
+            sample_warn = f" ⚠️样本仅{len(vals)}天，结论仅供参考"
+
         print(f"  {'─'*50}")
-        # 方向限定
-        trend_icon, limit = _price_trend(vcode)
-        if limit and "开仓" in verdict:
-            print(f"  → {verdict}（{total_favorable}/{total_checked}）· {trend_icon} → {limit}")
-        else:
-            print(f"  → {verdict}（{total_favorable}/{total_checked}）")
+        print(f"  → {verdict}（{total_favorable}/{total_checked}）{sample_warn}")
+        print(f"  ⚠️ 此为天气报告——环境窗口≠有腿可执行。交易决定以 Scanner EXEC 为准。")
 
         scores[vcode] = results
 
@@ -500,22 +501,27 @@ def _run_premarket_check(target_vcodes):
                 if len(vals) >= MIN_IV_DAYS:
                     current_iv = vals[-1]
                     iv_pct = sum(1 for v in vals if v <= current_iv) / len(vals) * 100
-                    if iv_pct < 30:
-                        buyer_opportunities.append((vcode, name, iv_pct, "🟢 买方黄金窗口"))
+                    if len(vals) < 15:
+                        tag = "⚠️ 样本不足，分位仅供参考"
+                    elif iv_pct < 30:
+                        tag = "🟢 买方窗口开放"
                     elif iv_pct < 50:
-                        buyer_opportunities.append((vcode, name, iv_pct, "🟡 买方可关注"))
+                        tag = "🟡 买方可关注"
                     else:
-                        buyer_opportunities.append((vcode, name, iv_pct, "🔴 买方不利"))
+                        tag = "🔴 买方不利"
+                    buyer_opportunities.append((vcode, name, iv_pct, tag, len(vals)))
 
         if buyer_opportunities:
             print(f"\n  ── 买方视角（IV 低位=期权便宜，买方有利）──")
-            for vcode, name, iv_pct, tag in buyer_opportunities:
-                print(f"  {name:6s}  IV 分位 {iv_pct:.0f}%  {tag}")
+            for item in buyer_opportunities:
+                vcode, name, iv_pct, tag, days = item
+                days_str = f"({days}d)" if days < 15 else ""
+                print(f"  {name:6s}  IV 分位 {iv_pct:.0f}%{days_str}  {tag}")
             active = [b for b in buyer_opportunities if "🟢" in b[3] or "🟡" in b[3]]
             if active:
-                print(f"  → 买方可关注品种：{', '.join(b[1] for b in active)}")
+                print(f"  → 买方窗口品种：{', '.join(b[1] for b in active)}（具体信号见 Scanner PAPER 区）")
             else:
-                print(f"  → 所有品种 IV 偏高，买方无优势。继续卖方或旁观。")
+                print(f"  → 所有品种 IV 偏高，买方无优势。")
 
     print()
 

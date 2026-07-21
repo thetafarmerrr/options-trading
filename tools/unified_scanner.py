@@ -30,7 +30,7 @@ import re
 import math
 import argparse
 import pandas as pd
-from datetime import datetime, date
+from datetime import datetime, date, timedelta
 
 SCRIPT_DIR = os.path.dirname(os.path.abspath(__file__))
 sys.path.insert(0, SCRIPT_DIR)
@@ -99,6 +99,38 @@ def load_latest_iv_hv():
     return hist
 
 
+def load_iv_percentiles():
+    """读 iv_history.csv 全量数据，按品种计算 IV 近似分位。
+    返回 {contract: (percentile, days)} —— percentile 0-100，days 为数据天数。
+    样本 < 5 天的品种返回 (None, days)。"""
+    import csv as _csv
+    from collections import defaultdict
+    raw = defaultdict(list)
+    csv_path = os.path.join(SCRIPT_DIR, "..", "data", "iv_history.csv")
+    if not os.path.exists(csv_path):
+        return {}
+    with open(csv_path, "r", encoding="utf-8") as f:
+        for row in _csv.DictReader(f):
+            c = row.get("contract", "")
+            try:
+                iv = float(row.get("iv_est", 0) or 0)
+            except (ValueError, TypeError):
+                continue
+            if c and iv > 0:
+                raw[c].append(iv)
+    result = {}
+    for c, ivs in raw.items():
+        days = len(ivs)
+        if days < 5:
+            result[c] = (None, days)
+        else:
+            latest = ivs[-1]
+            below = sum(1 for v in ivs if v < latest)
+            pct = round(below / days * 100)
+            result[c] = (pct, days)
+    return result
+
+
 def iv_hv_tier(iv_est, hv_20d):
     """返回 (spread_float, tier_str, action_str)。iv_est/hv_20d 可能是 None。"""
     NO_DATA = (None, "⚠️无HV数据", "")
@@ -119,6 +151,14 @@ def iv_hv_tier(iv_est, hv_20d):
         return spread, f"<1%", "不执行"
     else:
         return spread, f"<0% · 折价", "不执行"
+
+
+def _cl_str(s):
+    """格式化 IV Collector 分位字符串，用于买方信号输出。"""
+    pct = s.get('_cl_pct')
+    if pct is not None:
+        return f" Cl{pct}%({s.get('_cl_days', 0)}d)"
+    return " ClN/A"
 
 
 def _spread(bid, ask):
@@ -375,14 +415,14 @@ def scan_credit_spreads(vcode, variety, contract, df, futures, capital=None):
 def _compute_dte(contract_code):
     """
     从合约代码估算到期天数。
-    合约代码如 'au2608' → 2026年8月。使用合约月1日作为近似到期日。
-    返回 (dte, exp_month_label)
+    合约代码如 'au2608' → 2026年8月。商品期权通常在交割月前到期，
+    用合约月1日-5天近似（前月末最后交易日附近）。精度 ±2 天。
     """
     match = re.search(r'(\d{2})(\d{2})$', str(contract_code))
     if match:
         yy = int(match.group(1)) + 2000
         mm = int(match.group(2))
-        exp_date = date(yy, mm, 1)
+        exp_date = date(yy, mm, 1) - timedelta(days=5)
         dte = (exp_date - date.today()).days
         return max(dte, 1)
     return 30  # fallback
@@ -477,6 +517,14 @@ def _scan_buyer_debit_side(df, direction, futures, mult, capital,
     # 筛选与品种相关的事件
     variety_events = _filter_events_for_variety(events, vcode, variety_name)
 
+    # Tier 3 过滤：仅有例行低冲击事件 → 不产生买方方向信号
+    _has_events = len(variety_events) > 0
+    _all_tier3 = _has_events and not any(
+        not e.get('routine', True) or e.get('impact', 'low') != 'low'
+        for e in variety_events)
+    if _all_tier3:
+        return results
+
     # 检查是否有 D-1 高影响事件（排除持续事件和 D-0/D-1 固定事件）
     has_d1_high_event = any(
         0 <= e.get('days_until', 0) <= 1 and e['impact'] == 'high'
@@ -492,12 +540,13 @@ def _scan_buyer_debit_side(df, direction, futures, mult, capital,
     event_too_late = (nearest_event_days is not None and dte is not None and
                       nearest_event_days > dte - 1)
 
-    for i in range(len(options) - 1):
-        low_row = options.iloc[i]
-        high_row = options.iloc[i + 1]
+    for i in range(len(options)):
+        for j in range(i + 1, min(i + 1 + MAX_STRIKE_GAP, len(options))):
+            low_row = options.iloc[i]
+            high_row = options.iloc[j]
 
-        low_strike = int(low_row['strike'])
-        high_strike = int(high_row['strike'])
+            low_strike = int(low_row['strike'])
+            high_strike = int(high_row['strike'])
 
         if direction == 'call':
             # 牛市看涨价差：买入低行权价 Call，卖出高行权价 Call
@@ -773,9 +822,18 @@ def scan_single_leg_buyer(df, futures, variety_name, contract, vcode,
 
     # ── 事件数据 ──
     variety_events = _filter_events_for_variety(events, vcode, variety_name)
+
+    # Tier 3 过滤：仅有例行低冲击事件 → 不产生买方方向事件信号（趋势触发不受影响）
+    _has_ev = len(variety_events) > 0
+    _all_t3 = _has_ev and not any(
+        not e.get('routine', True) or e.get('impact', 'low') != 'low'
+        for e in variety_events)
+
     has_event = any(
         e['impact'] == 'high' and (e.get('days_until', 0) == -1 or 2 <= e['days_until'] <= 7)
         for e in variety_events)
+    if _all_t3:
+        has_event = False  # Tier 3 事件不触发方向信号，趋势照常
 
     # 事件-到期校验
     dte = _compute_dte(contract)
@@ -1293,6 +1351,7 @@ def main():
         all_cs.extend(signals)
     cs_ok = [s for s in all_cs if s['tradeable'] and s.get('rr_ratio', 0) >= EXEC_RR_MIN]
     iv_hv = load_latest_iv_hv()  # 读最新 IV-HV 数据，给每个信号打分
+    iv_percentiles = load_iv_percentiles()  # IV Collector 历史分位
     filtered = []  # 去重后的真实机会数——汇总行与显示同口径
     if cs_ok:
         seen = {}
@@ -1347,6 +1406,20 @@ def main():
             print(f"    {s['name']} {s['contract']} 卖{opt_t}{s['sell_strike']}/{s['buy_strike']}  "
                   f"净收 ¥{s['net_premium']}  rr={s['rr_ratio']}  OTM {s.get('otm_pct','?')}%")
 
+    # ── 注入 IV Collector 历史分位到买方信号 ──
+    for _vcode, (_signals, _) in buyer_results.items():
+        for _s in _signals:
+            _contract = _s.get('contract', '')
+            _cl = iv_percentiles.get(_contract, (None, 0))
+            _s['_cl_pct'] = _cl[0]
+            _s['_cl_days'] = _cl[1]
+    for _vcode, _sl_signals in single_leg_results.items():
+        for _s in (_sl_signals or []):
+            _contract = _s.get('contract', '')
+            _cl = iv_percentiles.get(_contract, (None, 0))
+            _s['_cl_pct'] = _cl[0]
+            _s['_cl_days'] = _cl[1]
+
     # ── [PAPER] 买方 ──
     print(f"\n  🟡 [PAPER] 买方组合（价差/跨式/宽跨式）— 纸面跟踪")
     all_buyer = []
@@ -1371,7 +1444,7 @@ def main():
             print(f"    {color} {s['name']} {s['contract']} "
                   f"买{opt_t}{s.get('buy_strike','?')}/卖{opt_t}{s.get('sell_strike','?')}  "
                   f"成本≈¥{s.get('net_debit','?')}  买ask ¥{s.get('buy_ask','?')} 卖bid ¥{s.get('sell_bid','?')}  "
-                  f"盈亏比 {s.get('profit_ratio','?')}:1  ScP{s.get('iv_percentile','?')}  {ev_str}")
+                  f"盈亏比 {s.get('profit_ratio','?')}:1  ScP{s.get('iv_percentile','?')}{_cl_str(s)}  {ev_str}")
         print(f"    ⚠️ 共 {len(spreads_ok)} 个。不执行，仅纸面。")
     else:
         print(f"\n  🟡 [PAPER] 买方价差（2腿·封顶亏损）— 今日无")
@@ -1409,7 +1482,7 @@ def main():
                 opt_t = "Call" if 'call' in str(s.get('strategy','')) else "Put"
                 print(f"    {color} {s['name']} 买{opt_t} {s.get('strike','?')}  "
                       f"OTM {s.get('otm_pct','?')}%  权利金≈¥{s.get('cost','?')}  ask ¥{s.get('ask','N/A')}  "
-                      f"ScP{s.get('iv_percentile','?')}")
+                      f"ScP{s.get('iv_percentile','?')}{_cl_str(s)}")
             print(f"    ⚠️ {len(events_sl)} 个事件触发。不执行，仅纸面。")
         else:
             print(f"\n  🟡 [PAPER] 买单腿·事件触发 — 今日无（日历无D-2~D-7事件）")
@@ -1420,7 +1493,7 @@ def main():
                 opt_t = "Call" if 'call' in str(s.get('strategy','')) else "Put"
                 print(f"    {color} {s['name']} 买{opt_t} {s.get('strike','?')}  "
                       f"OTM {s.get('otm_pct','?')}%  权利金≈¥{s.get('cost','?')}  ask ¥{s.get('ask','N/A')}  "
-                      f"{s.get('trigger','')}  ScP{s.get('iv_percentile','?')}")
+                      f"{s.get('trigger','')}  ScP{s.get('iv_percentile','?')}{_cl_str(s)}")
             print(f"    ⚠️ {len(trends_sl)} 个趋势触发单腿信号。不执行，仅纸面。")
 
     # ── [OBSERVE] 铁秃鹰 + 铁蝴蝶 + 蝶式 + 比率 + 日历 ──
@@ -1453,12 +1526,23 @@ def main():
     paper_n = len(buyer_ok) + len(sl_ok)
     print(f"  📊 {exec_n} 可执行 + {paper_n} 纸面 + {obs_total} 观察 + 6 未扫描")
     if exec_n == 0:
-        msg = "卖方没机会=正常。"
+        # ── 干旱智能总结：从 iv_hv 汇总 IV-HV 卖方窗口 ──
+        seller_windows = []
+        for contract, hv_info in iv_hv.items():
+            spread = hv_info['iv_est'] - hv_info['hv_20d']
+            if spread >= 0.03:
+                # contract like "ma2609" → vcode = letters part
+                vcode = re.match(r'([a-z]+)', contract)
+                name = VARIETIES.get(vcode.group(1), {}).get('name', contract) if vcode else contract
+                seller_windows.append(f"{name}({spread*100:+.1f}%)")
+        if seller_windows:
+            print(f"  💧 卖方窗口：{', '.join(seller_windows)}，但无可执行腿组合。")
+            print(f"    系统在拦，不在漏。")
+        else:
+            print(f"  💧 今日无卖方窗口（IV-HV ≥3% 品种=0）。")
         if paper_n > 0:
-            msg += "买方/单腿窗口已标出。"
-        msg += "系统在运转，等数据到位。"
-        print(f"  💡 {msg}")
-        print(f"  📋 无信号日 → 执行操作规程：monitoring-rules.md「无信号日操作规程」")
+            print(f"  📋 买方/单腿纸面窗口已标出（共 {paper_n} 个），不执行仅跟踪。")
+        print(f"  📖 无信号日操作规程 → monitoring-rules.md「无信号日操作规程」")
     print(f"  {'═'*70}\n")
 
 
