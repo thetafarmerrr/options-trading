@@ -68,6 +68,9 @@ OTM_MIN_PCT = 2.0            # 卖方最低 OTM%
 TREND_CHG_MIN = 2.0          # 趋势触发最低涨跌幅%
 TREND_SPREAD_MAX = 15        # 趋势单腿价差上限
 EVENT_SPREAD_MAX = 10        # 事件单腿价差上限
+EXEC_RR_MIN = 0.25            # EXEC 显示门槛（tradeable 最低 RR_MIN=0.15，EXEC 更严）
+BUYER_COLOR_ENABLED = False   # Data ≥ 30 后改为 True，此前买方信号统一 🟡
+MAX_STRIKE_GAP = 3            # 双循环最大跨档数
 
 
 def _safe(v):
@@ -217,9 +220,10 @@ def _scan_one_side(df, bid_col, ask_col, direction, futures, mult, capital,
         return results
 
     options = options.sort_values('strike')
-    for i in range(len(options) - 1):
-        low_row = options.iloc[i]
-        high_row = options.iloc[i + 1]
+    for i in range(len(options)):
+        for j in range(i + 1, min(i + 1 + MAX_STRIKE_GAP, len(options))):
+            low_row = options.iloc[i]
+            high_row = options.iloc[j]
 
         if direction == 'put':
             sell_row, buy_row = high_row, low_row
@@ -303,6 +307,17 @@ def _scan_one_side(df, bid_col, ask_col, direction, futures, mult, capital,
             'direction': direction,
             'tradeable': tradeable,
         })
+
+    # 多维排序：盈亏比 40% + OTM 安全边际 30% + 流动性 20%
+    def _sort_key(s):
+        rr = s.get('rr_ratio', 0)
+        otm = min(s.get('otm_pct', 0) / 15.0, 1.0)  # 15% 封顶
+        sell_sp = s.get('sell_spread', 0)
+        buy_sp = s.get('buy_spread', 0)
+        spread_pct = (sell_sp + buy_sp) / 2 if (sell_sp + buy_sp) > 0 else 0
+        liq = 1.0 / (1.0 + spread_pct)
+        return rr * 0.4 + otm * 0.3 + liq * 0.2
+    results.sort(key=_sort_key, reverse=True)
 
     return results
 
@@ -472,6 +487,11 @@ def _scan_buyer_debit_side(df, direction, futures, mult, capital,
     dated_events = [e for e in variety_events if e.get('days_until', 0) >= 0]
     nearest_event_days = min(e['days_until'] for e in dated_events) if dated_events else None
 
+    # 事件-到期校验：事件在到期后才发生则过滤
+    dte = _compute_dte(contract)
+    event_too_late = (nearest_event_days is not None and dte is not None and
+                      nearest_event_days > dte - 1)
+
     for i in range(len(options) - 1):
         low_row = options.iloc[i]
         high_row = options.iloc[i + 1]
@@ -523,6 +543,8 @@ def _scan_buyer_debit_side(df, direction, futures, mult, capital,
             continue  # 盈亏比不够
         if has_d1_high_event:
             continue  # D-1 有高影响事件，不进场
+        if event_too_late:
+            continue  # 事件在合约到期后，等不到催化剂
         if iv_percentile is not None and iv_percentile >= 40:
             continue  # IV 不够便宜
 
@@ -536,7 +558,8 @@ def _scan_buyer_debit_side(df, direction, futures, mult, capital,
 
         # ── 颜色编码 ──
         has_event = len(variety_events) > 0
-        if iv_percentile is not None and iv_percentile < BUYER_IV_THRESHOLD and has_event:
+        # TODO: Data ≥ 30 后恢复 iv_percentile < BUYER_IV_THRESHOLD and has_event → green
+        if BUYER_COLOR_ENABLED and iv_percentile is not None and iv_percentile < BUYER_IV_THRESHOLD and has_event:
             color = 'green'
         else:
             color = 'yellow'
@@ -592,6 +615,12 @@ def _scan_buyer_straddles_strangles(df, futures, mult, capital,
     # 筛选品种相关事件
     variety_events = _filter_events_for_variety(events, vcode, variety_name)
 
+    # 事件-到期校验：最近事件是否在合约到期后才发生
+    dated_evs = [e for e in variety_events if e.get('days_until', 0) >= 0]
+    nearest_ev_days = min(e['days_until'] for e in dated_evs) if dated_evs else None
+    event_too_late = (nearest_ev_days is not None and dte is not None and
+                      nearest_ev_days > dte - 1)
+
     # ── Straddle ──
     atm_idx_series = (df['strike'] - futures).abs().argsort()
     if len(atm_idx_series) > 0:
@@ -627,11 +656,11 @@ def _scan_buyer_straddles_strangles(df, futures, mult, capital,
         if variety_events:
             nearest_event = min(variety_events, key=lambda e: e['days_until'])
 
-        if iv_cheap and has_event_d2_d7 and atm_spread_ok:
+        if iv_cheap and has_event_d2_d7 and atm_spread_ok and not event_too_late:
             if capital and net_cost * mult > capital * SELLER_CAPITAL_PCT:
                 pass  # skip due to capital
             else:
-                straddle_color = 'green' if iv_percentile is not None and iv_percentile < BUYER_IV_THRESHOLD and has_event_d2_d7 else 'yellow'
+                straddle_color = 'green' if (BUYER_COLOR_ENABLED and iv_percentile is not None and iv_percentile < BUYER_IV_THRESHOLD and has_event_d2_d7) else 'yellow'
                 event_title = nearest_event['title'] if nearest_event else ''
                 event_days = nearest_event['days_until'] if nearest_event else None
 
@@ -698,12 +727,12 @@ def _scan_buyer_straddles_strangles(df, futures, mult, capital,
         legs_valid = (call_strike is not None and put_strike is not None
                       and c_ask_otm > 0 and p_ask_otm > 0)
 
-        if iv_cheap and has_any_event and strangle_spread_ok and legs_valid:
+        if iv_cheap and has_any_event and strangle_spread_ok and legs_valid and not event_too_late:
             strangle_cost = round(c_ask_otm + p_ask_otm, 2)
             if capital and strangle_cost * mult > capital * SELLER_CAPITAL_PCT:
                 pass
             else:
-                strangle_color = 'green' if iv_percentile is not None and iv_percentile < BUYER_IV_THRESHOLD else 'yellow'
+                strangle_color = 'green' if (BUYER_COLOR_ENABLED and iv_percentile is not None and iv_percentile < BUYER_IV_THRESHOLD) else 'yellow'
                 event_title = nearest_event['title'] if nearest_event else ''
                 event_days = nearest_event['days_until'] if nearest_event else None
 
@@ -748,6 +777,13 @@ def scan_single_leg_buyer(df, futures, variety_name, contract, vcode,
         e['impact'] == 'high' and (e.get('days_until', 0) == -1 or 2 <= e['days_until'] <= 7)
         for e in variety_events)
 
+    # 事件-到期校验
+    dte = _compute_dte(contract)
+    dated_evs_sl = [e for e in variety_events if e.get('days_until', 0) >= 0]
+    nearest_ev_days_sl = min(e['days_until'] for e in dated_evs_sl) if dated_evs_sl else None
+    event_too_late_sl = (nearest_ev_days_sl is not None and dte is not None and
+                          nearest_ev_days_sl > dte - 1)
+
     # ── 趋势数据 ──
     change_5d = None
     try:
@@ -770,7 +806,8 @@ def scan_single_leg_buyer(df, futures, variety_name, contract, vcode,
     otm_puts  = df[(df['strike'] < futures) & (df['p_bid'] > 0)].sort_values('strike', ascending=False)
 
     # ━━ 事件触发：Call/Put 各独立，不合并 ━━
-    if has_event:
+    # 事件在到期后则不产生方向性信号（趋势触发不受影响）
+    if has_event and not event_too_late_sl:
         for _, row in otm_calls.iterrows():
             ask = _safe(row.get('c_ask', 0))
             bid = _safe(row.get('c_bid', 0))
@@ -787,7 +824,8 @@ def scan_single_leg_buyer(df, futures, variety_name, contract, vcode,
                 'cost': round(cost, 0), 'max_loss': round(cost, 0),
                 'otm_pct': round((int(row['strike'])-futures)/futures*100, 1),
                 'iv_percentile': round(iv_percentile),
-                'color': 'green' if iv_percentile < 20 else 'yellow',
+                # TODO: Data ≥ 30 后恢复 iv_percentile < 20 → green
+                'color': 'green' if (BUYER_COLOR_ENABLED and iv_percentile < 20) else 'yellow',
                 'tradeable': True,
             })
             break
@@ -807,7 +845,8 @@ def scan_single_leg_buyer(df, futures, variety_name, contract, vcode,
                 'cost': round(cost, 0), 'max_loss': round(cost, 0),
                 'otm_pct': round((futures-int(row['strike']))/futures*100, 1),
                 'iv_percentile': round(iv_percentile),
-                'color': 'green' if iv_percentile < 20 else 'yellow',
+                # TODO: Data ≥ 30 后恢复 iv_percentile < 20 → green
+                'color': 'green' if (BUYER_COLOR_ENABLED and iv_percentile < 20) else 'yellow',
                 'tradeable': True,
             })
             break
@@ -838,7 +877,8 @@ def scan_single_leg_buyer(df, futures, variety_name, contract, vcode,
                     'cost': best['cost'], 'max_loss': best['cost'],
                     'otm_pct': best['otm'],
                     'iv_percentile': round(iv_percentile),
-                    'color': 'green' if iv_percentile < 20 else 'yellow',
+                    # TODO: Data ≥ 30 后恢复 iv_percentile < 20 → green
+                'color': 'green' if (BUYER_COLOR_ENABLED and iv_percentile < 20) else 'yellow',
                     'tradeable': True,
                 })
         if change_5d < -2:
@@ -864,7 +904,8 @@ def scan_single_leg_buyer(df, futures, variety_name, contract, vcode,
                     'cost': best['cost'], 'max_loss': best['cost'],
                     'otm_pct': best['otm'],
                     'iv_percentile': round(iv_percentile),
-                    'color': 'green' if iv_percentile < 20 else 'yellow',
+                    # TODO: Data ≥ 30 后恢复 iv_percentile < 20 → green
+                'color': 'green' if (BUYER_COLOR_ENABLED and iv_percentile < 20) else 'yellow',
                     'tradeable': True,
                 })
 
@@ -903,7 +944,7 @@ def scan_buyer_opportunities(vcode, variety, contract, df, futures,
     debit_n = len([s for s in tradeable if 'spread' in s.get('strategy', '')])
     vol_n = len([s for s in tradeable if 'straddle' in s.get('strategy', '') or 'strangle' in s.get('strategy', '')])
 
-    iv_str = f"IV≈P{iv_pct}" if iv_pct is not None else "IV?"
+    iv_str = f"ScP{iv_pct}" if iv_pct is not None else "IV?"
     summary = (f"{len(all_signals)}信号({len(tradeable)}可做: {debit_n}价差 {vol_n}波动率 | "
                f"🟢{green_n} 🟡{yellow_n} | {iv_str})" if all_signals else f"无信号 ({iv_str})")
     return all_signals, summary
@@ -1245,11 +1286,12 @@ def main():
     print(f"  {'═'*70}")
 
     # ── [EXEC] 卖方 ──
+    print(f"\n  ⚠️ IV分位：Scanner=工程近似 | Collector=8天历史 | 均无统计显著性 | Data≥30天后可参考")
     print(f"\n  🟢 [EXEC] 卖方信用价差 — 可执行")
     all_cs = []
     for vcode, (signals, _) in cs_results.items():
         all_cs.extend(signals)
-    cs_ok = [s for s in all_cs if s['tradeable'] and s.get('rr_ratio', 0) >= 0.25]
+    cs_ok = [s for s in all_cs if s['tradeable'] and s.get('rr_ratio', 0) >= EXEC_RR_MIN]
     iv_hv = load_latest_iv_hv()  # 读最新 IV-HV 数据，给每个信号打分
     filtered = []  # 去重后的真实机会数——汇总行与显示同口径
     if cs_ok:
@@ -1277,7 +1319,8 @@ def main():
             tier_str = f"[{spread_str}| {s['_iv_hv_tier']} · {s['_iv_hv_action']}]" if s['_iv_hv_action'] else f"[{s['_iv_hv_tier']}]"
             print(f"    [{i}] {tier_icon} {s['name']} {s['contract']} "
                   f"卖{opt_type}{s['sell_strike']}/{s['buy_strike']}  "
-                  f"净收 ¥{s['net_premium']}  盈亏比 {s['rr_ratio']}:1  OTM {s.get('otm_pct','?')}%{warn}")
+                  f"净收 ¥{s['net_premium']}  卖bid ¥{s.get('sell_bid','?')} 买ask ¥{s.get('buy_ask','?')}  "
+                  f"盈亏比 {s['rr_ratio']}:1  OTM {s.get('otm_pct','?')}%{warn}")
             print(f"        {tier_str}")
             tp = round(s['max_profit'] * 0.5, 0)
             print(f"        止盈 ¥{tp:.0f}/手  止损预警: {opt_type}{s['buy_strike']}")
@@ -1292,6 +1335,17 @@ def main():
             print(f"    今日无卖方机会。{'; '.join(iv_note_parts[:4])}")
         else:
             print(f"    今日无卖方机会。")
+
+    # ── 接近 EXEC 但盈亏比不足（RR_MIN ≤ rr < EXEC_RR_MIN）
+    near_miss = [s for s in all_cs if s['tradeable'] and
+                 RR_MIN <= s.get('rr_ratio', 0) < EXEC_RR_MIN]
+    if near_miss:
+        print(f"\n  🟠 [NEAR] 接近 EXEC 但盈亏比不足（{RR_MIN}≤rr<{EXEC_RR_MIN}）：")
+        near_sorted = sorted(near_miss, key=lambda x: x.get('rr_ratio', 0), reverse=True)
+        for s in near_sorted[:3]:
+            opt_t = "C" if s.get('sell_strike', 0) < s.get('buy_strike', 0) else "P"
+            print(f"    {s['name']} {s['contract']} 卖{opt_t}{s['sell_strike']}/{s['buy_strike']}  "
+                  f"净收 ¥{s['net_premium']}  rr={s['rr_ratio']}  OTM {s.get('otm_pct','?')}%")
 
     # ── [PAPER] 买方 ──
     print(f"\n  🟡 [PAPER] 买方组合（价差/跨式/宽跨式）— 纸面跟踪")
@@ -1316,8 +1370,8 @@ def main():
             ev_str = f"D-{s.get('event_days','?')}" if s.get('event_days') else ""
             print(f"    {color} {s['name']} {s['contract']} "
                   f"买{opt_t}{s.get('buy_strike','?')}/卖{opt_t}{s.get('sell_strike','?')}  "
-                  f"成本≈¥{s.get('net_debit','?')}  "
-                  f"盈亏比 {s.get('profit_ratio','?')}:1  IV≈P{s.get('iv_percentile','?')}  {ev_str}")
+                  f"成本≈¥{s.get('net_debit','?')}  买ask ¥{s.get('buy_ask','?')} 卖bid ¥{s.get('sell_bid','?')}  "
+                  f"盈亏比 {s.get('profit_ratio','?')}:1  ScP{s.get('iv_percentile','?')}  {ev_str}")
         print(f"    ⚠️ 共 {len(spreads_ok)} 个。不执行，仅纸面。")
     else:
         print(f"\n  🟡 [PAPER] 买方价差（2腿·封顶亏损）— 今日无")
@@ -1334,7 +1388,7 @@ def main():
             else:
                 legs = f"ATM {s.get('strike','?')}"
             print(f"    {color} {s['name']} {s['contract']} {s.get('strategy','')} {legs}  "
-                  f"成本≈¥{s.get('net_cost','?')}  "
+                  f"成本≈¥{s.get('net_cost','?')}  Cask ¥{s.get('call_ask','N/A')} Pask ¥{s.get('put_ask','N/A')}  "
                   f"预期波动 ¥{s.get('expected_move','?')}  {ev_str}")
         print(f"    ⚠️ 共 {len(straddles_ok)} 个。不执行，仅纸面。")
     else:
@@ -1354,8 +1408,8 @@ def main():
                 color = "🟢" if s.get('color')=='green' else "🟡"
                 opt_t = "Call" if 'call' in str(s.get('strategy','')) else "Put"
                 print(f"    {color} {s['name']} 买{opt_t} {s.get('strike','?')}  "
-                      f"OTM {s.get('otm_pct','?')}%  权利金≈¥{s.get('cost','?')}  "
-                      f"IV≈P{s.get('iv_percentile','?')}")
+                      f"OTM {s.get('otm_pct','?')}%  权利金≈¥{s.get('cost','?')}  ask ¥{s.get('ask','N/A')}  "
+                      f"ScP{s.get('iv_percentile','?')}")
             print(f"    ⚠️ {len(events_sl)} 个事件触发。不执行，仅纸面。")
         else:
             print(f"\n  🟡 [PAPER] 买单腿·事件触发 — 今日无（日历无D-2~D-7事件）")
@@ -1365,8 +1419,8 @@ def main():
                 color = "🟢" if s.get('color')=='green' else "🟡"
                 opt_t = "Call" if 'call' in str(s.get('strategy','')) else "Put"
                 print(f"    {color} {s['name']} 买{opt_t} {s.get('strike','?')}  "
-                      f"OTM {s.get('otm_pct','?')}%  权利金≈¥{s.get('cost','?')}  "
-                      f"{s.get('trigger','')}  IV≈P{s.get('iv_percentile','?')}")
+                      f"OTM {s.get('otm_pct','?')}%  权利金≈¥{s.get('cost','?')}  ask ¥{s.get('ask','N/A')}  "
+                      f"{s.get('trigger','')}  ScP{s.get('iv_percentile','?')}")
             print(f"    ⚠️ {len(trends_sl)} 个趋势触发单腿信号。不执行，仅纸面。")
 
     # ── [OBSERVE] 铁秃鹰 + 铁蝴蝶 + 蝶式 + 比率 + 日历 ──
