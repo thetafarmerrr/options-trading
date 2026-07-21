@@ -30,7 +30,7 @@ import re
 import math
 import argparse
 import pandas as pd
-from datetime import datetime, date, timedelta
+from datetime import datetime, date
 
 SCRIPT_DIR = os.path.dirname(os.path.abspath(__file__))
 sys.path.insert(0, SCRIPT_DIR)
@@ -415,14 +415,19 @@ def scan_credit_spreads(vcode, variety, contract, df, futures, capital=None):
 def _compute_dte(contract_code):
     """
     从合约代码估算到期天数。
-    合约代码如 'au2608' → 2026年8月。商品期权通常在交割月前到期，
-    用合约月1日-5天近似（前月末最后交易日附近）。精度 ±2 天。
+    合约代码如 'au2608' → 2026年8月到期的期权，实际在7月下旬到期。
+    中国商品期权在交割月前月到期（上期所/大商所≈前月25日，郑商所≈前月27日）。
+    统一用前月25日近似，精度 ±3 天。
     """
     match = re.search(r'(\d{2})(\d{2})$', str(contract_code))
     if match:
         yy = int(match.group(1)) + 2000
         mm = int(match.group(2))
-        exp_date = date(yy, mm, 1) - timedelta(days=5)
+        # 期权在合约月前一个月到期，≈25日
+        if mm == 1:
+            exp_date = date(yy - 1, 12, 25)
+        else:
+            exp_date = date(yy, mm - 1, 25)
         dte = (exp_date - date.today()).days
         return max(dte, 1)
     return 30  # fallback
