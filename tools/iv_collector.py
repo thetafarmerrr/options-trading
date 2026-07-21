@@ -619,15 +619,27 @@ def main():
     else:
         fieldnames = list(rows[0].keys())
 
+    # 去重：删除同日同品种旧条目，再追加新数据
+    if file_exists:
+        new_keys = {(r['date'], r['variety']) for r in rows}
+        with open(OUTPUT_FILE, "r", encoding="utf-8") as f:
+            all_rows = list(csv.DictReader(f))
+        deduped = [r for r in all_rows if (r['date'], r['variety']) not in new_keys]
+        with open(OUTPUT_FILE, "w", newline="", encoding="utf-8") as f:
+            writer = csv.DictWriter(f, fieldnames=fieldnames)
+            writer.writeheader()
+            writer.writerows(deduped)
+        dup_n = len(all_rows) - len(deduped)
+    else:
+        dup_n = 0
+
     with open(OUTPUT_FILE, "a", newline="", encoding="utf-8") as f:
         writer = csv.DictWriter(f, fieldnames=fieldnames)
-        if not file_exists:
-            writer.writeheader()
         writer.writerows(rows)
 
     print(f"\n  💾 已写入 {len(rows)} 条 → {OUTPUT_FILE}")
-    if not file_exists:
-        print(f"  🆕 新文件已创建。连续跑 4 周后 iv_ranker.py 可用。")
+    if dup_n > 0:
+        print(f"  ♻️  替换同日旧条目 {dup_n} 条")
 
     # ── 自动跑开盘环境定性 ──
     try:
