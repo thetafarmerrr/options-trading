@@ -21,7 +21,8 @@
 | 步骤 | 命令 | 时间 |
 |------|------|------|
 | 扫描 | `python3 tools/unified_scanner.py` | 3 min |
-| IV + 环境 | `python3 tools/iv_collector.py`（含买方视角） | 3 min |
+| IV + 环境（早盘）| `python3 tools/iv_collector.py`（含买方视角）| 3 min |
+| IV 收盘采集 | 15:00 后 `python3 tools/iv_collector.py`（结算价→iv_history）| 1 min |
 | 训练 B | `python3 tools/drill_system.py B` | 5 min |
 | 英文 | Mike 系列视频 + 跟读 + 90s 炸弹 + 笔译 | 20 min |
 | 影响力 | 本周有可发的碎片吗？ | 1 min |

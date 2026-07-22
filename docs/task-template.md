@@ -26,7 +26,8 @@
 | ☀️ | **英语·四步**（盘前 8:00）| ①视频：打开 Mike 播放列表https://youtube.com/playlist?list=PLPVve34yolHY43YaBegHMzN9WjrTnQfFr 从上次停的地方继续 1 集。看画面+字幕抓大意→张嘴跟读不停。不重播不查词。②挖矿：抓 3 个整句，追加到 `glossary.md` 底部 `## 句型库`。格式：`- 整句  （来源）`。③炸弹：张嘴 90 秒说刚看的内容——不停、不改、不查词。录音→语音转文字→瞥一眼差异。④笔译：把昨天的市场结论翻译成英文 2-3 句（当天 Scanner 还没跑，用昨天的） |
 | 1 | **Scanner** | `cd ~/Documents/AIcode/gold_option_tools && python3 tools/unified_scanner.py`。看输出 [EXEC] 部分：有信号→复制出来，进六步进场（monitoring-rules.md 第三节）；无信号→输出末尾会提示操作规程，记下干旱天数 |
 | 1b | **纸面挑信号** | Scanner 输出的 PAPER 区（买方价差/跨式/单腿），挑 1-2 个记到 `docs/paper-tracker.md`。**判据三条**：① IV 分位低（P30↓ 买方便宜）② 盈亏比≥5:1 ③ 近期事件/趋势配合。按星级（⭐~⭐⭐⭐）记一行。不挑也行——写"今日纸面无亮点"。15 秒。周六复盘回看 |
-| 2 | **IV 采集** | `python3 tools/iv_collector.py`。看每个品种五条打分：≥3 条有利=可做卖方；≥3 条不利=今天不交易。看买方视角：哪些品种 IV 分位 <30%→买方黄金窗口 |
+| 2 | **IV 采集（早盘）** | `python3 tools/iv_collector.py`。看每个品种五条打分：≥3 条有利=可做卖方；≥3 条不利=今天不交易。看买方视角：哪些品种 IV 分位 <30%→买方黄金窗口 |
+| 2b | **IV 收盘采集** | 15:00 后 `python3 tools/iv_collector.py` 再跑一次。这次是结算价——写入 `data/iv_history.csv` 的数据锚。看全日变动 vs 早盘：下午 IV 比早上贵了还是便宜了？写进 journal 一句（例："甲醇早 IV 42%→收 IV 39%，卖家回来压价了"） |
 | 3 | **Drill B** | `python3 tools/drill_system.py B`。每天必做。报正确率和速度 |
 | 3b | **Drill 轮转** | `python3 tools/drill_system.py <今日模块>`。周三=H(买方方向)，周四=A(链面)，周五=F(持仓管理)，周六=D(Greek)，周日=D，周一=A，周二=C(天气→策略)。报分数 |
 | 3c | **D-Drill** | `python3 tools/d_drill.py`。41 题（7/19 扩：+事件分层/IV飙涨/买方假催化/落地后进场/阶段边界）。答「做/不做」+一句原因。原因写规则内容不是编号（写"下跌趋势不卖Put"不写"禁止8"）。**每题选之前问一个词：「反证？」——有没有任何信息证明这个选项是错的。Ne 模式匹配抢在 Ti 验证之前 = INTP 第一漏洞。不跳这步** |

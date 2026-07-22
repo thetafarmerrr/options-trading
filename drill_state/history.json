@@ -980,6 +980,24 @@
       "avg_time_ms": 7310.0,
       "total_questions": 10,
       "day_of_week": "Tuesday"
+    },
+    {
+      "date": "2026-07-22T14:00:35.495401",
+      "module": "B",
+      "score": 60,
+      "accuracy": 92.0,
+      "avg_time_ms": 2802.0,
+      "total_questions": 25,
+      "day_of_week": "Wednesday"
+    },
+    {
+      "date": "2026-07-22T14:02:19.183440",
+      "module": "H",
+      "score": 15,
+      "accuracy": 90.0,
+      "avg_time_ms": 8562.0,
+      "total_questions": 10,
+      "day_of_week": "Wednesday"
     }
   ],
   "personal_bests": {

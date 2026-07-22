@@ -58,5 +58,11 @@
     "topic": "discipline",
     "correct": 2,
     "total": 3
+  },
+  {
+    "date": "2026-07-22T22:47:46.406466",
+    "topic": "strategy",
+    "correct": 1,
+    "total": 3
   }
 ]

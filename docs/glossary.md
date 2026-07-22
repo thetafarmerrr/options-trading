@@ -213,3 +213,17 @@
 | 堆量法 | Volume Stacking | Ne 驱动：大量输入替代精拆，零摩擦启动 |
 | 影子跟读 | Shadowing | 跟着音频张嘴，不停不休 |
 | 90 秒炸弹 | 90-Second Bomb | 定时张嘴说，不给 Ti 编辑时间 |
+
+## 句型库
+
+> Mike 系列跟读挖矿。整句 + 来源。目的：能张嘴说出来的才算会。
+
+- I had a trade that took me down really hard and brought me down about 10% right from the get-go. （Mike E07 · Small Account）
+- What we really need to do is put it into practice — we really don't understand how it truly works until we trade. （Mike E07 · Small Account）
+- It really is a way to learn the mechanics of trading and master these skills so that when we have the capital to take our finances into our own hands, we have the tools and knowledge to trade at a much higher level. （Mike E07 · Small Account）
+
+### 笔译
+
+> 每日市场结论 → 英文。日积月累。
+
+- **(7/21)** Yesterday there were no executions — all three signals were killed by the system. Methanol had a fat VRP at +7.7%, but the underlying had rallied 17.7% — directional risk outweighed Vega gains. Gold showed +6.9% VRP, but with only 5 DTE, there wasn't enough time to collect theta.
