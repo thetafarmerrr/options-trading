@@ -84,3 +84,51 @@ To wrap everything together with core takeaways:
 Thanks so much for tuning in. If you got any questions or feedback or if you want to share your own small account trading stories, send me an email, or follow me at Door Trader Mike on Twitter. Stay tuned, Jim Schultz will be presenting next.
 
 Hey there. Hope you like this video. Click below to watch more videos. Subscribe to our channel and check out tastytrade.com for more great research and educational content.
+
+---
+
+## 📝 词汇 & 短语 & 句型（E06 续）
+
+### 单词
+
+| 英文 | 中文 | 场景 |
+|------|------|------|
+| notional value | 名义价值 | "low notional value underlying stocks" |
+| buying power | 购买力 | "ties up $5,000 in buying power" |
+| adverse price move | 不利价格波动 | "withstand adverse price moves" |
+| wipe out | 清零、摧毁 | "wipe out or paralyze my account" |
+| drawdown | 回撤 | "hold naked options through deep drawdowns" |
+| spread too thin | 分散太广 | "if you spread yourself too thin across work, hobbies…" |
+| hone in on | 聚焦于 | "hone in on entry criteria, exit triggers" |
+| juggle | 同时应付 | "juggle dozens of advanced structures" |
+| resting order | 挂单 | "setting stop-loss resting orders" |
+| hard rule | 硬规则 | "This hard rule removes emotional decision-making" |
+| get-go | 一开始 | "right from the get-go" |
+| blow (an account) | 爆仓 | "if I end up blowing that account" |
+| imperative | 必须的、绝对必要的 | "Controlling losses is absolutely imperative" |
+| negligible | 可忽略的 | "a $1,500 loss is negligible capital" |
+
+### 短语
+
+| 英文 | 中文 |
+|------|------|
+| stay small in position size | 仓位要小 |
+| cut losses quickly | 快砍亏损 |
+| tie up buying power | 占用购买力 |
+| cap your maximum loss | 封顶最大亏损 |
+| sleep well at night | 睡得安稳（持仓无压力） |
+| lock in maximum loss | 锁定最大亏损 |
+| beat the market | 跑赢市场 |
+| year in and year out | 年复一年 |
+| branch out into | 扩展到（新领域） |
+| keep your strategy toolkit limited | 策略工具箱保持有限 |
+| move against you | （行情）对你不利 |
+
+### 句型
+
+- **The single most important rule is** staying small. — 唯一最重要的规则是仓位要小。
+- **It is absolutely possible to** beat the market while trading with a small account. — 小账户跑赢市场绝对有可能。
+- **If I had followed this rule**, I would have cut my losses far earlier. — 如果我当时遵守了这条规则，我会早很多砍仓。（虚拟语气——过去没做）
+- **You do not need** an overly complicated strategy lineup **to be successful**. — 成功不需要过于复杂的策略组合。
+- **Instead of** tying up buying power in a struggling trade, **you can** close the loss and open a new position. — 与其让买力套在亏损仓里，不如砍了开新的。
+- **This caps my maximum loss** per trade to something around $200 or $300. — 这把每笔最大亏损封在 $200-300 左右。
