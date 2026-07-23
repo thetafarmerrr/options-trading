@@ -76,8 +76,22 @@
       "correct": 18,
       "total": 21,
       "accuracy": 85.7
+    },
+    {
+      "date": "2026-07-23",
+      "pool": "A",
+      "correct": 16,
+      "total": 20,
+      "accuracy": 80.0
+    },
+    {
+      "date": "2026-07-23",
+      "pool": "A",
+      "correct": 20,
+      "total": 20,
+      "accuracy": 100.0
     }
   ],
-  "streak": 0,
+  "streak": 1,
   "best_streak": 1
 }

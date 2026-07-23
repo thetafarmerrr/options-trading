@@ -265,88 +265,88 @@ def _scan_one_side(df, bid_col, ask_col, direction, futures, mult, capital,
             low_row = options.iloc[i]
             high_row = options.iloc[j]
 
-        if direction == 'put':
-            sell_row, buy_row = high_row, low_row
-            sell_strike = int(high_row['strike'])
-            buy_strike = int(low_row['strike'])
-            if sell_strike >= futures or buy_strike >= futures:
+            if direction == 'put':
+                sell_row, buy_row = high_row, low_row
+                sell_strike = int(high_row['strike'])
+                buy_strike = int(low_row['strike'])
+                if sell_strike >= futures or buy_strike >= futures:
+                    continue
+                otm_pct = (futures - sell_strike) / futures * 100
+            else:  # call
+                sell_row, buy_row = low_row, high_row
+                sell_strike = int(low_row['strike'])
+                buy_strike = int(high_row['strike'])
+                if sell_strike <= futures or buy_strike <= futures:
+                    continue
+                otm_pct = (sell_strike - futures) / futures * 100
+    
+            strike_width = abs(buy_strike - sell_strike)
+            if strike_width > futures * STRIKE_WIDTH_MAX:
                 continue
-            otm_pct = (futures - sell_strike) / futures * 100
-        else:  # call
-            sell_row, buy_row = low_row, high_row
-            sell_strike = int(low_row['strike'])
-            buy_strike = int(high_row['strike'])
-            if sell_strike <= futures or buy_strike <= futures:
+    
+            sell_bid = _safe(sell_row[bid_col])
+            buy_ask = _safe(buy_row[ask_col])
+            if sell_bid <= 0 or buy_ask <= 0 or sell_bid <= buy_ask:
                 continue
-            otm_pct = (sell_strike - futures) / futures * 100
-
-        strike_width = buy_strike - sell_strike
-        if strike_width > futures * STRIKE_WIDTH_MAX:
-            continue
-
-        sell_bid = _safe(sell_row[bid_col])
-        buy_ask = _safe(buy_row[ask_col])
-        if sell_bid <= 0 or buy_ask <= 0 or sell_bid <= buy_ask:
-            continue
-
-        net_premium = round(sell_bid - buy_ask, 2)
-        max_profit = net_premium * mult
-        max_loss = round((strike_width * mult) - max_profit, 0)
-        if capital and max_loss > capital * SELLER_CAPITAL_PCT:
-            continue
-        if max_loss <= 0:
-            continue
-
-        rr_ratio = round(max_profit / max_loss, 2)
-        if rr_ratio < RR_MIN:
-            continue
-
-        sell_spread = _spread(sell_row[bid_col], sell_row[ask_col])
-        buy_spread = _spread(buy_row[bid_col], buy_row[ask_col])
-        if sell_spread > MAX_SPREAD_PCT or buy_spread > MAX_SPREAD_PCT:
-            continue
-
-        # 行权价宽度三档分类（锚 ¥1000 风险预算）
-        width_pct = strike_width / futures * 100
-        if width_pct <= 2:
-            tier = 'green'
-        elif width_pct <= 4:
-            tier = 'yellow'
-        else:
-            tier = 'red'
-
-        # 近值降级：卖腿 OTM < 2% → 无论宽度一律红档
-        if otm_pct < OTM_MIN_PCT:
-            tier = 'red'
-
-        # Delta 约束：abs(Delta) > 0.30 → 降级（机构卖方标准）
-        delta = _estimate_delta(sell_strike, futures, otm_pct, iv_est, dte)
-        if delta > DELTA_MAX:
-            if tier == 'green':
+    
+            net_premium = round(sell_bid - buy_ask, 2)
+            max_profit = net_premium * mult
+            max_loss = round((strike_width * mult) - max_profit, 0)
+            if capital and max_loss > capital * SELLER_CAPITAL_PCT:
+                continue
+            if max_loss <= 0:
+                continue
+    
+            rr_ratio = round(max_profit / max_loss, 2)
+            if rr_ratio < RR_MIN:
+                continue
+    
+            sell_spread = _spread(sell_row[bid_col], sell_row[ask_col])
+            buy_spread = _spread(buy_row[bid_col], buy_row[ask_col])
+            if sell_spread > MAX_SPREAD_PCT or buy_spread > MAX_SPREAD_PCT:
+                continue
+    
+            # 行权价宽度三档分类（锚 ¥1000 风险预算）
+            width_pct = strike_width / futures * 100
+            if width_pct <= 2:
+                tier = 'green'
+            elif width_pct <= 4:
                 tier = 'yellow'
-            elif tier == 'yellow':
+            else:
                 tier = 'red'
-
-        tradeable = tier in ('green', 'yellow')
-        results.append({
-            'variety': vcode,
-            'name': variety_name,
-            'contract': contract,
-            'sell_strike': sell_strike,
-            'buy_strike': buy_strike,
-            'sell_bid': round(float(sell_bid), 2),
-            'buy_ask': round(float(buy_ask), 2),
-            'net_premium': net_premium,
-            'max_profit': round(max_profit, 0),
-            'max_loss': max_loss,
-            'rr_ratio': rr_ratio,
-            'tier': tier,
-            'strike_width_pct': round(width_pct, 1),
-            'otm_pct': round(otm_pct, 1),
-            'delta': delta,
-            'direction': direction,
-            'tradeable': tradeable,
-        })
+    
+            # 近值降级：卖腿 OTM < 2% → 无论宽度一律红档
+            if otm_pct < OTM_MIN_PCT:
+                tier = 'red'
+    
+            # Delta 约束：abs(Delta) > 0.30 → 降级（机构卖方标准）
+            delta = _estimate_delta(sell_strike, futures, otm_pct, iv_est, dte)
+            if delta > DELTA_MAX:
+                if tier == 'green':
+                    tier = 'yellow'
+                elif tier == 'yellow':
+                    tier = 'red'
+    
+            tradeable = tier in ('green', 'yellow')
+            results.append({
+                'variety': vcode,
+                'name': variety_name,
+                'contract': contract,
+                'sell_strike': sell_strike,
+                'buy_strike': buy_strike,
+                'sell_bid': round(float(sell_bid), 2),
+                'buy_ask': round(float(buy_ask), 2),
+                'net_premium': net_premium,
+                'max_profit': round(max_profit, 0),
+                'max_loss': max_loss,
+                'rr_ratio': rr_ratio,
+                'tier': tier,
+                'strike_width_pct': round(width_pct, 1),
+                'otm_pct': round(otm_pct, 1),
+                'delta': delta,
+                'direction': direction,
+                'tradeable': tradeable,
+            })
 
     # 多维排序：盈亏比 40% + OTM 安全边际 30% + 流动性 20%
     def _sort_key(s):
@@ -553,99 +553,99 @@ def _scan_buyer_debit_side(df, direction, futures, mult, capital,
             low_strike = int(low_row['strike'])
             high_strike = int(high_row['strike'])
 
-        if direction == 'call':
-            # 牛市看涨价差：买入低行权价 Call，卖出高行权价 Call
-            if low_strike < futures * 0.98:
-                continue  # 买腿允许近值（≥98%期货价），但不能深度实值
-            buy_ask = _safe(low_row[ask_col])
-            sell_bid = _safe(high_row[bid_col])
-            otm_pct = (low_strike - futures) / futures * 100
-            buy_strike, sell_strike = low_strike, high_strike
-            buy_sp = _spread(low_row[bid_col], low_row[ask_col])
-            sell_sp = _spread(high_row[bid_col], high_row[ask_col])
-        else:
-            # 熊市看跌价差：买入高行权价 Put，卖出低行权价 Put
-            if high_strike > futures * 1.02:
-                continue  # 买腿允许近值（≤102%期货价），但不能深度实值
-            buy_ask = _safe(high_row[ask_col])
-            sell_bid = _safe(low_row[bid_col])
-            otm_pct = (futures - high_strike) / futures * 100
-            buy_strike, sell_strike = high_strike, low_strike
-            buy_sp = _spread(high_row[bid_col], high_row[ask_col])
-            sell_sp = _spread(low_row[bid_col], low_row[ask_col])
-
-        if buy_ask <= 0 or sell_bid <= 0:
-            continue
-
-        net_debit = round(buy_ask - sell_bid, 2)
-        if net_debit <= 0:
-            continue
-
-        strike_width = high_strike - low_strike
-        max_profit = round(strike_width * mult - net_debit * mult, 0)
-        max_loss = round(net_debit * mult, 0)
-
-        if max_loss <= 0 or max_profit <= 0:
-            continue
-
-        profit_ratio = round(max_profit / max_loss, 2)
-
-        # ── 信号条件 ──
-        if otm_pct >= 5:
-            continue  # OTM 太远
-        if profit_ratio < 1.5:
-            continue  # 盈亏比不够
-        if has_d1_high_event:
-            continue  # D-1 有高影响事件，不进场
-        if event_too_late:
-            continue  # 事件在合约到期后，等不到催化剂
-        if iv_percentile is not None and iv_percentile >= 40:
-            continue  # IV 不够便宜
-
-        # 检查价差质量
-        if buy_sp > MAX_SPREAD_PCT or sell_sp > MAX_SPREAD_PCT:
-            continue
-
-        # 资金检查
-        if capital and max_loss > capital * SELLER_CAPITAL_PCT:
-            continue
-
-        # ── 颜色编码 ──
-        has_event = len(variety_events) > 0
-        # TODO: Data ≥ 30 后恢复 iv_percentile < BUYER_IV_THRESHOLD and has_event → green
-        if BUYER_COLOR_ENABLED and iv_percentile is not None and iv_percentile < BUYER_IV_THRESHOLD and has_event:
-            color = 'green'
-        else:
-            color = 'yellow'
-
-        # 计算盈亏平衡点
-        if direction == 'call':
-            break_even = round(low_strike + net_debit, 2)
-        else:
-            break_even = round(high_strike - net_debit, 2)
-
-        strategy_label = 'bull_call_spread' if direction == 'call' else 'bear_put_spread'
-
-        results.append({
-            'strategy': strategy_label,
-            'variety': vcode,
-            'name': variety_name,
-            'contract': contract,
-            'buy_strike': buy_strike,
-            'sell_strike': sell_strike,
-            'buy_ask': round(float(buy_ask), 2),
-            'sell_bid': round(float(sell_bid), 2),
-            'net_debit': net_debit,
-            'max_profit': max_profit,
-            'max_loss': max_loss,
-            'profit_ratio': profit_ratio,
-            'otm_pct': round(otm_pct, 1),
-            'break_even': break_even,
-            'iv_percentile': iv_percentile,
-            'event_days': nearest_event_days,
-            'color': color,
-            'tradeable': True,
-        })
+            if direction == 'call':
+                # 牛市看涨价差：买入低行权价 Call，卖出高行权价 Call
+                if low_strike < futures * 0.98:
+                    continue  # 买腿允许近值（≥98%期货价），但不能深度实值
+                buy_ask = _safe(low_row[ask_col])
+                sell_bid = _safe(high_row[bid_col])
+                otm_pct = (low_strike - futures) / futures * 100
+                buy_strike, sell_strike = low_strike, high_strike
+                buy_sp = _spread(low_row[bid_col], low_row[ask_col])
+                sell_sp = _spread(high_row[bid_col], high_row[ask_col])
+            else:
+                # 熊市看跌价差：买入高行权价 Put，卖出低行权价 Put
+                if high_strike > futures * 1.02:
+                    continue  # 买腿允许近值（≤102%期货价），但不能深度实值
+                buy_ask = _safe(high_row[ask_col])
+                sell_bid = _safe(low_row[bid_col])
+                otm_pct = (futures - high_strike) / futures * 100
+                buy_strike, sell_strike = high_strike, low_strike
+                buy_sp = _spread(high_row[bid_col], high_row[ask_col])
+                sell_sp = _spread(low_row[bid_col], low_row[ask_col])
+    
+            if buy_ask <= 0 or sell_bid <= 0:
+                continue
+    
+            net_debit = round(buy_ask - sell_bid, 2)
+            if net_debit <= 0:
+                continue
+    
+            strike_width = high_strike - low_strike
+            max_profit = round(strike_width * mult - net_debit * mult, 0)
+            max_loss = round(net_debit * mult, 0)
+    
+            if max_loss <= 0 or max_profit <= 0:
+                continue
+    
+            profit_ratio = round(max_profit / max_loss, 2)
+    
+            # ── 信号条件 ──
+            if otm_pct >= 5:
+                continue  # OTM 太远
+            if profit_ratio < 1.5:
+                continue  # 盈亏比不够
+            if has_d1_high_event:
+                continue  # D-1 有高影响事件，不进场
+            if event_too_late:
+                continue  # 事件在合约到期后，等不到催化剂
+            if iv_percentile is not None and iv_percentile >= 40:
+                continue  # IV 不够便宜
+    
+            # 检查价差质量
+            if buy_sp > MAX_SPREAD_PCT or sell_sp > MAX_SPREAD_PCT:
+                continue
+    
+            # 资金检查
+            if capital and max_loss > capital * SELLER_CAPITAL_PCT:
+                continue
+    
+            # ── 颜色编码 ──
+            has_event = len(variety_events) > 0
+            # TODO: Data ≥ 30 后恢复 iv_percentile < BUYER_IV_THRESHOLD and has_event → green
+            if BUYER_COLOR_ENABLED and iv_percentile is not None and iv_percentile < BUYER_IV_THRESHOLD and has_event:
+                color = 'green'
+            else:
+                color = 'yellow'
+    
+            # 计算盈亏平衡点
+            if direction == 'call':
+                break_even = round(low_strike + net_debit, 2)
+            else:
+                break_even = round(high_strike - net_debit, 2)
+    
+            strategy_label = 'bull_call_spread' if direction == 'call' else 'bear_put_spread'
+    
+            results.append({
+                'strategy': strategy_label,
+                'variety': vcode,
+                'name': variety_name,
+                'contract': contract,
+                'buy_strike': buy_strike,
+                'sell_strike': sell_strike,
+                'buy_ask': round(float(buy_ask), 2),
+                'sell_bid': round(float(sell_bid), 2),
+                'net_debit': net_debit,
+                'max_profit': max_profit,
+                'max_loss': max_loss,
+                'profit_ratio': profit_ratio,
+                'otm_pct': round(otm_pct, 1),
+                'break_even': break_even,
+                'iv_percentile': iv_percentile,
+                'event_days': nearest_event_days,
+                'color': color,
+                'tradeable': True,
+            })
 
     return results
 
