@@ -299,3 +299,7 @@ when we look at hedging, we're basically looking at minimizing risk. So when we'
 - **商品市场**：常出现 Call skew（生产商有现货→卖 OTM Call 锁定出货价→压低价）。这不是"偏好"，是套保刚需。
 - **结论**：ATM IV-HV 溢价=卖方窗口开了。但**卖哪条腿看偏度**——call wing 被生产者占了位置就别卖 Call。
 - 来源：7/20 甲醇 C2850 折价 vs ATM 溢价 + Sinclair Ch5 微笑/偏度
+
+- I've been trading on the do follow page for probably between six and seven months. （Mike E07）
+- If a bad trade goes against me, I want to make sure that it doesn't totally wipe out or paralyze my account because I traded too large. （Mike E07）
+- Master those core structures thoroughly through consistent practice until you fully understand every component of the trade lifecycle. （Mike E07）

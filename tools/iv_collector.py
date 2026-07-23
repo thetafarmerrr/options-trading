@@ -547,8 +547,10 @@ def main():
         try:
             result = collect_variety(vcode, vinfo)
             if result:
-                rows.append(result)
-                icon = "✅" if result["spread_pct"] < 10 else "⚠️"
+                spread_too_wide = result["spread_pct"] >= 15
+                if not spread_too_wide:
+                    rows.append(result)
+                icon = "✅" if result["spread_pct"] < 10 else ("🚫" if spread_too_wide else "⚠️")
                 iv_str = f"{result['iv_est']:.1%}" if result['iv_est'] else "N/A"
                 hv20_str = f"{result['hv_20d']:.1%}" if result['hv_20d'] else "N/A"
                 hv60_str = f"{result['hv_60d']:.1%}" if result['hv_60d'] else "N/A"
