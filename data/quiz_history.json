@@ -64,5 +64,17 @@
     "topic": "strategy",
     "correct": 1,
     "total": 3
+  },
+  {
+    "date": "2026-07-23T22:45:38.392665",
+    "topic": "greeks",
+    "correct": 2,
+    "total": 3
+  },
+  {
+    "date": "2026-07-24T17:00:17.186505",
+    "topic": "greeks",
+    "correct": 2,
+    "total": 3
   }
 ]

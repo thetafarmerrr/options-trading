@@ -227,3 +227,8 @@
 > 每日市场结论 → 英文。日积月累。
 
 - **(7/21)** Yesterday there were no executions — all three signals were killed by the system. Methanol had a fat VRP at +7.7%, but the underlying had rallied 17.7% — directional risk outweighed Vega gains. Gold showed +6.9% VRP, but with only 5 DTE, there wasn't enough time to collect theta.
+
+### 小账户风控
+- Controlling losses is absolutely imperative for smaller accounts.  （Mike E08）
+- Small accounts do not have the luxury of waiting for losing trades to reverse.  （Mike E08）
+- Consistent success relies on three pillars: maintaining small position sizing, actively managing losing trades by cutting losses early, and deeply mastering a small set of core options strategies.  （Mike E08）
