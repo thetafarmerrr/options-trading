@@ -1451,7 +1451,7 @@ def run_drill_h(quick=False):
         {"desc": "玉米 IV=15%分位，窄幅3周，下周USDA", "expect": "跨"},
         {"desc": "PTA IV=25%分位，EIA明天，原油波动大", "expect": "跨"},
         {"desc": "菜籽粕 IV=22%分位，加拿大干旱，期货偏弱", "expect": "C"},
-        {"desc": "甲醇 IV=28%分位，D-3 GDP，方向不确定", "expect": "跨"},
+        {"desc": "甲醇 IV=28%分位（>P25二关不过），D-3 GDP", "expect": "不"},
         {"desc": "豆粕 IV=65%分位，无事件，期货正常波动", "expect": "不"},
         {"desc": "PTA IV=88%分位，D-1 GDP，IV加速涨", "expect": "不"},
         {"desc": "沪金 IV=18%分位，FOMC明天，金价高位", "expect": "跨"},
@@ -1461,7 +1461,7 @@ def run_drill_h(quick=False):
         {"desc": "PTA IV=16%分位，原油暴跌，期货跟跌中", "expect": "P"},
         {"desc": "豆粕 IV=19%分位，南美天气升水，期货涨", "expect": "C"},
         {"desc": "玉米 IV=30%分位，D-10 报告，季节性低波动", "expect": "不"},
-        {"desc": "棉花 IV=26%分位，D-3 USDA，期货破位下跌", "expect": "P"},
+        {"desc": "棉花 IV=26%分位（>P25二关不过），D-3 USDA，期货破位下跌", "expect": "不"},
     ]
 
     for r, s in enumerate(random.sample(scenarios, min(n_rounds, len(scenarios))), 1):
