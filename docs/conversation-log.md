@@ -3803,3 +3803,9 @@ Scanner 报错 → Ti 被激活 → 一个半小时不抬头
 - 新增：`data/weekly_event_scan.json`
 - 删除：`docs/glossary.md`（合并入根 glossary.md）
 - 修改：`MASTER_PLAN.md`、`monitoring-rules.md`、`weekly-rhythm.md`、`unified_scanner.py`、`d_drill_data.json`、`d_drill.py`、`glossary.md`、`memory/quant-plan-state.md`
+
+## 2026-07-25 收尾 · 题库更新
+
+- daily_quiz: 修复 3 题过期（IV分位→两关一判、买方进场条件、USDA WASDE）。新增 3 题买方（买方锁利纪律、第一关硬门、两关一判速记）。18→21 题
+- d_drill_data.json: 42 题，买方视角 4 题。新增窗口加速硬锁题（仅限扫描确认品种）
+- drill_system.py 训练H: 甲醇 28%、棉花 26% 场景修正为 P25 阈值
