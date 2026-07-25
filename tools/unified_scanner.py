@@ -39,6 +39,20 @@ from _ak_data import (pick_best_contract, fetch_option_chain, estimate_iv_from_c
                       VALID_MONTHS, DEFAULT_FUTURES, STRIKE_INTERVAL)
 from event_calendar import get_upcoming_events, VARIETIES as EV_VARIETIES
 
+def load_weekly_event_scan():
+    """加载每周非例行事件扫描结果"""
+    scan_path = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))),
+                             "data", "weekly_event_scan.json")
+    try:
+        with open(scan_path) as f:
+            data = json.load(f)
+        today = date.today().isoformat()
+        if data.get("valid_until", "") >= today:
+            return data.get("events", [])
+    except Exception:
+        pass
+    return []
+
 VARIETIES = {
     "au": {"futures": 870,  "name": "沪金",    "multiplier": 1000},
     "m":  {"futures": 2800, "name": "豆粕",    "multiplier": 10},
@@ -60,7 +74,7 @@ SELLER_CAPITAL_PCT = 0.05    # 卖方单笔最大亏损占本金比
 BUYER_SPREAD_CAP = 0.05      # 买方价差单笔上限
 BUYER_SINGLE_EVENT_CAP = 0.05  # 单腿·事件单笔上限
 BUYER_SINGLE_TREND_CAP = 0.02  # 单腿·趋势单笔上限（OTM更便宜）
-BUYER_IV_THRESHOLD = 30      # 买方 IV 分位阈值
+BUYER_IV_THRESHOLD = 25      # 买方 IV 分位阈值（7/25 30→25，价差ScP≤25）
 DELTA_MAX = 0.30             # 卖方 Delta 上限
 RR_MIN = 0.15                # 最低盈亏比
 STRIKE_WIDTH_MAX = 0.05      # 行权价宽度上限（占期货价比）
@@ -492,19 +506,13 @@ def _filter_events_for_variety(events, vcode, variety_name):
 
 def _scan_buyer_debit_side(df, direction, futures, mult, capital,
                            vcode, variety_name, contract,
-                           events, iv_percentile):
+                           events, iv_percentile, change_5d=None):
     """
-    单侧 debit spread 扫描。
+    单侧 debit spread 扫描（两关一判，7/25 重构）。
 
-    direction='call': 牛市看涨价差（买低行权价Call + 卖高行权价Call）
-        net_debit = buy_ask(low_strike) - sell_bid(high_strike)
-        OTM = (low_strike - futures) / futures
-
-    direction='put': 熊市看跌价差（买高行权价Put + 卖低行权价Put）
-        net_debit = buy_ask(high_strike) - sell_bid(low_strike)
-        OTM = (futures - high_strike) / futures
-
-    信号条件：OTM < 5%, IV < 40th percentile, 无 D-1 高影响事件, profit_ratio >= 1.5
+    第一关：标的在动吗？5日涨跌≥1% 或 D-7 Tier1事件 → 不过关直接跳过
+    第二关：IV便宜吗？价差 ScP≤25
+    判据：盈亏比 RR≥5:1
     """
     results = []
 
@@ -529,6 +537,17 @@ def _scan_buyer_debit_side(df, direction, futures, mult, capital,
         for e in variety_events)
     if _all_tier3:
         return results
+
+    # ── 第一关：标的在动吗？（7/25 两关一判）──
+    # Tier1 = 非例行 AND 高冲击。例行事件已被市场定价，≠买方催化
+    has_tier1_event = any(
+        (not e.get('routine', True) and e.get('impact', 'low') == 'high')
+        and 0 <= e.get('days_until', 0) <= 7
+        for e in variety_events
+    )
+    has_trend = change_5d is not None and abs(change_5d) >= 1.0
+    if not has_trend and not has_tier1_event:
+        return results  # 第一关不过——标的横盘且无催化，Theta吃掉权利金
 
     # 检查是否有 D-1 高影响事件（排除持续事件和 D-0/D-1 固定事件）
     has_d1_high_event = any(
@@ -593,14 +612,14 @@ def _scan_buyer_debit_side(df, direction, futures, mult, capital,
             # ── 信号条件 ──
             if otm_pct >= 5:
                 continue  # OTM 太远
-            if profit_ratio < 1.5:
-                continue  # 盈亏比不够
+            if profit_ratio < 5.0:
+                continue  # 第三关·判据：RR≥5:1（7/25 1.5→5.0）
             if has_d1_high_event:
                 continue  # D-1 有高影响事件，不进场
             if event_too_late:
                 continue  # 事件在合约到期后，等不到催化剂
-            if iv_percentile is not None and iv_percentile >= 40:
-                continue  # IV 不够便宜
+            if iv_percentile is not None and iv_percentile > 25:
+                continue  # 第二关·IV：价差ScP≤25（7/25 40→25）
     
             # 检查价差质量
             if buy_sp > MAX_SPREAD_PCT or sell_sp > MAX_SPREAD_PCT:
@@ -989,13 +1008,25 @@ def scan_buyer_opportunities(vcode, variety, contract, df, futures,
     # IV 分位估计（所有买方策略共用）
     iv_pct = _estimate_iv_percentile(df, futures)
 
+    # 5日趋势（第一关共用）
+    change_5d = None
+    try:
+        from _ak_data import fetch_futures_daily
+        daily = fetch_futures_daily(vcode, 10)
+        if daily is not None and len(daily) >= 6:
+            daily = daily.sort_values("date")
+            closes = daily["close"].astype(float)
+            change_5d = (closes.iloc[-1] - closes.iloc[-6]) / closes.iloc[-6] * 100
+    except Exception:
+        pass
+
     # 1. Debit Call Spread（牛市看涨）
     all_signals.extend(_scan_buyer_debit_side(
-        df, 'call', futures, mult, capital, vcode, name, contract, events, iv_pct))
+        df, 'call', futures, mult, capital, vcode, name, contract, events, iv_pct, change_5d))
 
     # 2. Debit Put Spread（熊市看跌）
     all_signals.extend(_scan_buyer_debit_side(
-        df, 'put', futures, mult, capital, vcode, name, contract, events, iv_pct))
+        df, 'put', futures, mult, capital, vcode, name, contract, events, iv_pct, change_5d))
 
     # 3. Straddle + Strangle
     all_signals.extend(_scan_buyer_straddles_strangles(
@@ -1315,6 +1346,38 @@ def main():
     total = len(ongoing) + len(high_events) + len(medium_in_window)
     print(f"  └─ 共 {len(events)} 个事件（含 {len(ongoing)} 个持续中）")
 
+    # ── 每周非例行扫描（周六更新，整周有效）
+    weekly_scan = load_weekly_event_scan()
+    # 品种码 → 非例行事件映射（用于信号行标注）
+    weekly_scan_map = {}
+    ag_varieties = {"m", "c", "cf", "sr", "au"}  # 全农产线品种
+    if weekly_scan:
+        valid_until = ""
+        try:
+            scan_path = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))),
+                                     "data", "weekly_event_scan.json")
+            with open(scan_path) as f:
+                raw = json.load(f)
+            valid_until = raw.get("valid_until", "")
+        except Exception:
+            pass
+        print(f"\n  ┌─ 🔮 本周非例行扫描（至 {valid_until}）")
+        for ev in weekly_scan:
+            vname = ev.get("品种", "?")
+            catalyst = ev.get("催化", "?")
+            buyer = "✅买方窗口" if ev.get("买方窗口") else "❌买方不进"
+            seller = ev.get("卖方预警", "")
+            prob = ev.get("概率", "")
+            print(f"  │ 🟡 {vname}: {catalyst}  [{buyer}] [{seller}]  概率:{prob}")
+            # 建品种映射
+            vcode = ev.get("品种码", "")
+            if vcode == "all_ag":
+                for ag_code in ag_varieties:
+                    weekly_scan_map.setdefault(ag_code, []).append(ev.get("卖方预警", catalyst))
+            elif vcode:
+                weekly_scan_map.setdefault(vcode, []).append(ev.get("催化", "") if ev.get("买方窗口") else ev.get("卖方预警", catalyst))
+        print(f"  └─ 手动扫描，Scanner 仅显示上下文——不参与判据")
+
     # ── 模块4: IV（仅快速采样关键品种）
     key_varieties = [v for v in target if v in ['c', 'm', 'ta', 'au', 'rm']]
     if not args.quick:
@@ -1376,6 +1439,10 @@ def main():
         limit = args.show if args.show > 0 else len(filtered)
         for i, s in enumerate(filtered[:limit], 1):
             warn = " ⚠️有事件" if s.get('_event_warning') else ""
+            # 非例行事件标注
+            nr_note = ""
+            if s['variety'] in weekly_scan_map:
+                nr_note = f" 🔮[非例行: {weekly_scan_map[s['variety']][0][:20]}]"
             tier_icon = "🟢" if s.get('tier') == 'green' else "🟡"
             opt_type = "C" if s['sell_strike'] < s['buy_strike'] else "P"
             # IV-HV 分层标签
@@ -1384,7 +1451,7 @@ def main():
             print(f"    [{i}] {tier_icon} {s['name']} {s['contract']} "
                   f"卖{opt_type}{s['sell_strike']}/{s['buy_strike']}  "
                   f"净收 ¥{s['net_premium']}  卖bid ¥{s.get('sell_bid','?')} 买ask ¥{s.get('buy_ask','?')}  "
-                  f"盈亏比 {s['rr_ratio']}:1  OTM {s.get('otm_pct','?')}%{warn}")
+                  f"盈亏比 {s['rr_ratio']}:1  OTM {s.get('otm_pct','?')}%{warn}{nr_note}")
             print(f"        {tier_str}")
             tp = round(s['max_profit'] * 0.5, 0)
             print(f"        止盈 ¥{tp:.0f}/手  止损预警: {opt_type}{s['buy_strike']}")
@@ -1446,10 +1513,14 @@ def main():
             color = "🟢" if s.get('color')=='green' else "🟡"
             opt_t = "C" if 'call' in str(s.get('strategy','')).lower() else "P"
             ev_str = f"D-{s.get('event_days','?')}" if s.get('event_days') else ""
+            # 非例行扫描标注（买方窗口品种）
+            buyer_nr = ""
+            if s['variety'] in weekly_scan_map:
+                buyer_nr = f" 🔮[催化: {weekly_scan_map[s['variety']][0][:15]}]"
             print(f"    {color} {s['name']} {s['contract']} "
                   f"买{opt_t}{s.get('buy_strike','?')}/卖{opt_t}{s.get('sell_strike','?')}  "
                   f"成本≈¥{s.get('net_debit','?')}  买ask ¥{s.get('buy_ask','?')} 卖bid ¥{s.get('sell_bid','?')}  "
-                  f"盈亏比 {s.get('profit_ratio','?')}:1  ScP{s.get('iv_percentile','?')}{_cl_str(s)}  {ev_str}")
+                  f"盈亏比 {s.get('profit_ratio','?')}:1  ScP{s.get('iv_percentile','?')}{_cl_str(s)}  {ev_str}{buyer_nr}")
         print(f"    ⚠️ 共 {len(spreads_ok)} 个。不执行，仅纸面。")
     else:
         print(f"\n  🟡 [PAPER] 买方价差（2腿·封顶亏损）— 今日无")

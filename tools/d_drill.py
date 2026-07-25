@@ -53,7 +53,8 @@ def run():
     start_time = time.time()
 
     for i, q in enumerate(use_pool, 1):
-        print(f"  [{i}/{total}] {q['s']}")
+        label = q.get("v", "")
+        print(f"  [{i}/{total}] {label} {q['s']}")
         print(f"  ⏸ 反证？", end=" ")
         try:
             t0 = time.time()
