@@ -69,6 +69,38 @@
 | 波动率聚集 | Volatility Clustering | 大波动后跟大波动，小波动后跟小波动 |
 | Parkinson 波动率 | Parkinson HV | 用日内最高/最低价估计波动率，比收盘价法准 5 倍 |
 
+## BSM 模型
+
+| 中文 | English | 含义 |
+|------|---------|------|
+| 对数正态分布 | Log-normal Distribution | BSM 核心假设：价格变动服从对数正态 |
+| 肥尾 | Fat Tails | 极端事件频率远超正态分布预测 |
+| 随机游走 | Random Walk | BSM 假设价格连续变动无跳跃 |
+| Ito 引理 | Ito's Lemma | BSM 推导用的随机微积分工具（Layer 5 前不需要）|
+
+## 波动率估计器（Sinclair 第 2 章）
+
+| 中文 | English | 说明 |
+|------|---------|------|
+| 收盘价-收盘价估计量 | Close-to-Close Estimator | 只用收盘价算 HV，信息损失大 |
+| Garman-Klass 估计量 | Garman-Klass Estimator | 加入开盘价，效率更高。不处理隔夜跳空 |
+| Rogers-Satchell-Yoon 估计量 | RSY Estimator | 允许漂移项（趋势），仍未处理跳空 |
+| Yang-Zhang 估计量 | Yang-Zhang Estimator | 允许趋势+隔夜跳空，效率 8-14 倍，理论最优 |
+| 已实现波动率 | Realized Volatility (RV) | 加总高频收益率平方，精度最高 |
+| 漂移项 | Drift | 价格的平均趋势方向（μ），GBM: dS=μSdt+σSdW |
+| 跳空 | Jump/Gap | 价格的不连续变动，隔夜或盘中突发事件 |
+| 离散取样偏差 | Discrete Sampling Bias | 观察到的极差≤真实极差，取样越粗低估越严重 |
+| 年化因子 | Annualization Factor | 中国商品期货 √242，美股 √252 |
+| 波动率锥 | Volatility Cone | 多窗口 HV 的分位数分布图 |
+
+## IV Rank vs IV Percentile
+
+| 中文 | English | 说明 |
+|------|---------|------|
+| IV 排名 | IV Rank | (当前IV-最低IV)/(最高IV-最低IV)，极值敏感 |
+| IV 百分位 | IV Percentile | 低于当前IV的天数/总交易日，更平滑 |
+| 绝对值陷阱 | Absolute Value Trap | 窄幅品种只看 Rank 不看绝对值会误判 |
+
 ## 量价分析
 
 | 中文 | English | 一句话 |
