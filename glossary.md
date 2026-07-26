@@ -168,6 +168,71 @@
 | 现金担保 Put | Cash-Secured Put | 预留全额现金卖 Put（卖方入门首选）|
 | 对角价差 | Diagonal Spread | 不同行权价 + 不同到期日的组合 |
 
+## Mike 121 集 · 策略名词速查
+
+> 从 121 集标题提炼。看视频前扫一眼，耳朵不陌生。
+
+### 出现 ≥5 次的策略（每集都会碰到）
+
+| English | 中文 | 出现集数 |
+|---------|------|---------|
+| Credit Spread / Vertical Credit Spread | 信用价差 / 垂直信用价差 | E27, 散布各集 |
+| Debit Spread / Vertical Debit Spread | 借方价差 / 垂直借方价差 | E14, E51, E60 |
+| Covered Call | 备兑看涨 | E02, E12, E111 |
+| Iron Condor | 铁秃鹰 | E04, E50, E62, E103, E115 |
+| Short Strangle | 卖出宽跨式 | E13, E16, E75 |
+| Poor Man's Covered Call (PMCC) | 穷人备兑 | E17, E29, E101 |
+| Calendar Spread | 日历价差 | E08, E106 |
+| Jade Lizard | 翡翠蜥蜴 | E47, E69, E94, E112 |
+
+### 出现 2-4 次的策略
+
+| English | 中文 | 说明 |
+|---------|------|------|
+| Short Straddle | 卖出跨式 | E23, E89 — ATM 卖 Call+Put |
+| Broken Wing Butterfly | 断翅蝴蝶 | E30, E54, E83 — 不对称 Iron Fly |
+| Big Lizard | 大蜥蜴 | E82, E94, E118 — Jade Lizard 变体 |
+| Poor Man's Covered Put (PMCP) | 穷人备兑 Put | E61, E104, E108 |
+| Covered Put | 备兑看跌 | E38, E119, E120 |
+| Put Ratio Spread | Put 比率价差 | E41 |
+| Iron Fly | 铁蝴蝶 | E34 |
+| Chicken Iron Condor | 小鸡铁秃鹰 | E20 — 窄幅 Iron Condor |
+
+### Mike 高频动词（听视频时抓这些词）
+
+| English | 中文 | 典型语境 |
+|---------|------|---------|
+| Sell premium / Be a net seller | 做权利金卖方 | "We want to sell premium when IV is high" |
+| Collect theta | 收时间价值 | "You're collecting theta decay every day" |
+| Manage winners | 止盈管理 | "Manage winners early, at 50% of max profit" |
+| Roll (out/up/down) | 移仓/滚动 | "Roll the untested side" |
+| Hedge | 对冲 | "How to hedge your positions" E06 |
+| Adjust / Adjustment | 调整 | E04, E13, E39, E64 |
+| Close (a trade) | 平仓 | E53 |
+| Get filled / Fill | 成交 | E78 — "Getting options filled" |
+| Finance (a spread) | 融资/降低成本 | E113 — 用 leg 补贴另一腿 |
+| Lock in (losses) | 锁定亏损 | E40 — "Avoid locking in losses" |
+| Drag | 拖累 | E121 — "Stock drag" 期权拖累现货收益 |
+| Overstate | 高估 | "IV tends to overstate RV" |
+| Mean-revert | 均值回复 | E84 — IV mean reversion |
+
+### Mike 高频名词（除 Greek 外）
+
+| English | 中文 | 第一次出现 |
+|---------|------|-----------|
+| Probability of Profit (POP) | 盈利概率 | E52 |
+| Expected Move | 预期波幅 | 散布各集 |
+| Return on Capital (ROC) | 资本回报率 | E100 |
+| Notional Value | 名义价值 | E67 |
+| Buying Power / BPR | 购买力/购买力占用 | E07 小账户 |
+| Defined Risk | 固定风险 | E107 |
+| Undefined Risk | 无限风险 | E36 裸卖 |
+| Assignment / Assignment Risk | 指派/指派风险 | E71, E95, E98 |
+| Dividend Risk | 红利风险 | E70 |
+| Contrarian Mindset | 反向思维 | E93 |
+| Market Awareness | 市场意识 | E99 |
+| Checklist | 核对清单 | E97, E111, E114 |
+
 ## 期权估值
 
 | 中文 | English | 一句话 |
