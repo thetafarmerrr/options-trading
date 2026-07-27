@@ -400,3 +400,14 @@ when we look at hedging, we're basically looking at minimizing risk. So when we'
 - I've been trading on the do follow page for probably between six and seven months. （Mike E07）
 - If a bad trade goes against me, I want to make sure that it doesn't totally wipe out or paralyze my account because I traded too large. （Mike E07）
 - Master those core structures thoroughly through consistent practice until you fully understand every component of the trade lifecycle. （Mike E07）
+
+## 句型库（每日 Mike 挖矿，按场景分组）
+
+### 定义期权概念
+- A call option is essentially the right to buy 100 shares of stock at a certain strike price.  （Mike E03, 0:45）
+
+### 解释Theta
+- When we're selling calls, we have positive theta — we actually benefit from the decay of the option's price.  （Mike E03, 4:20）
+
+### 保险类比
+- The longer I hold insurance coverage, the higher the total premium will be because there's more days until that policy expires.  （Mike E03, 7:10）

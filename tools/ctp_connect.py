@@ -134,7 +134,7 @@ class TraderSpi(tdapi.CThostFtdcTraderSpi):
         req.BrokerID = BROKER_ID
         req.UserID = USER_ID
         req.Password = PASSWORD
-        req.UserProductInfo = "gold_option_tools"
+        req.UserProductInfo = "goldopt"
         self.api.ReqUserLogin(req, self._next_id())
 
     # ── 登录回调 ────────────────────────────────────────────────

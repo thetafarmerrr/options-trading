@@ -1624,4 +1624,24 @@ def main():
 
 
 if __name__ == '__main__':
-    main()
+    import io
+    from pathlib import Path
+
+    # 保存今日输出到 data/scanner_log/YYYY-MM-DD.md
+    log_dir = Path(__file__).parent.parent / 'data' / 'scanner_log'
+    log_dir.mkdir(parents=True, exist_ok=True)
+    today = date.today().isoformat()
+    log_path = log_dir / f'{today}.md'
+
+    buf = io.StringIO()
+    orig_stdout = sys.stdout
+    sys.stdout = buf
+
+    try:
+        main()
+    finally:
+        sys.stdout = orig_stdout
+        output = buf.getvalue()
+        print(output, end='')
+        log_path.write_text(output)
+        print(f'  📁 已存: {log_path}')
