@@ -49,6 +49,8 @@ TRADING_ADDR = CTP_ADDRESSES["联通交易"]
 USER_ID = os.environ.get("CTP_USER_ID", "")
 PASSWORD = os.environ.get("CTP_PASSWORD", "")
 BROKER_ID = os.environ.get("CTP_BROKER_ID", DEFAULT_BROKER)
+AUTH_CODE = os.environ.get("CTP_AUTH_CODE", "")
+APP_ID = os.environ.get("CTP_APP_ID", "client_goldopt_1.0.0")
 
 
 def get_credentials():
@@ -110,8 +112,8 @@ class TraderSpi(tdapi.CThostFtdcTraderSpi):
         req = tdapi.CThostFtdcReqAuthenticateField()
         req.BrokerID = BROKER_ID
         req.UserID = USER_ID
-        req.AuthCode = ""
-        req.AppID = ""
+        req.AuthCode = AUTH_CODE
+        req.AppID = APP_ID
         self.api.ReqAuthenticate(req, self._next_id())
 
     def OnFrontDisconnected(self, nReason):
@@ -135,7 +137,9 @@ class TraderSpi(tdapi.CThostFtdcTraderSpi):
         req.UserID = USER_ID
         req.Password = PASSWORD
         req.UserProductInfo = "goldopt"
-        self.api.ReqUserLogin(req, self._next_id())
+        # 看穿式监管：ReqUserLogin 6.7.7+ 需要传客户端系统信息
+        sys_info = f"macOS;goldopt/1.0.0;{APP_ID}"
+        self.api.ReqUserLogin(req, self._next_id(), len(sys_info), sys_info)
 
     # ── 登录回调 ────────────────────────────────────────────────
     def OnRspUserLogin(self, pRsp, pRspInfo, nRequestID, bIsLast):
@@ -155,10 +159,10 @@ class TraderSpi(tdapi.CThostFtdcTraderSpi):
 
         # 确认结算单
         print("→ 确认结算单…")
-        self.api.ReqSettlementInfoConfirm(
-            tdapi.CThostFtdcSettlementInfoConfirmField(BrokerID=BROKER_ID, InvestorID=USER_ID),
-            self._next_id(),
-        )
+        settle = tdapi.CThostFtdcSettlementInfoConfirmField()
+        settle.BrokerID = BROKER_ID
+        settle.InvestorID = USER_ID
+        self.api.ReqSettlementInfoConfirm(settle, self._next_id())
 
     def OnRspSettlementInfoConfirm(self, pSettlementInfoConfirm, pRspInfo, nRequestID, bIsLast):
         if pRspInfo and pRspInfo.ErrorID != 0:
@@ -254,10 +258,10 @@ def connect_and_login() -> tuple:
     # 查询账户
     print("→ 查询账户信息…")
     spi.account_ready = False
-    api.ReqQryTradingAccount(
-        tdapi.CThostFtdcQryTradingAccountField(BrokerID=BROKER_ID, InvestorID=USER_ID),
-        spi._next_id(),
-    )
+    qry = tdapi.CThostFtdcQryTradingAccountField()
+    qry.BrokerID = BROKER_ID
+    qry.InvestorID = USER_ID
+    api.ReqQryTradingAccount(qry, spi._next_id())
     if spi._wait_for("account_ready", timeout=5):
         print("\n📊 账户信息:")
         for k, v in spi.account_info.items():
@@ -266,10 +270,10 @@ def connect_and_login() -> tuple:
     # 查询持仓
     print("\n→ 查询持仓…")
     spi.account_ready = False
-    api.ReqQryInvestorPosition(
-        tdapi.CThostFtdcQryInvestorPositionField(BrokerID=BROKER_ID, InvestorID=USER_ID),
-        spi._next_id(),
-    )
+    qry = tdapi.CThostFtdcQryInvestorPositionField()
+    qry.BrokerID = BROKER_ID
+    qry.InvestorID = USER_ID
+    api.ReqQryInvestorPosition(qry, spi._next_id())
     spi._wait_for("account_ready", timeout=5)
     if spi.positions:
         print(f"   当前持仓 {len(spi.positions)} 笔:")

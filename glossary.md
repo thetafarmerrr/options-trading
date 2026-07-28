@@ -406,6 +406,18 @@ when we look at hedging, we're basically looking at minimizing risk. So when we'
 ### 定义期权概念
 - A call option is essentially the right to buy 100 shares of stock at a certain strike price.  （Mike E03, 0:45）
 
+### 定义Put期权
+- A put option is essentially the right to sell 100 shares of stock at a certain strike price.  （Mike E02, 0:30）
+- Buying a put is a bearish strategy — we want the stock price to go down. Inversely, selling a put is a bullish strategy — we want the stock price to go up.  （Mike E02）
+
+### 买方 vs 卖方特征
+- When we're buying options, we have negative theta — the theta decay is bad for us. When we're selling options, we have positive theta — the theta decay is good for us.  （Mike E02）
+- Buying options: unlimited profit, limited loss, low probability of profit. Selling options: limited profit, capped loss, high probability of profit.  （Mike E02）
+- When selling a put, we can be profitable in two out of three ways: stock goes up, or stock stays flat. Only one out of three ways makes us lose: stock drops below our strike.  （Mike E02）
+
+### 说明因果关系
+- That's because if we sell an option here and the option decays over time, if we can buy it back for a lower amount, the difference in those prices is going to be our profitability.  （Mike E02）
+
 ### 解释Theta
 - When we're selling calls, we have positive theta — we actually benefit from the decay of the option's price.  （Mike E03, 4:20）
 
