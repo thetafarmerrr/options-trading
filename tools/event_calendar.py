@@ -49,6 +49,23 @@ class CalendarEvent:
     expected_move_pct: float  # 历史平均波动幅度(%)
     best_strategy: str     # "straddle" | "directional" | "ratio"
     routine: bool = True   # True=例行(已消化) False=非例行(意外·不可预知)
+    time_edt: str = ""     # 美东发布时间 "14:00" / "10:30" 等，空=不适用
+
+
+def edt_to_bjt(time_edt: str) -> str:
+    """美东时间→北京时间。EDT=UTC-4, BJT=UTC+8, 差12小时。"""
+    if not time_edt:
+        return ""
+    try:
+        parts = time_edt.split(":")
+        h = int(parts[0])
+        m = int(parts[1]) if len(parts) > 1 else 0
+        bjt_h = h + 12
+        if bjt_h >= 24:
+            return f"次日 {bjt_h - 24:02d}:{m:02d}"
+        return f"{bjt_h:02d}:{m:02d}"
+    except (ValueError, IndexError):
+        return ""
 
 # ═══════════════════════════════════════════
 # 持续性地缘事件（无固定日期，始终有效）
@@ -79,19 +96,22 @@ EVENTS_2026 = [
         "2026-07-10", "USDA WASDE 7月供需报告",
         ["c", "m", "rm", "cf"], "high", "report",
         "全球及美国谷物/油籽供需平衡表，历史波动 ±2-5%",
-        3.0, "straddle"
+        3.0, "straddle",
+        time_edt="12:00"
     ),
     CalendarEvent(
         "2026-08-12", "USDA WASDE 8月供需报告",
         ["c", "m", "rm", "cf"], "high", "report",
         "首次基于田间调查的单产预估，波动通常大于7月",
-        4.0, "straddle"
+        4.0, "straddle",
+        time_edt="12:00"
     ),
     CalendarEvent(
         "2026-09-11", "USDA WASDE 9月供需报告",
         ["c", "m", "rm", "cf"], "high", "report",
         "收获前关键单产调整",
-        2.5, "straddle"
+        2.5, "straddle",
+        time_edt="12:00"
     ),
 
     # ── 季度重磅 ──
@@ -99,13 +119,15 @@ EVENTS_2026 = [
         "2026-06-30", "USDA 种植面积 + 季度库存报告",
         ["c", "m", "rm", "cf"], "high", "report",
         "年度最重要的农产品报告！实际种植面积 vs 3月预估，单日波动可达 ±5%",
-        5.0, "straddle"
+        5.0, "straddle",
+        time_edt="12:00"
     ),
     CalendarEvent(
         "2026-09-30", "USDA 季度谷物库存报告",
         ["c", "m", "rm"], "medium", "report",
         "截至9月1日库存，反映旧作需求",
-        2.0, "straddle"
+        2.0, "straddle",
+        time_edt="12:00"
     ),
 
     # ── 每周数据 ──
@@ -113,13 +135,15 @@ EVENTS_2026 = [
         "weekly-monday", "USDA 作物生长进度 (每周二早)",
         ["c", "m", "rm", "cf", "sr"], "medium", "data",
         "优良率变化是天气炒作核心指标",
-        1.5, "directional"
+        1.5, "directional",
+        time_edt="16:00"
     ),
     CalendarEvent(
         "weekly-wednesday", "EIA 原油库存 (每周三晚)",
         ["ta", "ma"], "medium", "data",
         "PTA和甲醇受原油情绪传导明显",
-        1.5, "directional"
+        1.5, "directional",
+        time_edt="10:30"
     ),
 
     # ── 中国数据 ──
@@ -149,7 +173,8 @@ EVENTS_2026 = [
         "2026-07-29", "美联储 FOMC 利率决议",
         ["au", "i", "ru", "ta", "ma"], "high", "policy",
         "金价最敏感，工业品受美元传导",
-        1.5, "straddle"
+        1.5, "straddle",
+        time_edt="14:00"
     ),
 
     # ── 合约到期 ──
@@ -200,6 +225,7 @@ def resolve_weekly_events(events: List[CalendarEvent], from_date: date, days: in
                             description=ev.description,
                             expected_move_pct=ev.expected_move_pct,
                             best_strategy=ev.best_strategy,
+                            time_edt=ev.time_edt,
                         ))
                         d += timedelta(days=7)
                     break
@@ -265,6 +291,8 @@ def get_upcoming_events(from_date: Optional[date] = None, days: int = 7,
                 "description": ev.description,
                 "expected_move_pct": ev.expected_move_pct,
                 "best_strategy": ev.best_strategy,
+                "time_edt": ev.time_edt,
+                "time_bjt": edt_to_bjt(ev.time_edt),
                 "urgency": "🔴 立即" if days_until <= 2 else ("🟡 准备" if days_until <= 5 else "🟢 跟踪"),
             })
 
@@ -293,7 +321,14 @@ def print_events(events: List[dict]):
         days_str = f"D-{ev['days_until']}" if ev['days_until'] > 0 else "今天!"
         strategy_icon = "⇅" if ev['best_strategy'] == 'straddle' else ("→" if ev['best_strategy'] == 'directional' else "⋮")
 
-        print(f"\n  {urgency_icon} {days_str:>4} │ {impact_bar} {ev['title']}")
+        # 时区标注
+        time_display = ""
+        if ev.get('time_edt'):
+            edt_str = f"{ev['time_edt']} EDT"
+            bjt_str = f"{ev['time_bjt']} 北京"
+            time_display = f"  🕐 {edt_str} / {bjt_str}"
+
+        print(f"\n  {urgency_icon} {days_str:>4} │ {impact_bar} {ev['title']}{time_display}")
         print(f"         │ 品种: {varieties_str}")
         print(f"         │ 策略: {strategy_icon} {ev['best_strategy']}  |  历史波动: ±{ev['expected_move_pct']}%")
         print(f"         │ {ev['description']}")

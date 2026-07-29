@@ -1333,14 +1333,20 @@ def main():
         if ev.get('description'):
             print(f"  │    {ev['description'][:80]}")
     # 固定日期事件
+    def _time_label(ev):
+        """生成时区标注（有 EDT 时间才显示）"""
+        if ev.get('time_edt') and ev.get('time_bjt'):
+            return f" 🕐 {ev['time_edt']} EDT / {ev['time_bjt']} 北京"
+        return ""
+
     high_events = [e for e in events if e['impact'] == 'high' and e.get('days_until', -1) >= 0]
     for ev in high_events[:5]:
         tag = "[例行]" if ev.get('routine', True) else "[⚠非例行]"
-        print(f"  │ D-{ev['days_until']:<3} 🔥 {tag} {ev['title']}  [{', '.join(ev['variety_names'])}]")
+        print(f"  │ D-{ev['days_until']:<3} 🔥 {tag} {ev['title']}  [{', '.join(ev['variety_names'])}]{_time_label(ev)}")
     medium_in_window = [e for e in events if e['impact'] == 'medium' and 0 <= e.get('days_until', -1) <= 5]
     for ev in medium_in_window[:3]:
         tag = "[例行]" if ev.get('routine', True) else "[⚠非例行]"
-        print(f"  │ D-{ev['days_until']:<3} ⚡ {tag} {ev['title']}  [{', '.join(ev['variety_names'])}]")
+        print(f"  │ D-{ev['days_until']:<3} ⚡ {tag} {ev['title']}  [{', '.join(ev['variety_names'])}]{_time_label(ev)}")
     if not ongoing and not high_events and not medium_in_window:
         print(f"  │ 无近期高影响事件")
     total = len(ongoing) + len(high_events) + len(medium_in_window)
