@@ -1008,8 +1008,8 @@ def run_drill_e(quick=False):
                          if chain["prices"][i]["bid"] > 0 and chain["prices"][i]["ask"] > 0
                          and (chain["prices"][i]["ask"] - chain["prices"][i]["bid"]) / chain["prices"][i]["bid"] < 0.10]
 
-        # 随机注入 0-1 个可交易信用价差对（80% 概率，够 2 条合格腿就做）
-        if len(valid_strikes) >= 2 and random.random() < 0.8:
+        # 注入可交易信用价差对（有合法配对就注入，不随机跳过）
+        if len(valid_strikes) >= 2:
             pair_indices = random.sample(valid_strikes, 2)
             pair_indices.sort(key=lambda x: x[0], reverse=True)  # 高行权价在前
             high, low = pair_indices[0], pair_indices[1]
@@ -1080,7 +1080,8 @@ def run_drill_e(quick=False):
                 if sw > chain['futures'] * 0.05:
                     print(f"  ❌ 行权价间距{sw}点 > 期货{chain['futures']}的5%({int(chain['futures']*0.05)}点)，太大不做")
                 else:
-                    print(f"  ❌ 误报。今日无合格信用价差机会")
+                    # 间距合法但 drill 判定无合格机会——链里所有配对过不了 bid>ask 或价差<10% 的关
+                    print(f"  ❌ 行权价对间距合法({sw}点≤5%)，但链面无合格信用价差——bid/ask 价差过宽或无法正净收。答案：'无'")
         elif pair_ok and net_ok:
             correct += 1
             score += 3 if elapsed < 20000 else (2 if elapsed < 30000 else 1)
