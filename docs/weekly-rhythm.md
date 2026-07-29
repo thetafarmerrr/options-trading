@@ -23,7 +23,7 @@
 | 扫描 | `python3 tools/unified_scanner.py` | 3 min |
 | IV + 环境（早盘）| `python3 tools/iv_collector.py`（含买方视角）| 3 min |
 | IV 收盘采集 | 15:00 后 `python3 tools/iv_collector.py`（结算价→iv_history）| 1 min |
-| 训练 | `python3 tools/drill_system.py B` + 3 个轮转模块 | 15 min |
+| 训练 | `python3 tools/drill_system.py B` + 4 个轮转模块 | 25 min |
 | 英文 | Mike 系列视频 + 跟读 + 90s 炸弹 + 笔译 | 20 min |
 | 影响力 | Scanner+IV 后立刻发 Twitter（≤2条/天） | 1 min |
 | 验收 | `python3 tools/daily_quiz.py` | 2 min |
@@ -60,19 +60,21 @@
 
 ## 训练轮转表
 
-> **每天 B + 3 个模块，约 15 分钟。** B 是基本功打底，E 是核心策略高频，G 是腿位基础隔天练。
+> **每天 B + 4 个模块，约 25 分钟。** B 是基本功打底，E 是核心策略高频。
+> G=卖方腿位 J=买方腿位 I=单腿操作（7/29 新增三模块）
+> 模块说明：A 链面 B 价差 C 天气→策略 D Greek E 信用价差扫描 F 持仓 G 卖方腿位 H 买方方向 I 单腿 J 买方腿位
 
 | 星期 | 训练 | 侧重 |
 |------|------|------|
-| **周一** | B + E + G + A | 链面日 |
-| **周二** | B + E + C + H | 环境日 |
-| **周三** | B + E + G + D | Greek日 |
-| **周四** | B + E + C + F | 策略+持仓 |
-| **周五** | B + E + G + H | 综合日 |
-| **周六** | B + G + D + C | 复盘日 |
-| **周日** | B + D + E + A | 基础巩固 |
+| **周一** | B + E + G + I + A | 链面+卖方腿+单腿 |
+| **周二** | B + E + C + H + I | 环境+买方方向+单腿 |
+| **周三** | B + E + G + D + J | Greek+双方向腿位 |
+| **周四** | B + E + C + H + F | 策略+持仓+买方方向 |
+| **周五** | B + E + G + D + A | 卖方腿+Greek+链面 |
+| **周六** | B + G + D + C + J | 复盘：卖方腿+Greek+买方腿 |
+| **周日** | B + D + E + H + F | 基础：Greek+买方方向+持仓 |
 
-**模块频率（周）：** B×7 / E×5 / G×4 / D×3 / C×3 / A×2 / H×2 / F×2
+**模块频率（周）：** B×7 / E×5 / G×4 / D×3 / C×3 / A×3 / H×3 / I×3 / J×2 / F×2
 
 > **每天都要做英文。** 英文是堆量，训练是肌肉。
 

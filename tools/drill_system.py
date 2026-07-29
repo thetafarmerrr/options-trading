@@ -73,8 +73,8 @@ def show_progress():
         return
 
     sessions = h["sessions"]
-    modules = ["A", "B", "C", "D", "E", "F", "G", "H"]
-    module_names = {"A": "链面扫异常", "B": "价差判断", "C": "天气→策略", "D": "Greek场景", "E": "信用价差扫描", "F": "持仓管理", "G": "腿位判断", "H": "买方方向"}
+    modules = ["A", "B", "C", "D", "E", "F", "G", "H", "I", "J"]
+    module_names = {"A": "链面扫异常", "B": "价差判断", "C": "天气→策略", "D": "Greek场景", "E": "信用价差扫描", "F": "持仓管理", "G": "卖方腿位判断", "H": "买方方向", "I": "单腿操作", "J": "买方腿位判断"}
 
     print(f"\n{'═'*60}")
     print(f"  📊 训练统计（共 {len(sessions)} 次）")
@@ -1316,45 +1316,68 @@ def run_drill_f(quick=False):
 # ═══════════════════════════════════════════
 
 def run_drill_g(quick=False):
-    """训练 G：腿位判断 — 虚值/近值/实值"""
+    """训练 G：卖方腿位判断 — 卖Put/卖Call 价差 OTM 判定"""
+    n_rounds = 8 if quick else 25
     print(f"\n{'─'*60}")
-    print(f"  训练 G — 腿位判断")
-    print(f"  规则：看期货现价+卖腿行权价，判断能不能做信用价差")
-    print(f"  虚做 (OTM>2%) | 近平 (平仓离场) | 实不做 (ITM)")
+    print(f"  训练 G — 卖方腿位判断（{n_rounds} 题）")
+    print(f"  卖Put：OTM% = (期货-卖腿)/期货  →  卖腿 < 期货才 OTM")
+    print(f"  卖Call：OTM% = (卖腿-期货)/期货 →  卖腿 > 期货才 OTM")
+    print(f"  虚可卖(>2%) | 近不做该平(0-2%) | 实不做(<0)")
     print(f"  目标：3秒/题，正确率>90%")
     print(f"{'─'*60}")
 
-    n_rounds = 5 if quick else 15
     score = 0; total_time = 0; correct = 0
-    labels = {"虚": "✅虚值可做", "近": "⚠️近值平仓", "实": "❌实值不做"}
+    labels = {"虚可卖": "✅虚可卖(>2%)", "近不做该平": "⚠️近不做该平(0-2%)", "实不做": "❌实不做(ITM)"}
+    expected_keys = ["虚可卖", "近不做该平", "实不做"]
 
     for r in range(1, n_rounds + 1):
-        futures = random.randint(2200, 5800)
-        sell_strike = futures + random.choice([-300, -200, -100, -50, -30, 0, 30, 50, 100, 200])
-        spread_w = random.choice([20, 50, 100])
-        buy_strike = sell_strike - spread_w if sell_strike > futures else sell_strike - spread_w
+        sp_type = random.choice(["卖Put价差", "卖Call价差"])
+        futures = random.randint(2200, 9000)
+        zone = random.choices(expected_keys, weights=[55, 25, 20])[0]
 
-        pct_otm = (futures - sell_strike) / futures * 100
-        if pct_otm > 2:
-            expected = "虚"
-        elif pct_otm >= 0:
-            expected = "近"
-        else:
-            expected = "实"
+        if sp_type == "卖Put价差":
+            # Sell put (higher), Buy put (lower). OTM = (期货-卖腿)/期货
+            if zone == "虚可卖":
+                sell_leg = futures - random.randint(int(futures*0.025), int(futures*0.12))
+            elif zone == "近不做该平":
+                sell_leg = futures - random.randint(0, int(futures*0.02))
+            else:  # 实不做
+                sell_leg = futures + random.randint(0, int(futures*0.08))
+            buy_leg = sell_leg - random.choice([20, 50, 100, 150, 200])
+            pct = (futures - sell_leg) / futures * 100
+            expected = "虚可卖" if pct > 2 else ("近不做该平" if pct >= 0 else "实不做")
 
-        print(f"\n  [{r}/{n_rounds}]  期货={futures}  卖腿={sell_strike}  买腿={buy_strike}")
+        else:  # 卖Call价差
+            # Sell call (lower), Buy call (higher). OTM = (卖腿-期货)/期货
+            if zone == "虚可卖":
+                sell_leg = futures + random.randint(int(futures*0.025), int(futures*0.12))
+            elif zone == "近不做该平":
+                sell_leg = futures + random.randint(0, int(futures*0.02))
+            else:  # 实不做
+                sell_leg = futures - random.randint(0, int(futures*0.08))
+            buy_leg = sell_leg + random.choice([20, 50, 100, 150, 200])
+            pct = (sell_leg - futures) / futures * 100
+            expected = "虚可卖" if pct > 2 else ("近不做该平" if pct >= 0 else "实不做")
+
+        print(f"\n  [{r}/{n_rounds}] [{sp_type}]  期货={futures}  卖腿={sell_leg}  买腿={buy_leg}")
         t0 = time.time()
         try:
-            u = input(f"  → 虚/近/实 ?: ").strip()
+            u = input(f"  → 虚可卖/近不做该平/实不做 ?: ").strip()
         except (EOFError, KeyboardInterrupt):
             print(f"\n  训练中断。")
             return
         el = (time.time() - t0) * 1000; total_time += el
-        if u == expected:
+        matched = False
+        for ek in expected_keys:
+            if u == ek:
+                matched = True; break
+        if matched and u == expected:
             correct += 1; score += 3 if el < 3000 else (2 if el < 6000 else 1)
-            print(f"  ✅ {el/1000:.1f}s  {labels[expected]}  OTM={pct_otm:.1f}%")
+            print(f"  ✅ {el/1000:.1f}s  {labels[expected]}  OTM={pct:.1f}%")
+        elif matched:
+            print(f"  ❌ {el/1000:.1f}s  你选{u}  实际{labels[expected]}  OTM={pct:.1f}%")
         else:
-            print(f"  ❌ {el/1000:.1f}s  你选{u}  实际{labels[expected]}  OTM={pct_otm:.1f}%")
+            print(f"  ❌ {el/1000:.1f}s  输入{u}  → 请用 虚可卖/近不做该平/实不做")
 
     acc = correct / n_rounds * 100; avg = total_time / n_rounds
     save_session("G", score, acc, avg, n_rounds)
@@ -1495,6 +1518,254 @@ def today_recommendation():
     return {0: "A", 1: "B", 2: "C", 3: "H", 4: "F", 5: "C", 6: "D"}[dow]
 
 
+# ═══════════════════════════════════════════════════════════
+# 训练 I — 单腿操作
+# ═══════════════════════════════════════════════════════════
+
+SCENARIOS_I = [
+    # ── 买 Call ──
+    {"d": "标的 3000，你看涨到 3200，IV 在 P15（便宜）。买 3100 Call 权利金 30 元。", "q": "这笔交易最大亏损是多少？",
+     "o": [("30 元（全部权利金）", True, "买方最大亏损 = 付出的权利金。标的跌到 0 也只是亏 30。"),
+           ("无限", False, "买方（买Call/买Put）没有无限亏损——只有卖方才有。"),
+           ("3000 元", False, "不会。买方只亏权利金。"),
+           ("看情况", False, "不看情况——买方的最大亏损结构上是封顶的。")]},
+
+    {"d": "标的 5000，你看涨，IV 在 P10（极便宜）。买 5200 Call 权利金 40 元。", "q": "盈亏平衡点在哪？",
+     "o": [("5240", True, "BE = 行权价 + 权利金 = 5200 + 40。标的涨到 5240 才回本。"),
+           ("5200", False, "到行权价只是变实值，权利金成本还没赚回来。"),
+           ("5160", False, "减反了。买 Call 的 BE 是往上加的。"),
+           ("5040", False, "不对。")]},
+
+    {"d": "标的 4000，你觉得要大涨。IV 在 P75（贵），买 4200 Call 权利金 80 元。", "q": "该买这个 Call 吗？",
+     "o": [("不该，IV 太贵——花钱买贵的权利金，就算方向对也难赚钱", True, "买期权最怕 IV 贵。方向对 100 点，IV 跌 5 个点就能吃掉全部利润。"),
+           ("该，方向看对就行", False, "IV 贵时买方进场 ≈ 给卖方送钱。等 IV 回落再买。"),
+           ("该，但少买一点", False, "不是仓位问题——是盈亏比问题。贵的 IV=贵的票价。"),
+           ("不该，买 Call 永远不如买期货", False, "买 Call 的优势是有限风险+杠杆。问题不在工具，在 IV 价位。")]},
+
+    # ── 买 Put ──
+    {"d": "标的 6000，你看跌到 5700，IV 在 P12（便宜）。买 5800 Put 权利金 50 元。", "q": "盈亏平衡点在哪？",
+     "o": [("5750", True, "BE = 行权价 - 权利金 = 5800 - 50。标的跌到 5750 才回本。"),
+           ("5800", False, "到行权价只是实值——权利金还没赚回来。"),
+           ("5850", False, "加反了。买 Put 的 BE 是往下减的。"),
+           ("5700", False, "那是你的目标价，不是 BE。")]},
+
+    {"d": "标的 2500，连续跌了 5 天加速下行。IV 在 P18（便宜），买 2400 Put 权利金 25 元。", "q": "最大亏损是多少？最大利润呢？",
+     "o": [("最大亏损 25 元，最大利润 2375 元（标的归零）", True, "买方 Put：亏有限（权利金），赚有限（标的归零 - 行权价）。2400-25=2375。"),
+           ("最大亏损 25 元，最大利润无限", False, "Put 不是 Call——标的只能跌到 0。"),
+           ("最大亏损无限", False, "买方没有无限亏损。这是买 Put，你做空但风险封顶。"),
+           ("最大亏损 25 元，最大利润 2400 元", False, "标的归零时利润 = 行权价 - 权利金 = 2400-25=2375。")]},
+
+    # ── 卖 Call ──
+    {"d": "标的 3000，你看震荡偏弱。IV 在 P82（贵），OTM 4%。卖 3120 Call 收 35 元。", "q": "最大利润和最大亏损？",
+     "o": [("最大利润 35 元（权利金），最大亏损无限", True, "卖 Call：收固定权利金，标的无限涨=亏损无限。裸卖就是这把双刃剑。"),
+           ("最大利润无限", False, "卖方赚的是权利金——封顶的。"),
+           ("最大利润 35 元，最大亏损 3120 元", False, "标的可以涨到任何价格，亏损不封顶。"),
+           ("最大利润 35 元，最大亏损也 35 元", False, "那是价差（有买腿保护）。裸卖 Call 没有上限保护。")]},
+
+    {"d": "标的 4500，你看横盘。IV 在 P68，卖 4680 Call 收 22 元，OTM 4%。", "q": "盈亏平衡点在哪？",
+     "o": [("4702", True, "BE = 行权价 + 权利金 = 4680 + 22。标的涨过 4702 你才开始亏。"),
+           ("4680", False, "到行权价只是变实值，你还有 22 元权利金垫着。"),
+           ("4658", False, "减反了。卖 Call 的 BE 是往上加的——权利金是你的缓冲区。"),
+           ("4500", False, "那是现价。")]},
+
+    {"d": "标的 3800，你强烈看跌。IV 在 P45（中等），卖 4000 Call 收 15 元 OTM 5.2%。", "q": "这个操作有问题吗？",
+     "o": [("有问题——裸卖 Call 无限风险。强烈看跌应该买 Put（风险封顶）或卖 Call 价差（有保护）", True, "裸卖 = 小赚大亏结构。方向判断对≠应该裸卖。永远加保护腿。"),
+           ("没问题，IV 中等+OTM 远=安全", False, "OTM 远不是安全网——黑天鹅来了 5% 不够。"),
+           ("有问题，IV 太低不该卖", False, "P45 不算太低，问题不在 IV 在裸卖。"),
+           ("没问题，看跌就卖 Call", False, "看跌卖 Call 逻辑对，但不能裸卖。")]},
+
+    # ── 卖 Put ──
+    {"d": "标的 2000，你看震荡偏强。IV 在 P78（贵），卖 1900 Put 收 28 元 OTM 5%。", "q": "盈亏平衡点？",
+     "o": [("1872", True, "BE = 行权价 - 权利金 = 1900 - 28。标的跌到 1872 才开始亏。"),
+           ("1900", False, "到行权价时你还有 28 元权利金垫着。"),
+           ("1928", False, "加反了。卖 Put 的 BE 是往下减的。"),
+           ("2000", False, "那是现价。")]},
+
+    {"d": "标的 5500，你看涨且 D-2 有财报。IV 在 P88（很贵），卖 5200 Put 收 60 元 OTM 5.5%。", "q": "该做吗？",
+     "o": [("不该——D-2 高影响事件前不能卖 Put。就算 IV 贵、OTM 远也不行", True, "事件前裸卖=赌。万一财报暴雷，标的跳空跌 8%，裸卖 Put 直接穿仓。等事件落地。"),
+           ("该，IV 贵+方向对=好机会", False, "事件前的 IV 贵是有原因的——市场在定价不确定性。"),
+           ("该，但仓位减半", False, "不是仓位问题——是事件风险。减半仍然是裸卖。"),
+           ("不该，但理由不是事件——是裸卖本身禁止", False, "裸卖确实禁止。但即使不考虑这个，事件前也不该进场。")]},
+
+    # ── 对比场景 ──
+    {"d": "标的 7000，你看涨。IV 分位两种：A) P10 B) P85。哪种适合买 Call？",
+     "o": [("A — P10（便宜）", True, "买期权=买波动率。IV 便宜时进场，方向对+IV 涨=双引擎。IV 贵时买=方向对也可能不赚钱。"),
+           ("B — P85（贵）", False, "贵 IV 买 Call=高成本。IV 回落会吃掉方向利润。贵 IV 是卖方窗口。"),
+           ("都可以，看方向", False, "IV 位置决定买方能不能赚钱。贵 IV=高门槛。"),
+           ("都不适合，买 Call 永远不如买标的", False, "方向强+IV 便宜=买 Call 杠杆效率远超买标的。")]},
+
+    {"d": "标的 3200，你看跌。比较两种做法：A) 买 3100 Put 权利金 45 元  B) 裸卖 3300 Call 收 30 元。哪个风险结构更好？",
+     "o": [("A — 买 Put：最大亏损 45 元封顶，不会爆仓", True, "买方=风险可控。裸卖 Call=别人涨多少你亏多少。方向对+裸卖=时间朋友，但一次黑天鹅就清零。"),
+           ("B — 裸卖 Call：收钱就是赚", False, "收钱爽，但无限风险。这不是交易，是卖保险不收保费上限。"),
+           ("两个一样好", False, "差远了。一个是有限风险，一个是无限风险。"),
+           ("B — 裸卖 Call 因为权利金更厚", False, "权利金厚=风险大。30 元 vs 可能亏 3000 元——这个比例你自己算。")]},
+
+    # ── 不做场景 ──
+    {"d": "标的 4100，方向不明朗，IV 在 P50 正中间。", "q": "最适合做什么？",
+     "o": [("不做。方向不明+IV 中性=没有 edge", True, "单腿=方向性赌注。方向不明确时进场=付费猜硬币。等信号清晰再说。"),
+           ("买跨式（同时买 Call+Put）", False, "跨式赌大波动，但 IV 中性时成本不低。除非有事件催化。"),
+           ("卖宽跨式", False, "卖宽跨式=赌不波动。方向不明≠不波动。而且裸卖禁止。"),
+           ("买 Call", False, "方向不明=50% 概率错。没有 edge 不下注。")]},
+
+    {"d": "S1 阶段只能做卖方信用价差。今天看到一个买 Call 信号很好，IV P8、盈亏比 11:1。", "q": "该实盘买吗？",
+     "o": [("不该——S1 不碰买方实盘。记进 paper-tracker 追踪", True, "阶段边界是硬锁。买方实盘在 D≥5+非例行确认后才解锁。好信号≠该现在做。"),
+           ("该，信号太好了不能错过", False, "FOMO=override。没有系统的'好信号'和赌没区别。"),
+           ("该，用模拟盘试", False, "模拟盘可以——但题目问的是实盘。"),
+           ("用极小仓位试一笔", False, "小仓位也是破阶段边界。¥100 买=¥100 赌。")]},
+
+    # ── 混合识别 ──
+    {"d": "标的 2800，IV P72（贵），你看横盘偏弱。", "q": "单腿角度，做什么？",
+     "o": [("卖 Call（收权利金，赌不涨）", True, "横盘偏弱+高 IV=卖 Call 窗口。但要加保护腿——裸卖禁止。"),
+           ("买 Put（赌跌）", False, "方向是对的，但高 IV 时买 Put 成本太高。IV 跌会吃掉方向利润。"),
+           ("买 Call", False, "方向反了。"),
+           ("不做", False, "有 edge（方向+高 IV），但没有保护腿不能裸卖。加保护腿=Call 价差，可以做。")]},
+
+    {"d": "标的 1500，IV P8（极便宜），你看涨。", "q": "单腿角度，做什么？",
+     "o": [("买 Call（付权利金，赌涨）", True, "低 IV+看涨=买方黄金窗口。成本低+IV 可能回升=方向对时双引擎。"),
+           ("卖 Put（收权利金，赌不跌）", False, "低 IV 卖 Put=收钱太少。P8 的权利金不够覆盖风险。"),
+           ("卖 Call", False, "方向反了——看涨卖 Call 是逆势。"),
+           ("不做", False, "条件有利：方向+低 IV。但 S1 买方只能纸面——paper-tracker 记上。")]},
+]
+
+
+def run_drill_i(quick=False):
+    """训练 I — 单腿操作（卖Call/买Call/买Put/卖Put 识别+盈亏计算）"""
+    n_rounds = 5 if quick else min(len(SCENARIOS_I), 12)
+    print(f"\n{'═'*55}")
+    print(f"  训练 I — 单腿操作（{n_rounds} 题）")
+    print(f"  覆盖：买Call/买Put/卖Call/卖Put — 盈亏结构+进场判断")
+    print(f"  每题单选。目标 ≥ 80%。")
+    print(f"{'═'*55}")
+
+    correct = 0; total_time = 0; score = 0
+    pool = random.sample(SCENARIOS_I, n_rounds)
+
+    for i, s in enumerate(pool, 1):
+        print(f"\n  [{i}/{n_rounds}] {s['d']}")
+        print(f"  ❓ {s['q']}")
+        opts = s["o"][:]
+        random.shuffle(opts)
+        for j, (txt, _, _) in enumerate(opts, 1):
+            print(f"    {j}. {txt}")
+
+        t0 = time.time()
+        try:
+            sel = input(f"  → 选几 (数字): ").strip()
+        except (EOFError, KeyboardInterrupt):
+            print(f"\n  训练中断。")
+            return
+
+        elapsed = (time.time() - t0) * 1000
+        total_time += elapsed
+
+        is_correct = False
+        try:
+            idx = int(sel) - 1
+            if 0 <= idx < len(opts):
+                is_correct = opts[idx][1]
+        except ValueError:
+            pass
+
+        if is_correct:
+            correct += 1
+            score += 3 if elapsed < 8000 else (2 if elapsed < 15000 else 1)
+            print(f"  ✅ {elapsed/1000:.1f}s")
+        else:
+            # Find correct answer
+            correct_opt = next((o for o in opts if o[1]), None)
+            print(f"  ❌ {elapsed/1000:.1f}s")
+            if correct_opt:
+                print(f"  💡 {correct_opt[2]}")
+
+    acc = correct / n_rounds * 100
+    avg = total_time / n_rounds
+    save_session("I", score, acc, avg, n_rounds)
+    print(f"\n  {'─'*40}")
+    print(f"  训练I完成: {correct}/{n_rounds} 正确 ({acc:.0f}%)")
+    print(f"  平均用时: {avg/1000:.1f}s/题  得分: {score}")
+    rating = ("⚡ 单腿精通！" if acc >= 90 else ("👍 方向感不错" if acc >= 70 else
+              ("📚 多在 Scanner 里看 IV 分位+方向匹配" if acc >= 50 else "🔰 从头来——先记住四种腿的盈亏结构")))
+    print(f"  {rating}")
+    print()
+
+
+# ═══════════════════════════════════════════════════════════
+# 训练 J — 买方腿位判断
+# ═══════════════════════════════════════════════════════════
+
+def run_drill_j(quick=False):
+    """训练 J：买方腿位判断 — 买Put/买Call 价差买腿OTM判定"""
+    n_rounds = 6 if quick else 20
+    print(f"\n{'─'*60}")
+    print(f"  训练 J — 买方腿位判断（{n_rounds} 题）")
+    print(f"  买Put：OTM% = (期货-买腿)/期货  →  买腿 < 期货才 OTM")
+    print(f"  买Call：OTM% = (买腿-期货)/期货 →  买腿 > 期货才 OTM")
+    print(f"  远OTM(>2%) 便宜低概率 | 近ATM(0-2%) 适中高Delta | 已实值(<0) 贵高Delta")
+    print(f"  不判该不该做——只练识别买腿距期货多远")
+    print(f"  目标：3秒/题，正确率>90%")
+    print(f"{'─'*60}")
+
+    score = 0; total_time = 0; correct = 0
+    labels = {"远OTM": "🔭远OTM(>2%)", "近ATM": "🎯近ATM(0-2%)", "已实值": "💎已实值(ITM)"}
+    expected_keys = ["远OTM", "近ATM", "已实值"]
+
+    for r in range(1, n_rounds + 1):
+        sp_type = random.choice(["买Put价差", "买Call价差"])
+        futures = random.randint(2200, 9000)
+        zone = random.choices(expected_keys, weights=[55, 25, 20])[0]
+
+        if sp_type == "买Put价差":
+            # Buy put (higher 买腿), Sell put (lower 卖腿)。OTM = (期货-买腿)/期货
+            if zone == "远OTM":
+                buy_leg = futures - random.randint(int(futures*0.025), int(futures*0.12))
+            elif zone == "近ATM":
+                buy_leg = futures - random.randint(0, int(futures*0.02))
+            else:  # 已实值
+                buy_leg = futures + random.randint(0, int(futures*0.08))
+            sell_leg = buy_leg - random.choice([20, 50, 100, 150, 200])
+            pct = (futures - buy_leg) / futures * 100
+            expected = "远OTM" if pct > 2 else ("近ATM" if pct >= 0 else "已实值")
+
+        else:  # 买Call价差
+            # Buy call (lower 买腿), Sell call (higher 卖腿)。OTM = (买腿-期货)/期货
+            if zone == "远OTM":
+                buy_leg = futures + random.randint(int(futures*0.025), int(futures*0.12))
+            elif zone == "近ATM":
+                buy_leg = futures + random.randint(0, int(futures*0.02))
+            else:  # 已实值
+                buy_leg = futures - random.randint(0, int(futures*0.08))
+            sell_leg = buy_leg + random.choice([20, 50, 100, 150, 200])
+            pct = (buy_leg - futures) / futures * 100
+            expected = "远OTM" if pct > 2 else ("近ATM" if pct >= 0 else "已实值")
+
+        print(f"\n  [{r}/{n_rounds}] [{sp_type}]  期货={futures}  买腿={buy_leg}  卖腿={sell_leg}")
+        t0 = time.time()
+        try:
+            u = input(f"  → 远OTM/近ATM/已实值 ?: ").strip()
+        except (EOFError, KeyboardInterrupt):
+            print(f"\n  训练中断。")
+            return
+        el = (time.time() - t0) * 1000; total_time += el
+        matched = any(u == ek for ek in expected_keys)
+        if matched and u == expected:
+            correct += 1; score += 3 if el < 3000 else (2 if el < 6000 else 1)
+            print(f"  ✅ {el/1000:.1f}s  {labels[expected]}  OTM={pct:.1f}%")
+        elif matched:
+            print(f"  ❌ {el/1000:.1f}s  你选{u}  实际{labels[expected]}  OTM={pct:.1f}%")
+        else:
+            print(f"  ❌ {el/1000:.1f}s  输入{u}  → 请用 远OTM/近ATM/已实值")
+
+    acc = correct / n_rounds * 100; avg = total_time / n_rounds
+    save_session("J", score, acc, avg, n_rounds)
+    print(f"\n  {'─'*40}")
+    print(f"  训练J完成: {correct}/{n_rounds} 正确 ({acc:.0f}%)")
+    print(f"  平均用时: {avg/1000:.1f}s/题  得分: {score}")
+    rating = ("🔭 买方火眼！" if acc >= 90 else ("👍 方向感在线" if acc >= 70 else
+              ("📚 多跑 Scanner PAPER 区训练眼力" if acc >= 50 else "🔰 从头来——买Put买Call的OTM方向先记住")))
+    print(f"  {rating}")
+    print()
+
+
 def main():
     parser = argparse.ArgumentParser(description="期权交易速度训练系统")
     parser.add_argument('module', nargs='?', default=None,
@@ -1505,7 +1776,7 @@ def main():
     module = args.module
     if module is None or module == "auto":
         module = today_recommendation()
-        names = {"A": "链面扫异常", "B": "价差判断", "C": "天气→策略", "D": "Greek场景", "E": "信用价差扫描", "F": "持仓管理", "G": "腿位判断", "H": "买方方向"}
+        names = {"A": "链面扫异常", "B": "价差判断", "C": "天气→策略", "D": "Greek场景", "E": "信用价差扫描", "F": "持仓管理", "G": "卖方腿位判断", "H": "买方方向", "I": "单腿操作", "J": "买方腿位判断"}
         print(f"\n  📅 今日推荐: 训练 {module} — {names[module]}")
         if args.quick:
             print(f"  ⚡ 快速模式(5题)")
@@ -1530,8 +1801,12 @@ def main():
         run_drill_g(quick=args.quick)
     elif module == "H":
         run_drill_h(quick=args.quick)
+    elif module == "I":
+        run_drill_i(quick=args.quick)
+    elif module == "J":
+        run_drill_j(quick=args.quick)
     else:
-        print(f"未知模块: {module}。请用 A/B/C/D/E/F/G/H/stats")
+        print(f"未知模块: {module}。请用 A/B/C/D/E/F/G/H/I/J/stats")
         return
 
     # 训练后显示简要统计

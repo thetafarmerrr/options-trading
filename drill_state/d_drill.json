@@ -132,6 +132,27 @@
       "correct": 19,
       "total": 21,
       "accuracy": 90.5
+    },
+    {
+      "date": "2026-07-29",
+      "pool": "A",
+      "correct": 0,
+      "total": 21,
+      "accuracy": 0.0
+    },
+    {
+      "date": "2026-07-29",
+      "pool": "A",
+      "correct": 20,
+      "total": 21,
+      "accuracy": 95.2
+    },
+    {
+      "date": "2026-07-29",
+      "pool": "A",
+      "correct": 20,
+      "total": 21,
+      "accuracy": 95.2
     }
   ],
   "streak": 0,
