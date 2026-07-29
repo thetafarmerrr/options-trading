@@ -68,8 +68,22 @@ def run():
             print(f"  超时! 正确答案: {q['a']}\n")
             continue
 
-        actual_do = q["a"].startswith("做") or q["a"].startswith("平")
-        user_do = ans.startswith("做") or ans.startswith("平")
+        # Extract answer keyword (last occurrence in case user types 反证 prefix)
+        def _extract_ans(text):
+            for kw in ("不做", "不平", "做", "平"):
+                idx = text.rfind(kw)
+                if idx >= 0:
+                    return kw
+            return text
+
+        user_ans = _extract_ans(ans)
+        actual_ans = _extract_ans(q["a"])
+        actual_do = actual_ans in ("做", "平")
+        user_do = user_ans in ("做", "平")
+        # Disambiguate "平": if correct answer is 做/不做 (entry Q),
+        # then "平" from user means close = 不做.
+        if actual_ans in ("做", "不做") and user_ans == "平":
+            user_do = False
 
         if actual_do == user_do:
             print(f"  正确 ({elapsed:.1f}s)\n")
