@@ -4614,3 +4614,27 @@ Call IV 被砸平、Put IV 被推高
 
 ### 英语
 - Phase 1 #4 Strike Price Explained ✅。strike→strap发音待修
+
+## 2026-07-31 周五
+
+### Scanner 代码审查与修复（5 bug）
+- 来源：用户/AI 多维度审查 unified_scanner.py
+- **Bug 1** 🔴 `_estimate_iv_percentile` 死代码：两个 `elif iv_proxy < 0.10` 连续，第二个永不到达。修正级联：0.10→28 / 0.12→50 / 0.16→65 / 0.20→80
+- **Bug 2** 🟡 `sell_spread`/`buy_spread` 未存入 signal dict → 排序流动性权重恒为常数。修复：补入 dict
+- **Bug 3** 🟡 `expected_move` 计算错误：`straddle_cost × √(DTE/365)` 无意义。修复：改为 `net_cost` = 跨式盈亏平衡点
+- **Bug 4** 🟢 买方代码四处误用 `SELLER_CAPITAL_PCT`。修复：跨式/宽跨式→`BUYER_SPREAD_CAP`，单腿事件→`BUYER_SINGLE_EVENT_CAP`
+- **Bug 5** 🟡 买方 Debit Spread 趋势门槛 `1.0→1.5%`：过滤商品期货日常噪音，与单腿 2% 保持 0.5% 梯度。讨论后定案
+
+### 入金评估
+- 用户获取中信期货保证金表（PDF），对比 10 万 vs 30 万
+- 结论：10 万足够 S1 信用价差（单笔保证金 ~¥3,400，10 万可开 29 手）。保证金优惠（交易所+4%）在 S1 阶段节省有限。关键在手续费率而非保证金率
+- 记忆修正：20 笔仿真交易（非实盘）即可激活期货权限，SimNow farm 已满足
+
+### 视频剪辑工具链
+- 讨论 Remotion/Hyperframes（代码生成视频）→ 不适用赛事素材处理
+- ChatCut：AI 视频精修工具，装 MCP 插件（52 工具），用户认证通过
+- 建 `/Users/mm/Documents/AIcode/video-editing/` 独立项目，与量化完全隔离
+
+### 系统变更
+- unified_scanner.py：5 bug 修复 + 趋势门槛 1.0→1.5%
+- memory/quant-plan-state.md：D门 10→11，训练分更新，系统变更记录，开户描述修正

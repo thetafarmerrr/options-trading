@@ -360,6 +360,8 @@ def _scan_one_side(df, bid_col, ask_col, direction, futures, mult, capital,
                 'delta': delta,
                 'direction': direction,
                 'tradeable': tradeable,
+                'sell_spread': round(sell_spread, 1),
+                'buy_spread': round(buy_spread, 1),
             })
 
     # 多维排序：盈亏比 40% + OTM 安全边际 30% + 流动性 20%
@@ -483,11 +485,11 @@ def _estimate_iv_percentile(df, futures):
         return 25
     elif iv_proxy < 0.10:
         return 28
-    elif iv_proxy < 0.10:
-        return 50
     elif iv_proxy < 0.12:
-        return 65
+        return 50
     elif iv_proxy < 0.16:
+        return 65
+    elif iv_proxy < 0.20:
         return 80
     else:
         return 95
@@ -510,7 +512,7 @@ def _scan_buyer_debit_side(df, direction, futures, mult, capital,
     """
     单侧 debit spread 扫描（两关一判，7/25 重构）。
 
-    第一关：标的在动吗？5日涨跌≥1% 或 D-7 Tier1事件 → 不过关直接跳过
+    第一关：标的在动吗？5日涨跌≥1.5% 或 D-7 Tier1事件 → 不过关直接跳过
     第二关：IV便宜吗？价差 ScP≤25
     判据：盈亏比 RR≥5:1
     """
@@ -545,7 +547,7 @@ def _scan_buyer_debit_side(df, direction, futures, mult, capital,
         and 0 <= e.get('days_until', 0) <= 7
         for e in variety_events
     )
-    has_trend = change_5d is not None and abs(change_5d) >= 1.0
+    has_trend = change_5d is not None and abs(change_5d) >= 1.5
     if not has_trend and not has_tier1_event:
         return results  # 第一关不过——标的横盘且无催化，Theta吃掉权利金
 
@@ -715,7 +717,7 @@ def _scan_buyer_straddles_strangles(df, futures, mult, capital,
             iv_proxy_raw = (call_ask + put_ask) / futures if futures > 0 else 0.05
         else:
             iv_proxy_raw = 0.02  # fallback
-        expected_move = round(atm_strike * iv_proxy_raw * (dte / 365) ** 0.5, 2)
+        expected_move = net_cost  # ATM 跨式成本 = 市场定价的盈亏平衡波动
 
         # 检查 straddle 条件（持续事件 days_until=-1 也算，代表持续高波动背景）
         has_event_d2_d7 = any(
@@ -730,7 +732,7 @@ def _scan_buyer_straddles_strangles(df, futures, mult, capital,
             nearest_event = min(variety_events, key=lambda e: e['days_until'])
 
         if iv_cheap and has_event_d2_d7 and atm_spread_ok and not event_too_late:
-            if capital and net_cost * mult > capital * SELLER_CAPITAL_PCT:
+            if capital and net_cost * mult > capital * BUYER_SPREAD_CAP:
                 pass  # skip due to capital
             else:
                 straddle_color = 'green' if (BUYER_COLOR_ENABLED and iv_percentile is not None and iv_percentile < BUYER_IV_THRESHOLD and has_event_d2_d7) else 'yellow'
@@ -802,7 +804,7 @@ def _scan_buyer_straddles_strangles(df, futures, mult, capital,
 
         if iv_cheap and has_any_event and strangle_spread_ok and legs_valid and not event_too_late:
             strangle_cost = round(c_ask_otm + p_ask_otm, 2)
-            if capital and strangle_cost * mult > capital * SELLER_CAPITAL_PCT:
+            if capital and strangle_cost * mult > capital * BUYER_SPREAD_CAP:
                 pass
             else:
                 strangle_color = 'green' if (BUYER_COLOR_ENABLED and iv_percentile is not None and iv_percentile < BUYER_IV_THRESHOLD) else 'yellow'
@@ -897,7 +899,7 @@ def scan_single_leg_buyer(df, futures, variety_name, contract, vcode,
             if sp > EVENT_SPREAD_MAX:
                 continue
             cost = ask * mult
-            if capital and cost > capital * SELLER_CAPITAL_PCT:
+            if capital and cost > capital * BUYER_SINGLE_EVENT_CAP:
                 continue
             results.append({
                 'strategy': 'buy_call_event', 'trigger': '🔥事件',
@@ -918,7 +920,7 @@ def scan_single_leg_buyer(df, futures, variety_name, contract, vcode,
             if sp > EVENT_SPREAD_MAX:
                 continue
             cost = ask * mult
-            if capital and cost > capital * SELLER_CAPITAL_PCT:
+            if capital and cost > capital * BUYER_SINGLE_EVENT_CAP:
                 continue
             results.append({
                 'strategy': 'buy_put_event', 'trigger': '🔥事件',
