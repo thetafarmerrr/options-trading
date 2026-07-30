@@ -423,3 +423,8 @@ when we look at hedging, we're basically looking at minimizing risk. So when we'
 
 ### 保险类比
 - The longer I hold insurance coverage, the higher the total premium will be because there's more days until that policy expires.  （Mike E03, 7:10）
+
+### 描述行权价机制
+- The strike price is essentially where I choose to become long or short stock.  （Mike E04, 0:30）
+- When we're looking at higher price underlyings, you might see strike prices in five-point increments or two-and-a-half-point increments.  （Mike E04, 1:15）
+- What strike prices do is give us extreme flexibility in options trading.  （Mike E04, 2:00）

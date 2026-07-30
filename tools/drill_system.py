@@ -1008,20 +1008,23 @@ def run_drill_e(quick=False):
                          if chain["prices"][i]["bid"] > 0 and chain["prices"][i]["ask"] > 0
                          and (chain["prices"][i]["ask"] - chain["prices"][i]["bid"]) / chain["prices"][i]["bid"] < 0.10]
 
-        # 注入可交易信用价差对（有合法配对就注入，不随机跳过）
+        # 注入可交易信用价差对（遍历所有配对，只要存在一个合法就注入）
         if len(valid_strikes) >= 2:
-            pair_indices = random.sample(valid_strikes, 2)
-            pair_indices.sort(key=lambda x: x[0], reverse=True)  # 高行权价在前
-            high, low = pair_indices[0], pair_indices[1]
-            sell_bid = high[2]["bid"]
-            buy_ask = low[2]["ask"]
-            strike_width = high[1] - low[1]
-            if sell_bid > buy_ask and strike_width <= chain['futures'] * 0.05:
-                net = round(sell_bid - buy_ask, 1)
-                cs_pairs.append({
-                    "sell_strike": high[1], "buy_strike": low[1],
-                    "net_premium": net,
-                })
+            sorted_by_strike = sorted(valid_strikes, key=lambda x: x[1], reverse=True)
+            for i in range(len(sorted_by_strike)):
+                for j in range(i + 1, len(sorted_by_strike)):
+                    high, low = sorted_by_strike[i], sorted_by_strike[j]
+                    sell_bid = high[2]["bid"]
+                    buy_ask = low[2]["ask"]
+                    strike_width = high[1] - low[1]
+                    if sell_bid > buy_ask and strike_width <= chain['futures'] * 0.05:
+                        cs_pairs.append({
+                            "sell_strike": high[1], "buy_strike": low[1],
+                            "net_premium": round(sell_bid - buy_ask, 1),
+                        })
+                        break
+                if cs_pairs:
+                    break
 
         print(f"\n  [{round_num}/{n_rounds}] {chain['product']} 期货≈{chain['futures']}")
         col_fmt = f"  {{:>6}} │ {{:>8}} {{:>8}} {{:>8}}"
@@ -1076,9 +1079,13 @@ def run_drill_e(quick=False):
                 score += 3 if elapsed < 15000 else (2 if elapsed < 25000 else 1)
                 print(f"  ✅ 正确！今日无信用价差机会 ({elapsed/1000:.1f}s)")
             else:
-                sw = abs(user_pair[0] - user_pair[1])
-                if sw > chain['futures'] * 0.05:
-                    print(f"  ❌ 行权价间距{sw}点 > 期货{chain['futures']}的5%({int(chain['futures']*0.05)}点)，太大不做")
+                try:
+                    sw = abs(int(user_pair[0]) - int(user_pair[1]))
+                except (ValueError, TypeError):
+                    sw = 99999
+                max_spread = chain['futures'] * 0.05
+                if sw > max_spread:
+                    print(f"  ❌ 行权价间距{sw}点 > 期货{chain['futures']}的5%({int(max_spread)}点)，太大不做")
                 else:
                     # 间距合法但 drill 判定无合格机会——链里所有配对过不了 bid>ask 或价差<10% 的关
                     print(f"  ❌ 行权价对间距合法({sw}点≤5%)，但链面无合格信用价差——bid/ask 价差过宽或无法正净收。答案：'无'")

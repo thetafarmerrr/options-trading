@@ -112,5 +112,23 @@
     "topic": "events",
     "correct": 2,
     "total": 3
+  },
+  {
+    "date": "2026-07-30T18:58:44.868032",
+    "topic": "events",
+    "correct": 2,
+    "total": 3
+  },
+  {
+    "date": "2026-07-30T19:00:31.408399",
+    "topic": "discipline",
+    "correct": 2,
+    "total": 3
+  },
+  {
+    "date": "2026-07-30T19:01:48.748470",
+    "topic": "strategy",
+    "correct": 1,
+    "total": 3
   }
 ]

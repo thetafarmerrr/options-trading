@@ -54,7 +54,17 @@ def run():
 
     for i, q in enumerate(use_pool, 1):
         label = q.get("v", "")
-        print(f"  [{i}/{total}] {label} {q['s']}")
+        # 根据正确答案推断问法
+        raw_ans = q.get("a", "")
+        if "不做" in raw_ans:
+            ask_type = "【做不做？】"
+        elif "不平" in raw_ans:
+            ask_type = "【平不平？】"
+        elif "平" in raw_ans and "不平" not in raw_ans:
+            ask_type = "【平不平？】"
+        else:
+            ask_type = "【做不做？】"
+        print(f"  [{i}/{total}] {label} {q['s']} {ask_type}")
         print(f"  ⏸ 反证？", end=" ")
         try:
             t0 = time.time()
@@ -86,7 +96,8 @@ def run():
             user_do = False
 
         if actual_do == user_do:
-            print(f"  正确 ({elapsed:.1f}s)\n")
+            print(f"  ✅ 正确 ({elapsed:.1f}s)")
+            print(f"  📖 {q['a']}\n")
             correct += 1
         else:
             print(f"  错误。正确答案: {q['a']}\n")
