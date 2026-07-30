@@ -272,4 +272,4 @@ where 修饰前面buying stock这件事，而非实体名词，金融讲解高�
 2. last but not least — 最后一点（口语教学常用过渡）
 3. to review — 简单回顾一下
 4. for that given period of time — 在这段时间里（口语化赘述）
-5. a lot of things going on with… — …里面包含很多知识点
+5. a lot of things going on with… — …里面包含很多知识点˜
