@@ -31,7 +31,8 @@
 | 3 | **Drill B**（价差判断） | `python3 tools/drill_system.py B`。每天打底。报正确率和速度 |
 | 3b | **Drill 轮转 ×4** | `python3 tools/drill_system.py <模块>`。每天 4 个模块（B 之外），约 20 分钟。**周一** E+G+I+A | **周二** E+C+H+I | **周三** E+G+D+J | **周四** E+C+H+F | **周五** E+G+D+A | **周六** G+D+C+J | **周日** D+E+H+F。报分数。B+4 合计 25 分钟 |
 | 3c | **D-Drill** | `python3 tools/d_drill.py`。42 题。答「做/不做」+一句原因（写规则内容不是编号）。**每题选之前问「反证？」**——Ne 模式匹配抢在 Ti 验证之前 = INTP 第一漏洞。不跳这步 |
-| 4 | **Sinclair** | 带一个今天 Scanner 碰到的问题找教练。教练把问题压缩成一句话 → 你翻书定位到那一页 → 读到答案发回来 → 教练接上今天的信号拆解。**不从头读、不读 60 分钟**——每次只读能回答当前问题的那一段。读完在 journal 写：读到的概念 + 今天哪个信号验证了它 |
+| 4a | **Sinclair A**（问题驱动） | 带一个今天 Scanner 碰到的问题找教练。教练把问题压缩成一句话 → 你翻书定位到那一页 → 读到答案发回来 → 教练接上今天的信号拆解。**不从头读、不读 60 分钟**——每次只读能回答当前问题的那一段。覆盖 Ch3-6。读完在 journal 写：读到的概念 + 今天哪个信号验证了它 |
+| 4e | **Sinclair B**（日志倒灌·一三五） | 教练读近 3 天 journal→挑一个决策→搜 PDF 确认→指页码（Ch7-12）。你翻到那页读 2-3 页→回来报告对应关系。周三只跑 B 不跑 A。进度表在 `memory/quant-plan-state.md` §Sinclair B |
 | 4b | **Douglas** | 打开《Trading in the Zone》读 1 段（不要多）。读完写一句话：「今天交易/决策里有没有这个心理？」。有就写，没有就写"今日无关" |
 | 4c | **翻文档**（4 min） | 只翻不读，不写笔记，2 分钟后关。目的=知道东西在哪，不背。轮换表：**周一** monitoring-rules §零~一(IV-HV+三档) + mistakes 最新 5 条。**周二** glossary 最近 20 条 + monitoring-rules §三~六(进场+离场+禁止)。**周三** monitoring-rules §B(买方三条件+事件映射) + paper-tracker。**周四** mistakes 全部 + glossary 最近 20 条。**周五** monitoring-rules 速查表(§500 卖Put/Call速查) + paper-tracker |
 | 4d | **身体**（20 min） | Sinclair+Douglas 完成后起身。壶铃 S&S（摇摆×100 + 土耳其起立×10），壶铃到货前徒手三样（深蹲×20 + 俯卧撑×10 + 平板 60s）×3 轮。不改动作不改顺序——零选择。下午 journal 写清醒度 1-5 |

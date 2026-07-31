@@ -158,7 +158,51 @@ def generate_chain_segment():
             "ask": ask,
         })
 
-    # 注入 1-3 个混合异常（加权：可交易倒挂出现概率更高）
+    # ── 跨腿参考腿查找工具 ──────────────────────────────────────
+    strike_interval = strikes[1] - strikes[0] if len(strikes) > 1 else 200
+    MAX_GAP_STRIKES = 3
+    MAX_GAP_PCT = 0.05
+
+    def _ref_spread_ok(price, bid, ask):
+        """参考腿流动性分层检查（商品期权虚值区适配）"""
+        if bid <= 0:
+            return False
+        sp = (ask - bid) / bid * 100
+        if price < 10:
+            return sp < 30
+        elif price < 30:
+            return sp < 20
+        else:
+            return sp < 15
+
+    def _find_ref_leg(idx, for_tradeable=True):
+        """向下遍历找第一个有效参考腿。
+        返回 (ref_idx, label, detail_suffix) 或 (None, ...) 表示未找到。
+        - 中间档 bid>0 且价差≤50% → 视为有效档，阻断跨腿
+        - 跨度 min(3档, 5%期货)"""
+        max_gap = min(MAX_GAP_STRIKES * strike_interval, fut * MAX_GAP_PCT)
+        skipped = 0
+        for ref_i in range(idx - 1, max(idx - 1 - MAX_GAP_STRIKES, 0) - 1, -1):
+            gap = strikes[idx] - strikes[ref_i]
+            if gap > max_gap:
+                break
+            mid_bid = prices[ref_i]["bid"]
+            mid_ask = prices[ref_i]["ask"]
+            mid_spread = (mid_ask - mid_bid) / mid_bid * 100 if mid_bid > 0 else 999
+            # 该档是否"有效"——有报价且非垃圾价差
+            mid_valid = mid_bid > 0 and mid_spread <= 50
+            # 检查是否可作为参考腿
+            if mid_valid and _ref_spread_ok(prices[ref_i]["theo"], mid_bid, mid_ask):
+                label = "🟢相邻" if skipped == 0 else "🟡跨腿"
+                suffix = "" if skipped == 0 else f"（跳过{skipped}档无效报价）"
+                return ref_i, label, suffix
+            if mid_valid:
+                # 有效但不是好参考 → 阻断跨腿
+                return None, "", f"参考腿价差{mid_spread:.0f}%不可靠"
+            skipped += 1
+        return None, "", "（无有效参考腿）"
+
+    # ── 注入 1-3 个混合异常 ────────────────────────────────────
     tradeable_strikes = []
     all_anomalies = []
     n_anomalies = random.randint(1, 3)
@@ -169,59 +213,47 @@ def generate_chain_segment():
         anomaly_type = random.choice(["inversion_tradeable", "inversion_tradeable",
                                        "inversion_untradeable", "zero_bid", "wide_spread"])
         if anomaly_type == "inversion_tradeable":
-            # 检查参考腿（低行权价，idx-1）的流动性
-            ref_bid = prices[idx-1]["bid"]
-            ref_ask = prices[idx-1]["ask"]
-            ref_spread_pct = (ref_ask - ref_bid) / ref_bid * 100 if ref_bid > 0 else 999
-
-            if ref_bid <= 0:
-                # 参考腿没买价 → 不可交易
+            ref_idx, label, suffix = _find_ref_leg(idx, for_tradeable=True)
+            if ref_idx is None:
+                # 无有效参考腿 → 假倒挂
                 prices[idx]["theo"] = round(prices[idx-1]["theo"] * random.uniform(0.5, 0.8), 2)
                 prices[idx]["bid"] = 0.0
                 all_anomalies.append({"strike": strikes[idx], "type": "假倒挂",
-                                       "detail": f"行权价{strikes[idx]}：价格倒挂但参考腿买价为零 → 不能做"})
-            elif ref_spread_pct > 15:
-                # 参考腿价差太宽 → 不可交易
-                prices[idx]["theo"] = round(prices[idx-1]["theo"] * random.uniform(0.5, 0.8), 2)
-                prices[idx]["bid"] = round(prices[idx]["theo"] * random.uniform(0.88, 0.94), 2)
-                prices[idx]["ask"] = round(prices[idx]["bid"] * random.uniform(1.03, 1.10), 2)
-                all_anomalies.append({"strike": strikes[idx], "type": "假倒挂",
-                                       "detail": f"行权价{strikes[idx]}：价格倒挂但参考腿价差{ref_spread_pct:.0f}%太宽 → 不能做"})
+                                       "detail": f"行权价{strikes[idx]}：价格倒挂{suffix} → 不能做"})
             else:
-                # 参考腿流动性好 → 真正可交易
-                prices[idx]["theo"] = round(prices[idx-1]["theo"] * random.uniform(0.5, 0.8), 2)
+                # 参考腿有效 → 可交易倒挂
+                prices[idx]["theo"] = round(prices[ref_idx]["theo"] * random.uniform(0.5, 0.8), 2)
                 prices[idx]["bid"] = round(prices[idx]["theo"] * random.uniform(0.88, 0.94), 2)
                 prices[idx]["ask"] = round(prices[idx]["bid"] * random.uniform(1.03, 1.10), 2)
                 tradeable_strikes.append(strikes[idx])
-                all_anomalies.append({"strike": strikes[idx], "type": "可交易倒挂",
-                                       "detail": f"行权价{strikes[idx]}：更高但更便宜，买价{prices[idx]['bid']:.2f}存在，参考腿价差{ref_spread_pct:.0f}%合理"})
+                all_anomalies.append({"strike": strikes[idx], "type": f"{label}可交易倒挂",
+                                       "detail": f"{label} 行权价{strikes[idx]}：更高但更便宜，买价{prices[idx]['bid']:.2f}存在{suffix}"})
         elif anomaly_type == "inversion_untradeable":
             prices[idx]["theo"] = round(prices[idx-1]["theo"] * random.uniform(0.5, 0.8), 2)
-            ref_bid = prices[idx-1]["bid"]
-            ref_spread = (prices[idx-1]["ask"] - ref_bid) / ref_bid * 100 if ref_bid > 0 else 999
+            ref_idx, label, suffix = _find_ref_leg(idx, for_tradeable=False)
 
-            # 四种不可交易原因，随机选一种
+            # 四种不可交易原因，随机选一种（跨腿后原因更丰富）
             roll = random.random()
-            if roll < 0.25 and ref_bid <= 0:
-                # 参考腿无流动性
+            if ref_idx is None:
+                # 无有效参考腿——已是最常见毙因
                 prices[idx]["bid"] = round(prices[idx]["theo"] * random.uniform(0.88, 0.94), 2)
                 prices[idx]["ask"] = round(prices[idx]["bid"] * random.uniform(1.03, 1.10), 2)
-                detail = f"行权价{strikes[idx]}：价格倒挂但参考腿买价为零 → 参考价不可信，不能做"
-            elif roll < 0.50 and ref_spread > 15:
-                # 参考腿价差太宽
-                prices[idx]["bid"] = round(prices[idx]["theo"] * random.uniform(0.88, 0.94), 2)
-                prices[idx]["ask"] = round(prices[idx]["bid"] * random.uniform(1.03, 1.10), 2)
-                detail = f"行权价{strikes[idx]}：价格倒挂但参考腿价差{ref_spread:.0f}%太宽 → 参考价不可信，不能做"
-            elif roll < 0.75:
-                # 倒挂腿自身买价为零
+                detail = f"行权价{strikes[idx]}：价格倒挂{suffix} → 不能做"
+            elif roll < 0.33:
+                # 参考腿有效但倒挂腿自身买价为零
                 prices[idx]["bid"] = 0.0
                 prices[idx]["ask"] = round(prices[idx]["theo"] * 1.5, 2)
                 detail = f"行权价{strikes[idx]}：价格倒挂了但买价为零 → 无法平仓，不能做"
-            else:
+            elif roll < 0.66:
                 # 倒挂腿自身价差过宽
                 prices[idx]["bid"] = round(prices[idx]["theo"] * 0.2, 2)
                 prices[idx]["ask"] = round(prices[idx]["theo"] * 3.0, 2)
                 detail = f"行权价{strikes[idx]}：价格倒挂了但价差过宽 → 滑点吃掉利润，不能做"
+            else:
+                # 跨度超限
+                prices[idx]["bid"] = round(prices[idx]["theo"] * random.uniform(0.88, 0.94), 2)
+                prices[idx]["ask"] = round(prices[idx]["bid"] * random.uniform(1.03, 1.10), 2)
+                detail = f"行权价{strikes[idx]}：价格倒挂但跨度过大 → 不同波动率区域，不能做"
             all_anomalies.append({"strike": strikes[idx], "type": "假倒挂", "detail": detail})
         elif anomaly_type == "zero_bid":
             prices[idx]["bid"] = 0.0

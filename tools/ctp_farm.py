@@ -304,10 +304,39 @@ def query_depth(api, spi, symbol: str, timeout: float = 5.0) -> tuple:
 
     bid, ask, last, avg = spi.depth_bid, spi.depth_ask, spi.depth_last, spi.depth_avg
     if ask <= 0 or ask > 1e10:
-        print(f"  ⚠️  无卖一价 (ask={ask})，无法买入")
         return 0.0, 0.0, 0.0, 0.0
 
     return bid, ask, last, avg
+
+
+# ── 飞行前检查：挑流动性最好的合约 ─────────────────────────────────
+def pick_best_symbol(api, spi) -> str:
+    """扫描所有候选合约，返回 bid>0 且价差最窄的那个。"""
+    best_symbol = None
+    best_spread_pct = float("inf")
+    best_bid = best_ask = 0.0
+
+    print(f"\n🔍 飞行前检查：扫描 {len(DEFAULT_SYMBOLS)} 个候选合约…")
+    for sym in DEFAULT_SYMBOLS:
+        bid, ask, last, avg = query_depth(api, spi, sym, timeout=3.0)
+        if bid <= 0 or ask <= 0:
+            print(f"   ❌ {sym:16s}  bid={bid} ask={ask} → 跳过（无对手盘）")
+            continue
+        spread_pct = (ask - bid) / ask * 100
+        marker = "⭐" if spread_pct < best_spread_pct else "  "
+        print(f"   {marker} {sym:16s}  bid={bid:<8} ask={ask:<8} 价差 {spread_pct:.1f}%")
+        if spread_pct < best_spread_pct:
+            best_spread_pct = spread_pct
+            best_symbol = sym
+            best_bid, best_ask = bid, ask
+
+    if best_symbol is None:
+        print(f"\n❌ 所有候选合约均无对手盘（bid=0 或 ask=0），无法刷单")
+        print(f"   建议：换到交易时段重试，或 --probe 找活跃合约手动指定")
+        return ""
+
+    print(f"\n✅ 选中 {best_symbol}（bid={best_bid} ask={best_ask} 价差 {best_spread_pct:.1f}%）")
+    return best_symbol
 
 
 # ── 下单并等待成交 ──────────────────────────────────────────────────
@@ -368,14 +397,16 @@ def do_round(api, spi, symbol: str) -> bool:
     if not place_and_wait(api, spi, symbol, "0", "0", ask):
         return False
 
-    # 2. 查行情 → 卖。bid=0 用 last/trade_price 兜底
+    # 2. 查行情 → 卖。逐级追价：bid → ask → last → trade_price
     time.sleep(1.0)
     bid, ask, last, avg = query_depth(api, spi, symbol)
-    sell_price = bid if bid > 0 else (last if last > 0 else spi.trade_price)
+    # 优先对面价（bid），bid 死了追 ask（跨价差），再死追 last/成交价
+    sell_price = bid if bid > 0 else (ask if ask > 0 else (last if last > 0 else spi.trade_price))
+    strategy = "bid" if bid > 0 else ("ask" if ask > 0 else ("last" if last > 0 else "成交价"))
     if sell_price <= 0:
-        print(f"  ⚠️  无可用卖出价")
+        print(f"  ⚠️  无可用卖出价（bid={bid} ask={ask} last={last}）")
         return False
-    print(f"  行情: bid={bid} ask={ask} last={last}")
+    print(f"  行情: bid={bid} ask={ask} last={last}  → 卖出价={sell_price} ({'✅对面价' if bid > 0 else '⚡追价'+strategy})")
 
     if not place_and_wait(api, spi, symbol, "1", "1", sell_price):
         return False
@@ -385,14 +416,17 @@ def do_round(api, spi, symbol: str) -> bool:
 
 # ── 刷单模式 ────────────────────────────────────────────────────────
 def farm(api, spi):
-    """每天 2 轮买卖 = 4 笔交易。"""
-    # 选择合约：从默认列表按日期轮换
-    today = time.strftime("%d")
-    symbol = DEFAULT_SYMBOLS[int(today) % len(DEFAULT_SYMBOLS)]
+    """每天 2 轮买卖 = 4 笔交易。飞行前检查自动挑流动性最好的合约。"""
     # 允许 --symbol 覆盖
+    symbol = ""
     for i, arg in enumerate(sys.argv):
         if arg == "--symbol" and i + 1 < len(sys.argv):
             symbol = sys.argv[i + 1]
+
+    if not symbol:
+        symbol = pick_best_symbol(api, spi)
+        if not symbol:
+            return
 
     print(f"\n🚜 刷单模式 · 合约: {symbol}")
     print(f"   每轮 1 买 1 卖 = 2 笔 × 2 轮 = 每天 4 笔")
