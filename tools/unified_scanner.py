@@ -199,6 +199,20 @@ def scan_deep_otm(vcode, variety, contract, df, futures, capital=None):
     mult = variety['multiplier']
 
     all_signals = []
+    MAX_GAP_STRIKES = 3
+    MAX_GAP_PCT = 0.05
+
+    def _ref_spread_ok(price, bid, ask):
+        """参考腿流动性分层检查（商品期权虚值区适配）"""
+        if bid <= 0:
+            return False
+        sp = (ask - bid) / bid * 100
+        if price < 10:
+            return sp < 30
+        elif price < 30:
+            return sp < 20
+        else:
+            return sp < 15
 
     otm_boundary = int(futures * (1 - OTM_PCT))
     otm_puts = df[df['strike'] < otm_boundary].copy()
@@ -218,17 +232,39 @@ def scan_deep_otm(vcode, variety, contract, df, futures, capital=None):
                 'oi': int(row['p_oi']) if not pd.isna(row['p_oi']) else 0,
             })
 
-        for i in range(len(rows) - 1):
-            cur, nxt = rows[i], rows[i + 1]
-            if cur['price'] > nxt['price']:
+        max_gap_value = futures * MAX_GAP_PCT
+        for i in range(len(rows)):
+            for j in range(i + 1, min(i + 1 + MAX_GAP_STRIKES, len(rows))):
+                cur, nxt = rows[i], rows[j]  # cur=低strike(应贵), nxt=高strike(应便宜)
+                # 跨度检查：min(3档, 5%期货)
+                if nxt['strike'] - cur['strike'] > max_gap_value:
+                    continue
+                # 中间档检查：如果有有效报价阻断跨腿
+                middle_blocks = False
+                for k in range(i + 1, j):
+                    mid = rows[k]
+                    mid_sp = _spread(mid['bid'], mid['ask'])
+                    if mid['bid'] > 0 and mid_sp <= 50:
+                        middle_blocks = True
+                        break
+                if middle_blocks:
+                    continue
+                # 价格倒挂检查
+                if cur['price'] <= nxt['price']:
+                    continue
+                # 参考腿（高价=低strike）流动性
+                if not _ref_spread_ok(cur['price'], cur['bid'], cur['ask']):
+                    continue
+                # 买入腿（低价=高strike）流动性
+                buy_sp = _spread(nxt['bid'], nxt['ask'])
+                if buy_sp > MAX_SPREAD_PCT or nxt['bid'] <= 0:
+                    continue
+
                 profit_pct = round((cur['price'] - nxt['price']) / nxt['price'] * 100, 1)
-                sp = _spread(nxt['bid'], nxt['ask'])
-                net = round(profit_pct - sp, 1)
+                net = round(profit_pct - buy_sp, 1)
                 cost = nxt['price'] * mult
-                tradeable = sp < profit_pct and sp < MAX_SPREAD_PCT and nxt['bid'] > 0
-                ref_sp = _spread(cur['bid'], cur['ask'])
-                if cur['bid'] <= 0 or ref_sp > MAX_SPREAD_PCT:
-                    tradeable = False
+                tradeable = buy_sp < profit_pct and buy_sp < MAX_SPREAD_PCT
+                cross_leg = (j - i) > 1
                 if capital and cost > capital * SELLER_CAPITAL_PCT:
                     continue
                 all_signals.append({
@@ -236,8 +272,9 @@ def scan_deep_otm(vcode, variety, contract, df, futures, capital=None):
                     'buy_strike': nxt['strike'], 'buy_price': nxt['price'],
                     'buy_bid': nxt['bid'], 'buy_ask': nxt['ask'],
                     'ref_strike': cur['strike'], 'ref_price': cur['price'],
-                    'profit_pct': profit_pct, 'spread_pct': sp, 'net_pct': net,
+                    'profit_pct': profit_pct, 'spread_pct': buy_sp, 'net_pct': net,
                     'cost': cost, 'tradeable': tradeable,
+                    'cross_leg': cross_leg, 'skipped_strikes': j - i - 1,
                 })
 
     tradeable = [s for s in all_signals if s['tradeable']]

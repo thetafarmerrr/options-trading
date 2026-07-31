@@ -428,3 +428,8 @@ when we look at hedging, we're basically looking at minimizing risk. So when we'
 - The strike price is essentially where I choose to become long or short stock.  （Mike E04, 0:30）
 - When we're looking at higher price underlyings, you might see strike prices in five-point increments or two-and-a-half-point increments.  （Mike E04, 1:15）
 - What strike prices do is give us extreme flexibility in options trading.  （Mike E04, 2:00）
+
+### OTM/ITM 与内在价值
+- If something's in the money then that must mean that it has intrinsic value. At expiration it will actually be worth something. If it's out of the money it does not have intrinsic value — at expiration there will be no value and it will expire worthless.  （Mike E09, OTM vs ITM）
+- For option buyers, in the money will equal profit at expiration as long as we're in the money by more than the debit we paid, which is going to be our break-even price.  （Mike E09, OTM vs ITM）
+- The buyer is going to have to spend $1.25 per share for this option and the seller is going to collect $1.25 per share for this option.  （Mike E09, OTM vs ITM）
