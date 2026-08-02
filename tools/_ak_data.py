@@ -21,7 +21,14 @@ STRIKE_INTERVAL = {"au": 8, "m": 50, "c": 40, "cf": 200, "sr": 100,
 
 
 def pick_best_contract(symbol, vcode=None):
-    """选主力合约：L0 指向当前周期 → L1 流动性验证"""
+    """选主力合约。实际委托 pick_two_contracts，只返回近月。"""
+    near, _ = pick_two_contracts(symbol, vcode)
+    return near
+
+
+def pick_two_contracts(symbol, vcode=None):
+    """选近月+次近月双合约（流动性验证）。
+    返回 (near_contract, far_contract)。far_contract 在单一活跃合约时为 None。"""
     today = datetime.now()
     cur_month = today.month
     cur_year = today.year % 100
@@ -30,9 +37,9 @@ def pick_best_contract(symbol, vcode=None):
         cdf = ak.option_commodity_contract_sina(symbol=symbol)
         all_contracts = cdf['合约'].tolist()
     except Exception:
-        return None
+        return None, None
     if not all_contracts:
-        return None
+        return None, None
 
     if vcode and vcode in VALID_MONTHS:
         valid = sorted(VALID_MONTHS[vcode])
@@ -42,14 +49,15 @@ def pick_best_contract(symbol, vcode=None):
             yr = cur_year if m > cur_month else cur_year + 1
             target_codes.append(f"{yr:02d}{m:02d}")
         candidates = []
-        for tc in target_codes[:3]:
+        for tc in target_codes[:4]:
             match = next((c for c in all_contracts if c.endswith(tc)), None)
             if match:
                 candidates.append(match)
         if not candidates:
-            return all_contracts[0] if all_contracts else None
+            c = all_contracts[0] if all_contracts else None
+            return c, None
     else:
-        candidates = all_contracts[:2]
+        candidates = all_contracts[:3]
 
     def _check_quality(contract):
         try:
@@ -73,10 +81,15 @@ def pick_best_contract(symbol, vcode=None):
         except Exception:
             return False
 
+    good = []
     for c in candidates:
         if _check_quality(c):
-            return c
-    return candidates[0] if candidates else None
+            good.append(c)
+            if len(good) >= 2:
+                break
+    near = good[0] if good else (candidates[0] if candidates else None)
+    far = good[1] if len(good) >= 2 else None
+    return near, far
 
 
 def _safe(v):

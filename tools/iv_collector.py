@@ -18,7 +18,7 @@ import pandas as pd
 SCRIPT_DIR = os.path.dirname(os.path.abspath(__file__))
 sys.path.insert(0, SCRIPT_DIR)
 
-from _ak_data import (pick_best_contract, fetch_option_chain, fetch_futures_daily,
+from _ak_data import (pick_two_contracts, fetch_option_chain, fetch_futures_daily,
                       estimate_iv_from_chain, DEFAULT_FUTURES, STRIKE_INTERVAL)
 
 # ── 配置 ──
@@ -177,13 +177,13 @@ def _est_iv(S, p_bid, p_ask, c_bid, c_ask, dte):
 
 
 def collect_variety(vcode, vinfo):
-    """用 akshare 拉取单个品种的主力合约 ATM 期权数据"""
+    """用 akshare 拉取单个品种的近月+次近月 ATM 期权数据"""
     symbol = vinfo["symbol"]
     main_contract = get_last_contract(vcode)
-    best_contract = pick_best_contract(symbol, vcode)
-    if best_contract and best_contract != main_contract:
-        print(f"  🔄 {vinfo['name']} 合约切换: {main_contract} → {best_contract}")
-    main_contract = best_contract or main_contract
+    near_contract, far_contract = pick_two_contracts(symbol, vcode)
+    if near_contract and near_contract != main_contract:
+        print(f"  🔄 {vinfo['name']} 合约切换: {main_contract} → {near_contract}")
+    main_contract = near_contract or main_contract
     if not main_contract:
         return None
 
@@ -226,6 +226,35 @@ def collect_variety(vcode, vinfo):
     hv_60 = calc_parkinson_hv(vcode, window=60)
     iv_slope = calc_iv_slope(vcode)
 
+    # ── 次月 ATM IV ──
+    far_contract_str, far_iv = None, None
+    if far_contract and far_contract != main_contract:
+        try:
+            _, far_df, far_fp = fetch_option_chain(vcode, symbol, far_contract)
+            if not far_df.empty:
+                f_strike, f_score, f_row = None, -1, None
+                for _, row in far_df.iterrows():
+                    p_b = _safe(row["p_bid"])
+                    c_b = _safe(row["c_bid"])
+                    if p_b > 0 and c_b > 0:
+                        diff_f = abs(p_b - c_b)
+                        act_f = (p_b + c_b) / 2
+                        sc_f = act_f / max(diff_f, 0.01)
+                        if sc_f > f_score:
+                            f_score = sc_f
+                            f_strike = int(row["strike"])
+                            f_row = row
+                if f_row is not None:
+                    p_b_f = _safe(f_row["p_bid"])
+                    p_a_f = _safe(f_row["p_ask"])
+                    c_b_f = _safe(f_row["c_bid"])
+                    c_a_f = _safe(f_row["c_ask"])
+                    dte_f = _est_dte(far_contract)
+                    far_iv = _est_iv(float(f_strike), p_b_f, p_a_f, c_b_f, c_a_f, dte_f)
+                    far_contract_str = far_contract
+        except Exception:
+            pass
+
     return {
         "date": datetime.now().strftime("%Y-%m-%d"),
         "time": datetime.now().strftime("%H:%M"),
@@ -244,6 +273,8 @@ def collect_variety(vcode, vinfo):
         "iv_slope": round(iv_slope, 6) if iv_slope is not None else None,
         "dte": dte,
         "inferred_futures": best_strike,
+        "far_contract": far_contract_str,
+        "far_iv": far_iv,
     }
 
 
@@ -577,6 +608,18 @@ def main():
                       f"P bid/ask={result['put_bid']}/{result['put_ask']} "
                       f"价差={result['spread_pct']}% "
                       f"IV≈{iv_str}{iv_dir} HV₂₀={hv20_str} HV₆₀={hv60_str} {hv_gap}")
+                # 次月 IV 结构
+                if result.get('far_iv') and result.get('far_contract'):
+                    far_iv_str = f"{result['far_iv']:.1%}"
+                    if result['iv_est'] and result['far_iv']:
+                        structure = "⚠️近>远" if result['iv_est'] > result['far_iv'] else "→近<远"
+                    else:
+                        structure = ""
+                    print(f"         {' ' * (len(result['name']) + len(result['contract']) - 1)}"
+                          f"次月 {result['far_contract']} IV≈{far_iv_str} {structure}")
+                elif result.get('far_contract'):
+                    print(f"         {' ' * (len(result['name']) + len(result['contract']) - 1)}"
+                          f"次月 {result['far_contract']} 无流动性")
                 # IV-HV 分层标签
                 if result['iv_est'] and result['hv_20d'] and result['hv_20d'] > 0:
                     sp = result['iv_est'] - result['hv_20d']
