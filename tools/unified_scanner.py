@@ -30,7 +30,7 @@ import re
 import math
 import argparse
 import pandas as pd
-from datetime import datetime, date
+from datetime import datetime, date, timedelta
 
 SCRIPT_DIR = os.path.dirname(os.path.abspath(__file__))
 sys.path.insert(0, SCRIPT_DIR)
@@ -40,7 +40,7 @@ from _ak_data import (pick_best_contract, fetch_option_chain, estimate_iv_from_c
 from event_calendar import get_upcoming_events, VARIETIES as EV_VARIETIES
 
 def load_weekly_event_scan():
-    """加载每周非例行事件扫描结果"""
+    """加载每周非例行事件扫描结果（当前生效的）"""
     scan_path = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))),
                              "data", "weekly_event_scan.json")
     try:
@@ -52,6 +52,34 @@ def load_weekly_event_scan():
     except Exception:
         pass
     return []
+
+
+def list_scan_history():
+    """列出历史非例行扫描归档。从 data/weekly_scans/ 读取。"""
+    scans_dir = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))),
+                             "data", "weekly_scans")
+    if not os.path.isdir(scans_dir):
+        print("  无历史扫描归档")
+        return
+    files = sorted([f for f in os.listdir(scans_dir) if f.endswith('.json')], reverse=True)
+    if not files:
+        print("  无历史扫描归档")
+        return
+    print(f"\n  ┌─ 📋 非例行扫描历史（{len(files)} 期）")
+    print(f"  │ {'区间':<24} {'品种':<8} {'催化':<40} {'买方'}")
+    for fname in files:
+        try:
+            with open(os.path.join(scans_dir, fname)) as f:
+                data = json.load(f)
+            vfrom = data.get("valid_from", data.get("scan_date", "?"))
+            vuntil = data.get("valid_until", "?")
+            period = f"{vfrom}→{vuntil}"
+            for ev in data.get("events", []):
+                buyer = "🟢" if ev.get("买方窗口") else "—"
+                print(f"  │ {period:<24} {ev.get('品种','?'):<8} {ev.get('催化','')[:38]:<40} {buyer}")
+        except Exception:
+            pass
+    print(f"  └─ 用法: 回顾归因时查对应周期 → journal 引用扫描日期")
 
 VARIETIES = {
     "au": {"futures": 870,  "name": "沪金",    "multiplier": 1000},
@@ -107,7 +135,12 @@ def load_latest_iv_hv():
                 hv20 = float(row.get("hv_20d", 0) or 0)
                 hv60 = float(row.get("hv_60d", 0) or 0)
                 iv = float(row.get("iv_est", 0) or 0)
-                hist[c] = {"iv_est": iv, "hv_20d": hv20, "hv_60d": hv60, "date": row.get("date", ""), "time": row.get("time", "")}
+                far_iv_raw = row.get("far_iv", "")
+                far_iv = float(far_iv_raw) if far_iv_raw and far_iv_raw.strip() else None
+                hist[c] = {"iv_est": iv, "hv_20d": hv20, "hv_60d": hv60,
+                           "date": row.get("date", ""), "time": row.get("time", ""),
+                           "far_iv": far_iv,
+                           "far_contract": row.get("far_contract", "")}
             except (ValueError, TypeError):
                 pass
     return hist
@@ -165,6 +198,102 @@ def iv_hv_tier(iv_est, hv_20d):
         return spread, f"<1%", "不执行"
     else:
         return spread, f"<0% · 折价", "不执行"
+
+
+def print_iv_hv_panel():
+    """每日全品种 IV-HV 一览表——防单品种叙事错误。
+    从 iv_history.csv 读最新数据，按品种分组，显示 IV-HV 价差 + 5日变动 + 合约切换标注。"""
+    import csv as _csv
+    from collections import defaultdict
+
+    csv_path = os.path.join(SCRIPT_DIR, "..", "data", "iv_history.csv")
+    if not os.path.exists(csv_path):
+        return
+
+    by_name = defaultdict(list)
+    with open(csv_path, "r", encoding="utf-8") as f:
+        for row in _csv.DictReader(f):
+            name = row.get("name", "")
+            if name:
+                by_name[name].append(row)
+
+    if not by_name:
+        return
+
+    print(f"\n  ┌─ 📊 全品种 IV-HV 一览（iv_history 最新）")
+    print(f"  │ {'品种':<8} {'IV-HV':>8} {'5dΔ':>8} {'方向':>6} {'IV结构':>20} {'标注'}")
+
+    for name in sorted(by_name.keys()):
+        rows = by_name[name]
+        try:
+            iv = float(rows[-1].get("iv_est", 0) or 0)
+            hv = float(rows[-1].get("hv_20d", 0) or 0)
+        except (ValueError, TypeError):
+            continue
+        spread = (iv - hv) * 100
+
+        # 合约切换检测（跨所有行，不仅最近两行）
+        note = ""
+        roll_in_window = False
+        for i in range(1, len(rows)):
+            prev_c = rows[i-1].get("contract", "")
+            curr_c = rows[i].get("contract", "")
+            if prev_c and curr_c and prev_c != curr_c:
+                note = f"⚠️切月 {prev_c}→{curr_c}"
+                # 检查切换是否在最近5行窗口内
+                if i >= len(rows) - 5:
+                    roll_in_window = True
+                break
+
+        # 5日变动（窗口内有切月→不计算，数字无意义）
+        if roll_in_window:
+            delta_str = "切月"
+            direction = "—"
+        elif len(rows) >= 5:
+            try:
+                prev_iv = float(rows[-5].get("iv_est", 0) or 0)
+                prev_hv = float(rows[-5].get("hv_20d", 0) or 0)
+                prev_spread = (prev_iv - prev_hv) * 100
+                delta = spread - prev_spread
+                delta_str = f"{delta:+.1f}pp"
+                if delta > 1.5:
+                    direction = "→"
+                elif delta < -1.5:
+                    direction = "←"
+                else:
+                    direction = "—"
+            except (ValueError, TypeError):
+                delta_str = "?"
+                direction = "?"
+        else:
+            delta_str = f"({len(rows)}d)"
+            direction = "—"
+
+        # 异常标注：折价/高溢价
+        anomalies = []
+        if spread < -1:
+            anomalies.append("🔻折价")
+        if spread > 10:
+            anomalies.append("🔺高溢价")
+        note = note + (" " + " ".join(anomalies) if anomalies else "")
+
+        # IV 结构（近月/次月）
+        far_iv_raw = rows[-1].get("far_iv", "")
+        far_c = rows[-1].get("far_contract", "")
+        iv_struct = ""
+        if far_iv_raw and far_c:
+            try:
+                f_iv = float(far_iv_raw)
+                n_iv = iv  # iv_est 原始值（小数），iv 是百分比
+                iv_struct = f"近{iv*100:.1f}%/远{f_iv*100:.1f}%"
+                if n_iv > f_iv:
+                    iv_struct += " ⚠️"
+            except (ValueError, TypeError):
+                iv_struct = ""
+
+        print(f"  │ {name:<8} {spread:>+7.1f}% {delta_str:>8} {direction:>6} {iv_struct:>20} {note}")
+
+    print(f"  └─ 5dΔ 基于最近 5 行。→ 价差扩大 ← 收敛 — 持平")
 
 
 def _cl_str(s):
@@ -1234,7 +1363,12 @@ def main():
     parser.add_argument('--buyer', action='store_true', help='买方模式：扫描 debit spread + straddle/strangle')
     parser.add_argument('--show', type=int, default=10, help='信号详情显示数量，默认10。填0显示全部')
     parser.add_argument('--raw', action='store_true', help='不过滤，显示全部原始信号')
+    parser.add_argument('--scan-history', action='store_true', help='查看历史非例行扫描归档')
     args = parser.parse_args()
+
+    if args.scan_history:
+        list_scan_history()
+        return
 
     if args.variety == 'all':
         target = list(VARIETIES.keys())
@@ -1640,6 +1774,9 @@ def main():
     # ── [IGNORE] S1 不扫，仅提示策略存在 ──
     print(f"\n  🔘 [IGNORE] 未扫描（需额外数据或S2+解锁）")
     print(f"    合成期货 · 备兑Call · 品种间价差 · 对角价差 · 跨市场套利 · 期货对冲")
+
+    # ── 全品种 IV-HV 一览 ──
+    print_iv_hv_panel()
 
     # ── 汇总行 ──
     print(f"\n  {'─'*70}")

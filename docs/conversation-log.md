@@ -4660,3 +4660,19 @@ Call IV 被砸平、Put IV 被推高
 
 ### 英语
 - Phase 1 #5 E09 OTM vs ITM ✅（4/10，过半）。挖矿三句→glossary。炸弹骨架完整+自纠错误
+
+## 2026-08-01/02 · Ti-Ne 锚点日：FOMC后沪金IV不crush → 三条代码落地
+
+### Ti-Ne 锚点核心发现
+FOMC 后沪金 IV-HV 三天只跌 0.7pp（7.8%→7.1%）→ 拉全品种对比发现：整个中国商品期权都没反应 FOMC（10 品种 IV 变动全在 ±2.5pp 噪声范围）。之前的 "沪金 FOMC 恐慌" 叙事是单品种视角错误。合约切换（au2608→au2610，DTE 5→59）贡献了 ~5.5pp 期限结构跳变，被误读为事件溢价。
+
+### 三条代码产出
+1. Scanner 加全品种 IV-HV 一览（print_iv_hv_panel，10品种 IV-HV 价差+5日变动+合约切换+折价标注）
+2. iv_collector + Scanner 加近远月 IV 对比（pick_two_contracts→iv_history 加 far_contract/far_iv→面板显 IV 结构）
+3. monitoring-rules §B 加买方方向一致性（趋势 vs 催化冲突 → 写反方理由或不进。CF2609 教训）
+
+### 其他
+- 非例行扫描：新疆极端高温升级（8/1-13 新一轮）、铁矿石宏观vs产业打架、钢铁vs光伏产能过剩病因不同
+- 非例行扫描历史归档（weekly_scans/ + --scan-history）
+- 周六复盘完成（搁置表激活离场规则细化项 D≥10、四道门 Data 7→9/60）
+- D-Drill 首次满分 21/21 125s
