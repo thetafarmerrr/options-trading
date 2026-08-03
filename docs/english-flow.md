@@ -4,7 +4,7 @@
 
 ## 当前进度
 
-**Phase 1 · 地基** | 第 4/10 集 | 下一集：**E09 OTM vs ITM Explained**（原#9）
+**Phase 1 · 地基** | 第 5/10 集 | 下一集：**Intrinsic Value Explained**（原#31）
 
 ---
 
