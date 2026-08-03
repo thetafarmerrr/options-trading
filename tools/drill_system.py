@@ -175,7 +175,7 @@ def generate_chain_segment():
         else:
             return sp < 15
 
-    def _find_ref_leg(idx, for_tradeable=True):
+    def _find_ref_leg(idx):
         """向下遍历找第一个有效参考腿。
         返回 (ref_idx, label, detail_suffix) 或 (None, ...) 表示未找到。
         - 中间档 bid>0 且价差≤50% → 视为有效档，阻断跨腿
@@ -213,7 +213,7 @@ def generate_chain_segment():
         anomaly_type = random.choice(["inversion_tradeable", "inversion_tradeable",
                                        "inversion_untradeable", "zero_bid", "wide_spread"])
         if anomaly_type == "inversion_tradeable":
-            ref_idx, label, suffix = _find_ref_leg(idx, for_tradeable=True)
+            ref_idx, label, suffix = _find_ref_leg(idx)
             if ref_idx is None:
                 # 无有效参考腿 → 假倒挂
                 prices[idx]["theo"] = round(prices[idx-1]["theo"] * random.uniform(0.5, 0.8), 2)
@@ -221,39 +221,47 @@ def generate_chain_segment():
                 all_anomalies.append({"strike": strikes[idx], "type": "假倒挂",
                                        "detail": f"行权价{strikes[idx]}：价格倒挂{suffix} → 不能做"})
             else:
-                # 参考腿有效 → 可交易倒挂
+                # 参考腿有效 → 可交易倒挂：压低 theo 使高行权价 Put 反而更便宜
                 prices[idx]["theo"] = round(prices[ref_idx]["theo"] * random.uniform(0.5, 0.8), 2)
                 prices[idx]["bid"] = round(prices[idx]["theo"] * random.uniform(0.88, 0.94), 2)
                 prices[idx]["ask"] = round(prices[idx]["bid"] * random.uniform(1.03, 1.10), 2)
                 tradeable_strikes.append(strikes[idx])
+                ref_strike = strikes[ref_idx]
+                ref_bid = prices[ref_idx]["bid"]
+                anomaly_bid = prices[idx]["bid"]
+                # 从链面数据推导描述（Put：行权价↑→买价↑，违反=倒挂）
+                if anomaly_bid < ref_bid:
+                    detail = (f"{label} 行权价{strikes[idx]}（买价{anomaly_bid}）"
+                              f"比低行权价{ref_strike}（买价{ref_bid}）还便宜 → 可交易倒挂{suffix}")
+                else:
+                    detail = (f"{label} 行权价{strikes[idx]}：理论价被压低至{anomaly_bid}，"
+                              f"与参考腿{ref_strike}（{ref_bid}）形成倒挂，买价存在{suffix}")
                 all_anomalies.append({"strike": strikes[idx], "type": f"{label}可交易倒挂",
-                                       "detail": f"{label} 行权价{strikes[idx]}：更高但更便宜，买价{prices[idx]['bid']:.2f}存在{suffix}"})
+                                       "detail": detail})
         elif anomaly_type == "inversion_untradeable":
             prices[idx]["theo"] = round(prices[idx-1]["theo"] * random.uniform(0.5, 0.8), 2)
-            ref_idx, label, suffix = _find_ref_leg(idx, for_tradeable=False)
+            ref_idx, label, suffix = _find_ref_leg(idx)
 
-            # 四种不可交易原因，随机选一种（跨腿后原因更丰富）
-            roll = random.random()
+            # 毙因匹配实际数据，不再随机抽签
             if ref_idx is None:
-                # 无有效参考腿——已是最常见毙因
                 prices[idx]["bid"] = round(prices[idx]["theo"] * random.uniform(0.88, 0.94), 2)
                 prices[idx]["ask"] = round(prices[idx]["bid"] * random.uniform(1.03, 1.10), 2)
                 detail = f"行权价{strikes[idx]}：价格倒挂{suffix} → 不能做"
-            elif roll < 0.33:
-                # 参考腿有效但倒挂腿自身买价为零
-                prices[idx]["bid"] = 0.0
-                prices[idx]["ask"] = round(prices[idx]["theo"] * 1.5, 2)
-                detail = f"行权价{strikes[idx]}：价格倒挂了但买价为零 → 无法平仓，不能做"
-            elif roll < 0.66:
-                # 倒挂腿自身价差过宽
-                prices[idx]["bid"] = round(prices[idx]["theo"] * 0.2, 2)
-                prices[idx]["ask"] = round(prices[idx]["theo"] * 3.0, 2)
-                detail = f"行权价{strikes[idx]}：价格倒挂了但价差过宽 → 滑点吃掉利润，不能做"
             else:
-                # 跨度超限
-                prices[idx]["bid"] = round(prices[idx]["theo"] * random.uniform(0.88, 0.94), 2)
-                prices[idx]["ask"] = round(prices[idx]["bid"] * random.uniform(1.03, 1.10), 2)
-                detail = f"行权价{strikes[idx]}：价格倒挂但跨度过大 → 不同波动率区域，不能做"
+                # 参考腿存在 → 选一种真实毙因，改价格以匹配
+                kill_reason = random.choice(["zero_bid", "wide_spread", "cross_leg"])
+                if kill_reason == "zero_bid":
+                    prices[idx]["bid"] = 0.0
+                    prices[idx]["ask"] = round(prices[idx]["theo"] * 1.5, 2)
+                    detail = f"行权价{strikes[idx]}：价格倒挂但买价为零 → 无法成交，不能做"
+                elif kill_reason == "wide_spread":
+                    prices[idx]["bid"] = round(prices[idx]["theo"] * 0.2, 2)
+                    prices[idx]["ask"] = round(prices[idx]["theo"] * 3.0, 2)
+                    detail = f"行权价{strikes[idx]}：价格倒挂但价差过宽 → 滑点吃掉利润，不能做"
+                else:
+                    prices[idx]["bid"] = round(prices[idx]["theo"] * random.uniform(0.88, 0.94), 2)
+                    prices[idx]["ask"] = round(prices[idx]["bid"] * random.uniform(1.03, 1.10), 2)
+                    detail = f"行权价{strikes[idx]}：价格倒挂但需跨档参考 → 不是干净机会，不能做{suffix}"
             all_anomalies.append({"strike": strikes[idx], "type": "假倒挂", "detail": detail})
         elif anomaly_type == "zero_bid":
             prices[idx]["bid"] = 0.0
@@ -1633,7 +1641,7 @@ SCENARIOS_I = [
            ("都可以，看方向", False, "IV 位置决定买方能不能赚钱。贵 IV=高门槛。"),
            ("都不适合，买 Call 永远不如买标的", False, "方向强+IV 便宜=买 Call 杠杆效率远超买标的。")]},
 
-    {"d": "标的 3200，你看跌。比较两种做法：A) 买 3100 Put 权利金 45 元  B) 裸卖 3300 Call 收 30 元。哪个风险结构更好？",
+    {"d": "标的 3200，你看跌。比较两种做法：A) 买 3100 Put 权利金 45 元  B) 裸卖 3300 Call 收 30 元。", "q": "哪个风险结构更好？",
      "o": [("A — 买 Put：最大亏损 45 元封顶，不会爆仓", True, "买方=风险可控。裸卖 Call=别人涨多少你亏多少。方向对+裸卖=时间朋友，但一次黑天鹅就清零。"),
            ("B — 裸卖 Call：收钱就是赚", False, "收钱爽，但无限风险。这不是交易，是卖保险不收保费上限。"),
            ("两个一样好", False, "差远了。一个是有限风险，一个是无限风险。"),

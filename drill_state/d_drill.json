@@ -174,8 +174,15 @@
       "correct": 21,
       "total": 21,
       "accuracy": 100.0
+    },
+    {
+      "date": "2026-08-03",
+      "pool": "A",
+      "correct": 20,
+      "total": 21,
+      "accuracy": 95.2
     }
   ],
-  "streak": 1,
+  "streak": 0,
   "best_streak": 2
 }
