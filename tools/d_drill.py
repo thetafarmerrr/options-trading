@@ -58,9 +58,9 @@ def run():
         raw_ans = q.get("a", "")
         if "不做" in raw_ans:
             ask_type = "【做不做？】"
-        elif "不平" in raw_ans:
+        elif raw_ans.startswith("平"):
             ask_type = "【平不平？】"
-        elif "平" in raw_ans and "不平" not in raw_ans:
+        elif "平" in raw_ans and "不平" not in raw_ans and "平仓" not in raw_ans:
             ask_type = "【平不平？】"
         else:
             ask_type = "【做不做？】"

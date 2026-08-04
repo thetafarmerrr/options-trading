@@ -433,3 +433,8 @@ when we look at hedging, we're basically looking at minimizing risk. So when we'
 - If something's in the money then that must mean that it has intrinsic value. At expiration it will actually be worth something. If it's out of the money it does not have intrinsic value — at expiration there will be no value and it will expire worthless.  （Mike E09, OTM vs ITM）
 - For option buyers, in the money will equal profit at expiration as long as we're in the money by more than the debit we paid, which is going to be our break-even price.  （Mike E09, OTM vs ITM）
 - The buyer is going to have to spend $1.25 per share for this option and the seller is going to collect $1.25 per share for this option.  （Mike E09, OTM vs ITM）
+
+### 外在价值与时间价值
+- Intrinsic value is black and white and has an exact calculable number, while extrinsic value is more gray when you break down its components.  （Mike E07, Extrinsic Value）
+- Time value — this is the extra cost you pay for time remaining on an option contract. Just like any legal contract, the longer the valid term, the higher its value.  （Mike E07, Extrinsic Value）
+- We have a simple standalone formula for intrinsic value, but time and volatility do not split neatly into separate calculable figures for extrinsic value — they work hand in hand and interact dynamically.  （Mike E07, Extrinsic Value）

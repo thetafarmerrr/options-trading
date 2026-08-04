@@ -4721,3 +4721,49 @@ FOMC 后沪金 IV-HV 三天只跌 0.7pp（7.8%→7.1%）→ 拉全品种对比�
 ### Sinclair
 - A 线程：Term Structure Dynamics——事件定价非线性，远月过度反应。
 - B 线程：Ch11 系统性执行=方向一致性规则同逻辑。非直接对应但不影响框架价值。
+
+## 2026-08-04 周二 · 方向冲突规则闭环 + Ch9 Trade Evaluation
+
+### 交易决策
+- Scanner 1 EXEC：铁矿石 卖P680/670。毙于方向冲突——10日跌8.8%，卖Put押止跌与趋势反
+- 毙掉的信号记入 paper-tracker（🔴标注），追踪验证方向检查规则
+- 豆粕买Put 3000 连续两天出信号 ⭐⭐⭐，D-6 WASDE，趋势和IV方向一致
+- 沪金 FOMC D+4 IV-HV +6.9%溢价不退——9:3分裂旧不确定换新不确定
+
+### 训练
+- D-Drill 第二次满分 21/21 246s（比首满慢121s——在认真走反证停顿）
+- B 88%回升 E 70%暴跌（Q1 bid/ask阈值10.6%刚超10%被毙）
+- I模块 KeyError: 'q'修复 D-Drill标签误判修复
+
+### Sinclair
+- A线程：橡胶 backwardation → Ch5 Term Structure
+- B线程：方向冲突毙信号 → Ch9 p163-165 Trade Evaluation。Sinclair说记录=拆开"判断对路径杀"和"判断错运气好"。跟纸面追踪是同一逻辑
+
+### 核心认知
+- **No-Transaction Region误用**：用户尝试用Ch6对冲理论证明铁矿石卖Put可持有。推回去——No-Transaction Region是持仓后对冲管理，不是进场决策
+- **买方Vega利润兑现后不等方向**：quiz错题→mistakes。进场理由(IV便宜)消失了就离场，买方不等方向帮忙
+- **Sinclair三段关键引用**：①路径依赖解释期权vs股票区别 ②交易员盈利能力与记录习惯高度相关 ③追踪结果不像发现新交易有魅力但同样至关重要
+- **Douglas**：赢家"亏损=经营成本"vs新手"亏损=意外"。铁矿石毙掉没纠结=早期版本的态度在生效
+
+### 英语
+- Phase 1 7/10 Extrinsic Value Explained
+- 炸弹：extrinsic/eccentric发音混淆但概念全对。用户问"是不是很差"→不是差，是在长——7天前不敢开口
+- 挖矿句型利用方法：不背——每次笔译翻glossary找骨架套用，用多了自然熟
+
+### 系统变更
+- ctp_farm.py加持久计数器→data/ctp_farm_log.json（7/28起6天/22笔）
+- d_drill标签检测修复+d_drill_data答案"平仓"→"离场"
+- I模块第12题缺'q'键修复
+
+### 讨论
+- Boris Cherny说删CLAUDE.md：他针对代码项目过时工具指令。本项目CLAUDE.md是用户交易系统外化，不能直接套，但修剪原则适用
+- "最近没起色"的感觉：Douglas框架——决策质量在提升但期待回报在等。两个不是同一件事
+
+### 今日金句
+> "追踪结果不像发现新交易那样有魅力，但同样至关重要" — Sinclair Ch9
+> "不是靠对市场的天才洞见——是态度的根本转变" — Douglas
+
+### 状态更新
+- D→14/20（铁矿石毙掉零override）
+- CTP farm日志从7/28起累计6天/22笔
+- Sinclair B Ch9 ✅

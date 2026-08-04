@@ -130,5 +130,35 @@
     "topic": "strategy",
     "correct": 1,
     "total": 3
+  },
+  {
+    "date": "2026-08-04T23:54:36.641807",
+    "topic": "strategy",
+    "correct": 0,
+    "total": 3
+  },
+  {
+    "date": "2026-08-04T23:54:45.445422",
+    "topic": "events",
+    "correct": 1,
+    "total": 3
+  },
+  {
+    "date": "2026-08-04T23:56:48.971716",
+    "topic": "greeks",
+    "correct": 1,
+    "total": 3
+  },
+  {
+    "date": "2026-08-05T00:00:17.400506",
+    "topic": "events",
+    "correct": 2,
+    "total": 3
+  },
+  {
+    "date": "2026-08-05T00:03:46.884497",
+    "topic": "greeks",
+    "correct": 3,
+    "total": 3
   }
 ]
