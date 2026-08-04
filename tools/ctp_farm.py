@@ -17,6 +17,7 @@ import os
 import sys
 import time
 import signal
+import json
 import threading
 from collections import defaultdict
 from pathlib import Path
@@ -29,6 +30,7 @@ except ImportError:
 
 # ── 加载 .env ────────────────────────────────────────────────────────
 ENV_FILE = Path(__file__).parent.parent / ".env"
+CTP_LOG_FILE = Path(__file__).parent.parent / "data" / "ctp_farm_log.json"
 if ENV_FILE.exists():
     with open(ENV_FILE) as f:
         for line in f:
@@ -445,9 +447,40 @@ def farm(api, spi):
         if rnd < 2:
             time.sleep(2.0)  # 轮间冷却
 
+    trades_today = ok_count * 2
+
     print(f"\n{'='*50}")
-    print(f"  完成: {ok_count}/2 轮成功 = {ok_count * 2} 笔交易")
+    print(f"  完成: {ok_count}/2 轮成功 = {trades_today} 笔交易")
     print(f"{'='*50}")
+
+    # 写日志：累加交易天数+笔数
+    log = {"runs": [], "total_trades": 0, "total_days": 0}
+    if CTP_LOG_FILE.exists():
+        try:
+            log = json.loads(CTP_LOG_FILE.read_text())
+        except json.JSONDecodeError:
+            pass
+
+    today_str = time.strftime("%Y-%m-%d")
+    today_trades = trades_today
+    # 如果今天已经跑过（叠加轮次），合并
+    already_today = sum(r["trades"] for r in log["runs"] if r["date"] == today_str)
+    if already_today:
+        today_trades += already_today
+        log["runs"] = [r for r in log["runs"] if r["date"] != today_str]
+
+    log["runs"].append({
+        "date": today_str,
+        "trades": today_trades,
+        "symbol": symbol,
+        "rounds_ok": ok_count,
+    })
+    log["total_trades"] = sum(r["trades"] for r in log["runs"])
+    log["total_days"] = len(set(r["date"] for r in log["runs"]))
+
+    CTP_LOG_FILE.parent.mkdir(parents=True, exist_ok=True)
+    CTP_LOG_FILE.write_text(json.dumps(log, ensure_ascii=False, indent=2))
+    print(f"  📋 累计: {log['total_days']} 天 / {log['total_trades']} 笔 → data/ctp_farm_log.json")
 
 
 # ── 侦察模式 ────────────────────────────────────────────────────────
