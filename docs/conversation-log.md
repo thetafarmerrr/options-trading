@@ -4767,3 +4767,25 @@ FOMC 后沪金 IV-HV 三天只跌 0.7pp（7.8%→7.1%）→ 拉全品种对比�
 - D→14/20（铁矿石毙掉零override）
 - CTP farm日志从7/28起累计6天/22笔
 - Sinclair B Ch9 ✅
+
+## 2026-08-05 签到
+
+### 签到任务单输出
+- 周三签到。纪律 14/20，干旱 0 天（8/4 铁矿石 EXEC 毙于方向冲突）
+- English Phase 1 7/10→8/10 Break-Even Price
+- Drill 轮转：B+E+G+D+J。E 上周 70% 暴跌需重点回溯
+- Sinclair 周三只跑 B：CF2609 平仓+38.5% → Ch8 Money Management p132-137（Ad Hoc Sizing + Kelly 公式）
+- 搁置激活讨论：D≥10 触发离场规则细化
+- 入金状态待更新
+
+## 2026-08-05 收尾
+
+### 收尾更新
+- D门 14→15：铁矿石 EXEC 毙于 rr=0.25，正确决策不开，零 override
+- 训练：B 88% E 90% G 84% D 100% J 90% D-Drill 21/21 100% 174s（第三次满分）
+- Sinclair B：Ch8 Money Management p132-137（Kelly vs 固定手数）
+- Paper tracker：停止追踪规则+星级修正+橡胶乘数修正
+- 教练错误×2：编造6笔正期望+沪金回落误判。Ti对Ti碰撞=最强安全网
+- 搁置：买方趋势方向细化（Data≥30）
+- 英语未做，8/6合并两集
+- 删除 capture-translator 项目
