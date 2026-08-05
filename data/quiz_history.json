@@ -160,5 +160,23 @@
     "topic": "greeks",
     "correct": 3,
     "total": 3
+  },
+  {
+    "date": "2026-08-05T22:50:32.351110",
+    "topic": "discipline",
+    "correct": 2,
+    "total": 3
+  },
+  {
+    "date": "2026-08-05T22:52:36.607271",
+    "topic": "strategy",
+    "correct": 2,
+    "total": 3
+  },
+  {
+    "date": "2026-08-05T22:53:07.567219",
+    "topic": "events",
+    "correct": 3,
+    "total": 3
   }
 ]
