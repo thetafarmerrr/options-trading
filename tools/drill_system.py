@@ -631,6 +631,7 @@ def run_drill_c(quick=False):
         for j, (opt_text, _, _) in enumerate(scenario["options"], 1):
             print(f"    {j}. {opt_text}")
 
+        _ = input(f"  ⏸ 方向/波动？ ").strip()
         t_start = time.time()
         try:
             choice = int(input(f"  → 选哪个 (1-4): ").strip())
@@ -1537,6 +1538,7 @@ def run_drill_h(quick=False):
 
     for r, s in enumerate(random.sample(scenarios, min(n_rounds, len(scenarios))), 1):
         print(f"\n  [{r}/{n_rounds}] {s['desc']}")
+        _ = input(f"  ⏸ 方向/波动？ ").strip()
         t0 = time.time()
         try:
             u = input(f"  → 跨/C/P/不 ?: ").strip()

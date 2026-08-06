@@ -100,7 +100,8 @@ def run():
             print(f"  📖 {q['a']}\n")
             correct += 1
         else:
-            print(f"  错误。正确答案: {q['a']}\n")
+            print(f"  ❌ 错误。你的输入: 「{ans}」→ 解析为「{user_ans}」")
+            print(f"  正确答案: {q['a']}\n")
 
     elapsed_total = time.time() - start_time
     accuracy = round(correct / total * 100, 1) if total > 0 else 0
