@@ -717,6 +717,13 @@ def _scan_buyer_debit_side(df, direction, futures, mult, capital,
     if not has_trend and not has_tier1_event:
         return results  # 第一关不过——标的横盘且无催化，Theta吃掉权利金
 
+    # 趋势方向过滤：趋势方向与价差方向相反 → 跳过（8/7 加）
+    if change_5d is not None:
+        if direction == 'call' and change_5d < 0:
+            return results  # 趋势向下，不做看涨价差
+        if direction == 'put' and change_5d > 0:
+            return results  # 趋势向上，不做看跌价差
+
     # 检查是否有 D-1 高影响事件（排除持续事件和 D-0/D-1 固定事件）
     has_d1_high_event = any(
         0 <= e.get('days_until', 0) <= 1 and e['impact'] == 'high'
@@ -1058,48 +1065,54 @@ def scan_single_leg_buyer(df, futures, variety_name, contract, vcode,
     # ━━ 事件触发：Call/Put 各独立，不合并 ━━
     # 事件在到期后则不产生方向性信号（趋势触发不受影响）
     if has_event and not event_too_late_sl:
-        for _, row in otm_calls.iterrows():
-            ask = _safe(row.get('c_ask', 0))
-            bid = _safe(row.get('c_bid', 0))
-            sp = _spread(bid, ask)
-            if sp > EVENT_SPREAD_MAX:
-                continue
-            cost = ask * mult
-            if capital and cost > capital * BUYER_SINGLE_EVENT_CAP:
-                continue
-            results.append({
-                'strategy': 'buy_call_event', 'trigger': '🔥事件',
-                'variety': vcode, 'name': variety_name, 'contract': contract,
-                'strike': int(row['strike']), 'ask': round(float(ask), 2),
-                'cost': round(cost, 0), 'max_loss': round(cost, 0),
-                'otm_pct': round((int(row['strike'])-futures)/futures*100, 1),
-                'iv_percentile': round(iv_percentile),
-                # TODO: Data ≥ 30 后恢复 iv_percentile < 20 → green
-                'color': 'green' if (BUYER_COLOR_ENABLED and iv_percentile < 20) else 'yellow',
-                'tradeable': True,
-            })
-            break
-        for _, row in otm_puts.iterrows():
-            ask = _safe(row.get('p_ask', 0))
-            bid = _safe(row.get('p_bid', 0))
-            sp = _spread(bid, ask)
-            if sp > EVENT_SPREAD_MAX:
-                continue
-            cost = ask * mult
-            if capital and cost > capital * BUYER_SINGLE_EVENT_CAP:
-                continue
-            results.append({
-                'strategy': 'buy_put_event', 'trigger': '🔥事件',
-                'variety': vcode, 'name': variety_name, 'contract': contract,
-                'strike': int(row['strike']), 'ask': round(float(ask), 2),
-                'cost': round(cost, 0), 'max_loss': round(cost, 0),
-                'otm_pct': round((futures-int(row['strike']))/futures*100, 1),
-                'iv_percentile': round(iv_percentile),
-                # TODO: Data ≥ 30 后恢复 iv_percentile < 20 → green
-                'color': 'green' if (BUYER_COLOR_ENABLED and iv_percentile < 20) else 'yellow',
-                'tradeable': True,
-            })
-            break
+        # 趋势方向过滤：只出与趋势同向的单腿（8/7 加）
+        # change_5d=None → 数据拉取失败，不过滤
+        emit_call = change_5d is None or change_5d > 0
+        emit_put = change_5d is None or change_5d < 0
+        if emit_call:
+            for _, row in otm_calls.iterrows():
+                ask = _safe(row.get('c_ask', 0))
+                bid = _safe(row.get('c_bid', 0))
+                sp = _spread(bid, ask)
+                if sp > EVENT_SPREAD_MAX:
+                    continue
+                cost = ask * mult
+                if capital and cost > capital * BUYER_SINGLE_EVENT_CAP:
+                    continue
+                results.append({
+                    'strategy': 'buy_call_event', 'trigger': '🔥事件',
+                    'variety': vcode, 'name': variety_name, 'contract': contract,
+                    'strike': int(row['strike']), 'ask': round(float(ask), 2),
+                    'cost': round(cost, 0), 'max_loss': round(cost, 0),
+                    'otm_pct': round((int(row['strike'])-futures)/futures*100, 1),
+                    'iv_percentile': round(iv_percentile),
+                    # TODO: Data ≥ 30 后恢复 iv_percentile < 20 → green
+                    'color': 'green' if (BUYER_COLOR_ENABLED and iv_percentile < 20) else 'yellow',
+                    'tradeable': True,
+                })
+                break
+        if emit_put:
+            for _, row in otm_puts.iterrows():
+                ask = _safe(row.get('p_ask', 0))
+                bid = _safe(row.get('p_bid', 0))
+                sp = _spread(bid, ask)
+                if sp > EVENT_SPREAD_MAX:
+                    continue
+                cost = ask * mult
+                if capital and cost > capital * BUYER_SINGLE_EVENT_CAP:
+                    continue
+                results.append({
+                    'strategy': 'buy_put_event', 'trigger': '🔥事件',
+                    'variety': vcode, 'name': variety_name, 'contract': contract,
+                    'strike': int(row['strike']), 'ask': round(float(ask), 2),
+                    'cost': round(cost, 0), 'max_loss': round(cost, 0),
+                    'otm_pct': round((futures-int(row['strike']))/futures*100, 1),
+                    'iv_percentile': round(iv_percentile),
+                    # TODO: Data ≥ 30 后恢复 iv_percentile < 20 → green
+                    'color': 'green' if (BUYER_COLOR_ENABLED and iv_percentile < 20) else 'yellow',
+                    'tradeable': True,
+                })
+                break
 
     # ━━ 趋势触发（走到底，取最深 OTM 杠杆最大那一档）━━
     if has_trend:
