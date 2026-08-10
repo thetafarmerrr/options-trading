@@ -176,6 +176,71 @@ EVENTS_2026 = [
         1.5, "straddle",
         time_edt="14:00"
     ),
+    CalendarEvent(
+        "2026-09-16", "美联储 FOMC 利率决议 (含SEP/点阵图)",
+        ["au", "i", "ru", "ta", "ma"], "high", "policy",
+        "9月会议含经济预测摘要，波动通常大于无SEP会议",
+        2.0, "straddle",
+        time_edt="14:00"
+    ),
+    CalendarEvent(
+        "2026-10-28", "美联储 FOMC 利率决议",
+        ["au", "i", "ru", "ta", "ma"], "high", "policy",
+        "10月会议无SEP，波动相对可控",
+        1.5, "straddle",
+        time_edt="14:00"
+    ),
+    CalendarEvent(
+        "2026-12-09", "美联储 FOMC 利率决议 (含SEP/点阵图)",
+        ["au", "i", "ru", "ta", "ma"], "high", "policy",
+        "年度最后一次+经济预测，波动通常最大",
+        2.0, "straddle",
+        time_edt="14:00"
+    ),
+
+    # ── OPEC+ ──
+    CalendarEvent(
+        "2026-09-06", "OPEC+ 七国产量审查会议",
+        ["ta", "ma"], "medium", "policy",
+        "沙特/俄罗斯等七国月度产量合规审查，原油情绪传导PTA/甲醇",
+        1.5, "directional"
+    ),
+    CalendarEvent(
+        "2026-10-04", "OPEC+ JMMC 第68次监测会议",
+        ["ta", "ma"], "medium", "policy",
+        "联合部长级监测委员会，评估减产执行率",
+        2.0, "directional"
+    ),
+    CalendarEvent(
+        "2026-11-29", "OPEC+ 部长级全体会议",
+        ["ta", "ma"], "high", "policy",
+        "决定2027年产量政策框架，年度最重要OPEC+事件",
+        3.0, "straddle"
+    ),
+
+    # ── 月度经济数据（中国）──
+    CalendarEvent(
+        "monthly-pmi", "中国月度 PMI (月底/月初发布)",
+        ["i", "ru", "ta", "ma", "au"], "medium", "data",
+        "宏观情绪影响工业品，金价受利率预期传导",
+        1.0, "directional"
+    ),
+
+    # ── 白糖 ──
+    CalendarEvent(
+        "2026-11-15", "中国糖会 (郑州/昆明·年度)",
+        ["sr"], "medium", "policy",
+        "新榨季产量预估+政策定调（收储/进口配额），白糖方向性窗口",
+        2.0, "directional"
+    ),
+
+    # ── 铁矿石政策 ──
+    CalendarEvent(
+        "2027-03-04", "全国两会 + 华北钢厂环保限产",
+        ["i"], "high", "policy",
+        "两会期间华北钢厂限产30%+，铁矿石需求骤降。每年例行，持续1-2周。",
+        3.0, "directional"
+    ),
 
     # ── 合约到期 ──
     CalendarEvent(
@@ -201,8 +266,8 @@ def next_weekday(d: date, weekday: int) -> date:
     return d + timedelta(days=days_ahead)
 
 
-def resolve_weekly_events(events: List[CalendarEvent], from_date: date, days: int) -> List[CalendarEvent]:
-    """将 weekly-* 事件解析为具体日期"""
+def resolve_recurring_events(events: List[CalendarEvent], from_date: date, days: int) -> List[CalendarEvent]:
+    """将 weekly-* / monthly-* 事件解析为具体日期"""
     resolved = []
     end_date = from_date + timedelta(days=days)
 
@@ -229,6 +294,28 @@ def resolve_weekly_events(events: List[CalendarEvent], from_date: date, days: in
                         ))
                         d += timedelta(days=7)
                     break
+        elif ev.date.startswith("monthly-"):
+            # 月度事件：在日期范围内每个月的月底/月初各生成一条
+            d = date(from_date.year, from_date.month, 1)
+            while d <= end_date:
+                # 月末：当月最后一天
+                last_day = date(d.year, d.month, 1) + timedelta(days=32)
+                last_day = date(last_day.year, last_day.month, 1) - timedelta(days=1)
+                if from_date <= last_day <= end_date:
+                    resolved.append(CalendarEvent(
+                        date=last_day.strftime("%Y-%m-%d"),
+                        title=ev.title,
+                        varieties=ev.varieties,
+                        impact=ev.impact,
+                        category=ev.category,
+                        description=ev.description,
+                        expected_move_pct=ev.expected_move_pct,
+                        best_strategy=ev.best_strategy,
+                        time_edt=ev.time_edt,
+                    ))
+                # 下个月
+                d = date(d.year, d.month, 1) + timedelta(days=32)
+                d = date(d.year, d.month, 1)
         else:
             resolved.append(ev)
     return resolved
@@ -240,7 +327,7 @@ def get_upcoming_events(from_date: Optional[date] = None, days: int = 7,
     if from_date is None:
         from_date = date.today()
 
-    resolved = resolve_weekly_events(EVENTS_2026, from_date, days)
+    resolved = resolve_recurring_events(EVENTS_2026, from_date, days)
 
     upcoming = []
 
