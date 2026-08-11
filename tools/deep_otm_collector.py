@@ -25,6 +25,7 @@ import threading
 import argparse
 from datetime import datetime, date
 from pathlib import Path
+from openctp_ctp import mdapi
 
 # ═══════════════════════════════════════════════════════════════
 # 全局退出信号
@@ -37,7 +38,8 @@ _shutdown = threading.Event()
 SCRIPT_DIR = Path(__file__).parent
 PROJECT_DIR = SCRIPT_DIR.parent
 CONFIG_FILE = PROJECT_DIR / "data" / "deep_otm_config.json"
-OUTPUT_FILE = PROJECT_DIR / "data" / "deep_otm_history.csv"
+OUTPUT_TRADING = PROJECT_DIR / "data" / "deep_otm_trading.csv"
+OUTPUT_EOD = PROJECT_DIR / "data" / "deep_otm_eod.csv"
 ENV_FILE = PROJECT_DIR / ".env"
 
 # ═══════════════════════════════════════════════════════════════
@@ -120,7 +122,7 @@ CSV_FIELDS = [
     "date", "time_slot", "time_label", "variety", "contract",
     "strike", "direction", "bid", "ask", "bid_vol", "ask_vol",
     "last", "volume", "open_interest", "underlying_price",
-    "moneyness", "tick_time", "is_stale",
+    "moneyness", "tick_time", "is_stale", "is_eod_proxy",
 ]
 
 
@@ -148,6 +150,20 @@ def build_ctp_option_code(vcode: str, yy: int, mm: int, direction: str,
         strike=strike,
     )
 
+
+def build_ctp_futures_code(vcode: str, yy: int, mm: int) -> str:
+    """构造 CTP 标的期货代码。格式同 build_ctp_option_code，但无 C/P + 行权价。"""
+    cfg = VARIETY_CONFIG[vcode]
+    fmt = cfg.get("ctp_fmt", "{prefix}{yymm}")
+    return fmt.format(
+        prefix=cfg["prefix"],
+        y=yy % 10,
+        yy=f"{yy % 100:02d}",
+        yymm=f"{yy % 100:02d}{mm:02d}",
+        mm=f"{mm:02d}",
+        cp="",
+        strike="",
+    )
 
 def pick_active_month(vcode: str) -> tuple:
     """选当前活跃月份（近月）和次远月。"""
@@ -251,20 +267,25 @@ def discover_contracts():
 
         print(f"     标的 ≈ {futures_price:.0f}  | 共 {len(df)} 个行权价")
 
-        # 解析近月合约的年月
+        # 解析近月合约的年月（兼容 3 位数字如 TA609）
         import re
-        m = re.search(r'(\d{2})(\d{2})$', near_ak)
+        m = re.search(r'(\d{1,2})(\d{2})$', near_ak)
         if m:
             near_yy, near_mm = int(m.group(1)), int(m.group(2))
+            # 1 位年份 → 2 位（6 → 26，即 2026）
+            if near_yy < 10:
+                near_yy = 20 + near_yy
         else:
             near_yy, near_mm = today.year % 100, today.month + 1
 
         # 次远月
         far_yy = far_mm = None
         if far_ak:
-            mf = re.search(r'(\d{2})(\d{2})$', far_ak)
+            mf = re.search(r'(\d{1,2})(\d{2})$', far_ak)
             if mf:
                 far_yy, far_mm = int(mf.group(1)), int(mf.group(2))
+                if far_yy < 10:
+                    far_yy = 20 + far_yy
 
         # 计算深虚行权价
         call_strikes = calc_otm_strikes(vcode, futures_price, "C")
@@ -316,11 +337,22 @@ def discover_contracts():
         return None
 
     # 写配置
+    # 动态标的期货映射（从本次发现的合约月份反推）
+    underlying_futures_dynamic = {}
+    for vcode in ["au", "m", "ta"]:
+        contracts_for_vcode = [c for c in all_contracts if c["variety"] == vcode]
+        if contracts_for_vcode:
+            # 取近月（month 最短的）作为标的期货月份
+            near_month = min(int(c["month"]) for c in contracts_for_vcode)
+            near_yy = near_month // 100
+            near_mm = near_month % 100
+            underlying_futures_dynamic[vcode] = build_ctp_futures_code(vcode, near_yy, near_mm)
+
     config = {
         "discovered": date.today().isoformat(),
         "varieties": ["au", "m", "ta"],
         "futures_prices": {},
-        "underlying_futures": UNDERLYING_FUTURES,
+        "underlying_futures": underlying_futures_dynamic,
         "contracts": all_contracts,
     }
 
@@ -346,10 +378,11 @@ def discover_contracts():
 # CTP MdApi 采集
 # ═══════════════════════════════════════════════════════════════
 
-class MdSpi:
+class MdSpi(mdapi.CThostFtdcMdSpi):
     """CTP 行情回调。"""
 
     def __init__(self, underlying_map: dict = None):
+        super().__init__()
         self.connected = False
         self.logged_in = False
         self.login_error = ""
@@ -385,10 +418,11 @@ class MdSpi:
 
     def OnFrontConnected(self):
         print("✅ MdApi 前置连接成功 → 登录…")
-        self._api.ReqUserLogin(
-            BROKER_ID, USER_ID, PASSWORD,
-            len(SYSTEM_INFO), SYSTEM_INFO
-        )
+        req = mdapi.CThostFtdcReqUserLoginField()
+        req.BrokerID = BROKER_ID
+        req.UserID = USER_ID
+        req.Password = PASSWORD
+        self._api.ReqUserLogin(req, 0)
 
     def OnFrontDisconnected(self, nReason):
         reasons = {0x1001: "网络读失败", 0x1002: "网络写失败",
@@ -462,11 +496,12 @@ class MdSpi:
             print(f"⚠️  MdApi 错误: [{pRspInfo.ErrorID}] {pRspInfo.ErrorMsg}")
 
 
-def connect_md(spi: MdSpi, contracts: list) -> tuple:
+def connect_md(spi: MdSpi, contracts: list, underlying_futures: dict = None) -> tuple:
     """连接 MdApi → 登录 → 批量订阅合约（期权 + 标的期货）。返回 (api, success)。"""
+    if underlying_futures is None:
+        underlying_futures = UNDERLYING_FUTURES
 
-    api_cls = __import__("openctp_ctp", fromlist=["mdapi"]).mdapi.CThostFtdcMdApi
-    api = api_cls.CreateFtdcMdApi()
+    api = mdapi.CThostFtdcMdApi.CreateFtdcMdApi()
     spi._api = api
     api.RegisterSpi(spi)
     api.RegisterFront(MD_ADDR)
@@ -481,16 +516,16 @@ def connect_md(spi: MdSpi, contracts: list) -> tuple:
         return None, False
 
     # 先订阅标的期货（获取实时标的价格）
-    futures_codes = list(set(UNDERLYING_FUTURES.values()))
+    futures_codes = list(set(underlying_futures.values()))
     print(f"\n📡 订阅 {len(futures_codes)} 个标的期货…")
     for code in futures_codes:
-        api.SubscribeMarketData(code.encode(), 1)
+        api.SubscribeMarketData([code.encode()], 1)
 
     # 批量订阅期权
     codes = [c["ctp_code"] for c in contracts]
     print(f"📡 订阅 {len(codes)} 个深虚期权…")
     for code in codes:
-        api.SubscribeMarketData(code.encode(), 1)
+        api.SubscribeMarketData([code.encode()], 1)
 
     # 等订阅回报
     time.sleep(3.0)
@@ -519,7 +554,7 @@ def _time_matches(now: datetime, target: str) -> bool:
     th, tm = map(int, target.split(":"))
     target_minutes = th * 60 + tm
     current_minutes = now.hour * 60 + now.minute
-    return abs(current_minutes - target_minutes) <= 0
+    return abs(current_minutes - target_minutes) <= 1
 
 
 def _time_passed(now: datetime, target: str) -> bool:
@@ -530,14 +565,18 @@ def _time_passed(now: datetime, target: str) -> bool:
     return current_minutes > target_minutes
 
 
-def save_snapshot(spi: MdSpi, contracts: list, time_slot: str, time_label: str):
+def save_snapshot(spi: MdSpi, contracts: list, time_slot: str, time_label: str,
+                  output_path: Path = None, is_eod_proxy: int = 0):
     """保存当前所有订阅合约的最新行情到 CSV。
 
     自动计算：
     - underlying_price：从标的期货 tick 获取
     - moneyness：strike / underlying（C）或 underlying / strike（P）
     - is_stale：tick_time 距当前时间 > 120s 标记为 1
+    - is_eod_proxy：是否为日终代理采集（非真 15:00）
     """
+    if output_path is None:
+        output_path = OUTPUT_TRADING
     today_str = date.today().isoformat()
     now = time.time()
 
@@ -600,6 +639,7 @@ def save_snapshot(spi: MdSpi, contracts: list, time_slot: str, time_label: str):
                 "moneyness": round(moneyness, 4) if moneyness > 0 else "",
                 "tick_time": tick_time_str,
                 "is_stale": is_stale,
+                "is_eod_proxy": is_eod_proxy,
             })
 
     if not rows:
@@ -607,10 +647,10 @@ def save_snapshot(spi: MdSpi, contracts: list, time_slot: str, time_label: str):
         return
 
     # 追加写入 CSV
-    file_exists = OUTPUT_FILE.exists()
-    OUTPUT_FILE.parent.mkdir(parents=True, exist_ok=True)
+    file_exists = output_path.exists()
+    output_path.parent.mkdir(parents=True, exist_ok=True)
 
-    with open(OUTPUT_FILE, "a", newline="", encoding="utf-8") as f:
+    with open(output_path, "a", newline="", encoding="utf-8") as f:
         writer = csv.DictWriter(f, fieldnames=CSV_FIELDS)
         if not file_exists:
             writer.writeheader()
@@ -623,33 +663,39 @@ def save_snapshot(spi: MdSpi, contracts: list, time_slot: str, time_label: str):
           f"(有报价:{has_bid} stale:{stale})")
 
 
-def run_collection(contracts: list):
+def run_collection(contracts: list, underlying_futures: dict = None,
+                   output_path: Path = None):
     """主循环：连接 → 订阅 → 等待时点 → 保存快照 → 收盘退出。"""
     if not contracts:
         print("❌ 合约列表为空。请先运行 --discover")
         return
 
+    if underlying_futures is None:
+        underlying_futures = UNDERLYING_FUTURES
+    if output_path is None:
+        output_path = OUTPUT_TRADING
+
     # 构建期权→标的映射（用于 save_snapshot 查标的价格）
     opt_to_ul = {}
     for c in contracts:
         vcode = c["variety"]
-        ul = UNDERLYING_FUTURES.get(vcode, "")
+        ul = underlying_futures.get(vcode, "")
         if ul:
             opt_to_ul[c["ctp_code"]] = ul
 
     print(f"\n📊 深虚期权 8 时点采集")
     print(f"   品种: AU / M / TA")
-    print(f"   期权: {len(contracts)} 个  |  标的期货: {len(set(UNDERLYING_FUTURES.values()))} 个")
+    print(f"   期权: {len(contracts)} 个  |  标的期货: {len(set(underlying_futures.values()))} 个")
     print(f"   时点: {', '.join(t for t, _ in SNAPSHOT_TIMES)}")
-    print(f"   输出: {OUTPUT_FILE}\n")
+    print(f"   输出: {output_path}\n")
 
     # ── 连接 MdApi ──
     spi = MdSpi(underlying_map=opt_to_ul)
     # 预填充 underlying_prices 的 key，方便 OnRtnDepthMarketData 判断
-    for ul_code in UNDERLYING_FUTURES.values():
+    for ul_code in underlying_futures.values():
         spi.underlying_prices[ul_code] = 0.0
 
-    api, ok = connect_md(spi, contracts)
+    api, ok = connect_md(spi, contracts, underlying_futures)
     if not ok:
         return
 
@@ -674,7 +720,7 @@ def run_collection(contracts: list):
         print("\n⚠️ 当前时间已过所有采集时点（已收盘？）")
         # 保存当前快照作为收盘记录
         now_str = now.strftime("%H:%M")
-        save_snapshot(spi, contracts, now_str, "手动收盘")
+        save_snapshot(spi, contracts, now_str, "手动收盘", output_path)
         api.Release()
         return
 
@@ -700,7 +746,7 @@ def run_collection(contracts: list):
             if time_slot in saved_slots:
                 continue
             if _time_matches(now, time_slot):
-                save_snapshot(spi, contracts, time_slot, time_label)
+                save_snapshot(spi, contracts, time_slot, time_label, output_path)
                 saved_slots.add(time_slot)
                 break
 
@@ -711,19 +757,26 @@ def run_collection(contracts: list):
 
         time.sleep(5)  # 每 5 秒检查一次
 
-    # ── 收盘后自动保存最后一条 ──
-    now = datetime.now()
-    last_slot = f"收盘-{now.strftime('%H:%M')}"
-    if last_slot not in saved_slots:
-        save_snapshot(spi, contracts, last_slot, "收盘")
+    # ── 采集完成 ──
 
-    print(f"\n📊 本次采集完成: {len(saved_slots)} 个时点 → {OUTPUT_FILE}")
+    # 自动日终归档（14:55 后退出前顺手写一次）
+    now = datetime.now()
+    if now.hour >= 14 and now.minute >= 55:
+        if now.hour == 15 and now.minute == 0 and now.second <= 10:
+            is_proxy = 0  # 15:00:00–10：SimNow 大概率还连着
+        else:
+            is_proxy = 1
+        time_slot = now.strftime("%H:%M")
+        save_snapshot(spi, contracts, time_slot, "日终", OUTPUT_EOD, is_proxy)
+        print(f"📊 自动日终归档 → {OUTPUT_EOD} (proxy={is_proxy})")
+
+    print(f"\n📊 本次采集完成: {len(saved_slots)} 个时点 → {output_path}")
 
     # 统计今日采集
     today_str = date.today().isoformat()
     total_rows = 0
-    if OUTPUT_FILE.exists():
-        with open(OUTPUT_FILE, "r") as f:
+    if output_path.exists():
+        with open(output_path, "r") as f:
             for row in csv.DictReader(f):
                 if row["date"] == today_str:
                     total_rows += 1
@@ -751,8 +804,7 @@ def check_connection():
     print(f"   测试合约: {len(first_5)} 个（{', '.join(c['ctp_code'] for c in first_5)}）")
 
     spi = MdSpi()
-    api_cls = __import__("openctp_ctp", fromlist=["mdapi"]).mdapi.CThostFtdcMdApi
-    api = api_cls.CreateFtdcMdApi()
+    api = mdapi.CThostFtdcMdApi.CreateFtdcMdApi()
     spi._api = api
     api.RegisterSpi(spi)
     api.RegisterFront(MD_ADDR)
@@ -765,7 +817,7 @@ def check_connection():
 
     # 订阅测试
     for c in first_5:
-        api.SubscribeMarketData(c["ctp_code"].encode(), 1)
+        api.SubscribeMarketData([c["ctp_code"].encode()], 1)
 
     time.sleep(3.0)
     print(f"\n   订阅: {spi.subscribed_count}/{len(first_5)} 成功")
@@ -791,6 +843,47 @@ def check_connection():
 # main
 # ═══════════════════════════════════════════════════════════════
 
+def needs_rediscover(config: dict) -> bool:
+    """判断是否需要重新发现合约。"""
+    if not config or not config.get("contracts"):
+        return True
+
+    discovered = config.get("discovered", "")
+    if discovered:
+        try:
+            d = datetime.strptime(discovered, "%Y-%m-%d").date()
+            if (date.today() - d).days > 7:
+                return True
+        except ValueError:
+            return True
+    else:
+        return True
+
+    if len(config.get("contracts", [])) < 6:
+        return True
+
+    return False
+
+
+def load_or_discover_config(force: bool = False) -> dict:
+    """加载配置，过期则自动重新发现。返回 config dict，失败返回 None。"""
+    config = None
+    if CONFIG_FILE.exists():
+        try:
+            config = json.loads(CONFIG_FILE.read_text())
+        except json.JSONDecodeError:
+            config = None
+
+    if force or needs_rediscover(config):
+        print("⚠️ 合约配置过期或不存在，自动执行发现…")
+        config = discover_contracts()
+        if not config:
+            print("❌ 自动发现失败，请检查网络或手动运行 --discover")
+            return None
+
+    return config
+
+
 def main():
     parser = argparse.ArgumentParser(
         description="深虚期权 8 时点采集（CTP MdApi）")
@@ -798,6 +891,8 @@ def main():
                         help="发现深虚合约并写入配置文件")
     parser.add_argument("--check", action="store_true",
                         help="快速验证 CTP 连接+合约可订阅")
+    parser.add_argument("--eod", action="store_true",
+                        help="日终归档（兜底）：盘中模式已自动追加日终，此参数仅在进程崩溃后补采")
     args = parser.parse_args()
 
     # Ctrl+C 处理
@@ -810,20 +905,76 @@ def main():
         discover_contracts()
     elif args.check:
         check_connection()
+    elif args.eod:
+        # ── 日终归档模式（兜底）──
+        config = load_or_discover_config()
+        if not config:
+            sys.exit(1)
+        contracts = config["contracts"]
+        underlying = config.get("underlying_futures", UNDERLYING_FUTURES)
+
+        # 构建映射
+        opt_to_ul = {}
+        for c in contracts:
+            vcode = c["variety"]
+            ul = underlying.get(vcode, "")
+            if ul:
+                opt_to_ul[c["ctp_code"]] = ul
+
+        print(f"\n📊 深虚期权 日终归档（EOD）")
+        print(f"   品种: AU / M / TA")
+        print(f"   期权: {len(contracts)} 个  |  标的期货: {len(set(underlying.values()))} 个")
+        print(f"   输出: {OUTPUT_EOD}\n")
+
+        spi = MdSpi(underlying_map=opt_to_ul)
+        for ul_code in underlying.values():
+            spi.underlying_prices[ul_code] = 0.0
+
+        api, ok = connect_md(spi, contracts, underlying)
+        if not ok:
+            sys.exit(1)
+
+        # 等待行情
+        print("\n⏳ 等待行情推送…")
+        wait_start = time.time()
+        while time.time() - wait_start < 30:
+            with spi.snap_lock:
+                count = len(spi.snapshots)
+            if count > 0:
+                print(f"   ✅ 已收到 {count} 个合约的行情")
+                break
+            time.sleep(1)
+        else:
+            print("   ⚠️ 30s 内未收到任何行情推送")
+
+        # 日终单次采集
+        now = datetime.now()
+        # 仅允许 14:55 之后运行
+        if now.hour < 14 or (now.hour == 14 and now.minute < 55):
+            print("❌ 日终模式只能在 14:55 后运行")
+            api.Release()
+            sys.exit(1)
+
+        if now.hour == 15 and now.minute == 0 and now.second <= 10:
+            # 15:00:00–15:00:10：SimNow 大概率还连着，真日终
+            time_slot = "15:00"
+            is_proxy = 0
+        else:
+            # 14:55–14:59 或 15:00:10+：代理
+            time_slot = "14:59:50"
+            is_proxy = 1
+
+        save_snapshot(spi, contracts, time_slot, "日终", OUTPUT_EOD, is_proxy)
+        api.Release()
+        print(f"\n📊 日终归档完成 → {OUTPUT_EOD}")
     else:
-        # 正常采集模式
-        if not CONFIG_FILE.exists():
-            print(f"❌ 配置文件不存在: {CONFIG_FILE}")
-            print(f"   请先运行: python3 tools/deep_otm_collector.py --discover")
+        # ── 正常采集模式（自动发现 + 8 时点 + 日终归档）──
+        config = load_or_discover_config()
+        if not config:
             sys.exit(1)
-
-        config = json.loads(CONFIG_FILE.read_text())
-        contracts = config.get("contracts", [])
-        if not contracts:
-            print("❌ 配置文件中无合约")
-            sys.exit(1)
-
-        run_collection(contracts)
+        contracts = config["contracts"]
+        underlying = config.get("underlying_futures", UNDERLYING_FUTURES)
+        run_collection(contracts, underlying, OUTPUT_TRADING)
 
 
 if __name__ == "__main__":
