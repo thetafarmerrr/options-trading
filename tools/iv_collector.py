@@ -150,7 +150,12 @@ def get_last_contract(vcode):
 
 
 def _est_dte(contract):
-    """估算期权距到期天数（商品期权通常为标的月份前一个月到期）"""
+    """估算期权距到期天数（近似值，实际到期日各交易所规则不同）。
+
+    大商所：交割月前月第5个交易日 | 郑商所：前月第3个交易日 | 上期所：前月倒数第5个交易日。
+    此处用"月份首日 -5 天"统一近似，偏差通常 3-10 天。IV 计算对此偏差不敏感。
+    如需精确 DTE，接入交易所日历后再替换。
+    """
     try:
         month = int(contract[-2:])
         year = 2000 + int(contract[-4:-2])
@@ -159,6 +164,27 @@ def _est_dte(contract):
         return max(dte, 5)
     except Exception:
         return 30
+
+
+_WINDOW_OVERRIDE = None  # CLI --window 手动覆盖时设置
+
+
+def _detect_window():
+    """按当前时间自动判定采集窗口。
+
+    morning  = 9:00-12:00（开盘快照）
+    afternoon = 12:00-17:00（收盘前 14:56 为主数据）
+    night    = 17:00-次日 9:00（夜盘补采）
+    """
+    if _WINDOW_OVERRIDE is not None:
+        return _WINDOW_OVERRIDE
+    h = datetime.now().hour
+    if 9 <= h < 12:
+        return "morning"
+    elif 12 <= h < 17:
+        return "afternoon"
+    else:
+        return "night"
 
 
 def _est_iv(S, p_bid, p_ask, c_bid, c_ask, dte):
@@ -193,15 +219,22 @@ def collect_variety(vcode, vinfo):
 
     best_strike, best_score, best_row = None, -1, None
     for _, row in df.iterrows():
+        strike = int(row["strike"])
+        # 优先过滤：偏离标的价格 >5% 直接跳过，避免选到深度虚值
+        if futures_price > 0:
+            distance = abs(strike - futures_price) / futures_price
+            if distance > 0.05:
+                continue
         p_bid = _safe(row["p_bid"])
         c_bid = _safe(row["c_bid"])
         if p_bid > 0 and c_bid > 0:
             diff = abs(p_bid - c_bid)
             activity = (p_bid + c_bid) / 2
+            # 用 bid 活跃度在 5% 范围内选最优
             score = activity / max(diff, 0.01)
             if score > best_score:
                 best_score = score
-                best_strike = int(row["strike"])
+                best_strike = strike
                 best_row = row
     if best_row is None:
         return None
@@ -218,7 +251,10 @@ def collect_variety(vcode, vinfo):
     p_ask = _safe(best_row["p_ask"])
     c_bid = _safe(best_row["c_bid"])
     c_ask = _safe(best_row["c_ask"])
-    spread_pct = round((p_ask - p_bid) / p_bid * 100, 1) if p_bid > 0 else 999
+    # 取 Put/Call 价差较大者，跨式需两边同时成交
+    put_spread = (p_ask - p_bid) / p_bid if p_bid > 0 else 999
+    call_spread = (c_ask - c_bid) / c_bid if c_bid > 0 else 999
+    spread_pct = round(max(put_spread, call_spread) * 100, 1)
 
     dte = _est_dte(fut_contract)
     iv = _est_iv(float(best_strike), p_bid, p_ask, c_bid, c_ask, dte)
@@ -255,9 +291,11 @@ def collect_variety(vcode, vinfo):
         except Exception:
             pass
 
+    window = _detect_window()
     return {
         "date": datetime.now().strftime("%Y-%m-%d"),
         "time": datetime.now().strftime("%H:%M"),
+        "window": window,
         "variety": vcode,
         "name": vinfo["name"],
         "contract": fut_contract,
@@ -375,7 +413,7 @@ def _vol_hv_cross(rows):
     vol_high = vol_ratio > 1.2
     vol_low = vol_ratio < 0.8
     if expanding and vol_high:
-        return False, f"HV扩张+放量{vol_ratio:.1f}x → 信号真实强烈"
+        return False, f"HV扩张+放量{vol_ratio:.1f}x → 波动加剧，卖方回避"
     elif expanding and vol_low:
         return True, f"HV扩张+缩量{vol_ratio:.1f}x → 虚张声势，可小仓试"
     elif not expanding and vol_high:
@@ -506,8 +544,8 @@ def _run_premarket_check(target_vcodes):
 
         # 样本不足警告
         sample_warn = ""
-        if len(vals) < 15:
-            sample_warn = f" ⚠️样本仅{len(vals)}天，结论仅供参考"
+        if len(rows) < 15:
+            sample_warn = f" ⚠️样本仅{len(rows)}天，结论仅供参考"
 
         print(f"  {'─'*50}")
         print(f"  → {verdict}（{total_favorable}/{total_checked}）{sample_warn}")
@@ -561,7 +599,15 @@ def main():
     parser = argparse.ArgumentParser(description="每日 IV 数据采集 + 开盘环境定性")
     parser.add_argument("--variety", type=str, default="m,c,rm,ta,ma,au,cf,sr,i,ru",
                         help="品种代码，逗号分隔。默认全部10品种")
+    parser.add_argument("--window", type=str, default=None,
+                        choices=["morning", "afternoon", "night"],
+                        help="采集窗口标签。不指定时按当前时间自动判定")
     args = parser.parse_args()
+
+    # 手动指定的 window 覆盖自动检测
+    if args.window:
+        global _WINDOW_OVERRIDE
+        _WINDOW_OVERRIDE = args.window
 
     target = [v.strip() for v in args.variety.split(",")]
 
@@ -579,8 +625,8 @@ def main():
             result = collect_variety(vcode, vinfo)
             if result:
                 spread_too_wide = result["spread_pct"] >= 15
-                if not spread_too_wide:
-                    rows.append(result)
+                result["liquidity_ok"] = 0 if spread_too_wide else 1
+                rows.append(result)  # 始终写入，保留数据连续性
                 icon = "✅" if result["spread_pct"] < 10 else ("🚫" if spread_too_wide else "⚠️")
                 iv_str = f"{result['iv_est']:.1%}" if result['iv_est'] else "N/A"
                 hv20_str = f"{result['hv_20d']:.1%}" if result['hv_20d'] else "N/A"
@@ -664,12 +710,12 @@ def main():
     else:
         fieldnames = list(rows[0].keys())
 
-    # 去重：删除同日同品种旧条目，再追加新数据
+    # 去重：删除同日同品种同窗口旧条目，再追加新数据
     if file_exists:
-        new_keys = {(r['date'], r['variety']) for r in rows}
+        new_keys = {(r['date'], r['variety'], r.get('window', '')) for r in rows}
         with open(OUTPUT_FILE, "r", encoding="utf-8") as f:
             all_rows = list(csv.DictReader(f))
-        deduped = [r for r in all_rows if (r['date'], r['variety']) not in new_keys]
+        deduped = [r for r in all_rows if (r['date'], r['variety'], r.get('window', '')) not in new_keys]
         with open(OUTPUT_FILE, "w", newline="", encoding="utf-8") as f:
             writer = csv.DictWriter(f, fieldnames=fieldnames)
             writer.writeheader()

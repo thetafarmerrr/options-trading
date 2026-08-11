@@ -4889,3 +4889,25 @@ D 17/20 · T买 1/60 · Data 9/60 · K 已过。无持仓。棉花条件单待�
 - 8/11（周二）：联系中信期货客户经理，申请实盘 CTP API（BrokerID+行情/交易地址）
 - 真格量化注册+跑通 demo，确认数据覆盖
 - CTP --check 验证连接（需交易时段）
+
+## 2026-08-11 收尾
+
+### 决策与系统变更
+
+1. **Scanner volatility.py 路径 bug 修复**：`load_all_iv_rows()` 和 `load_iv_history()` 之前指向 `tools/data/iv_history.csv`（不存在），导致 IV 分位和 IV-HV 面板全返回空。改为 repo root `data/iv_history.csv`。修复后 Scanner 的 IV-HV 面板 10 品种全出数。
+
+2. **Scanner 加全品种 IV-HV 面板**：新增 `_build_iv_hv_panel()` 函数 + `Reporter.print_iv_hv_panel()` 静态方法。输出 10 品种的 IV-HV 价差、5 日 IV 变动方向、折价/溢价标注。IV 分位警告从静态"Data≥30天后可参考"改为动态"已攒22天"。
+
+3. **iv_collector 自动化——核心变更**：
+   - 加 `window` 列到 CSV 输出（morning/afternoon/night），`_detect_window()` 按小时自动判定
+   - dedup key 从 `(date, variety)` 改为 `(date, variety, window)`——同一天 morning+afternoon 两次采集各自保留，不会互相覆盖
+   - macOS launchd 定时调度：创建 `~/Library/LaunchAgents/com.goldopt.iv-collector.plist`，工作日 9:30 和 14:56 自动触发
+   - wrapper 脚本 `tools/iv_collector_launcher.sh` 处理周末跳过 + 日志记录
+
+4. **设计讨论——收盘后数据失真**：15:30 收盘后采集→做市商撤单→spread 畸高→数据不可信。结论：14:56 close-to-close 采集为主数据，9:30 开盘快照为辅助参考。当前 Data 门 22 天中前期数据夹杂 15:30 脏数据，16d 后（8/11 起）自动调度上线后数据质量将改善。
+
+### 数据状态
+- IV history: 22 天（2026-07-13 ~ 2026-08-11），10 品种，191 行
+- 最少品种：棉花 16 天
+- Data 门：16/60（原 10/60）
+- 干旱：连续 2 天零 EXEC

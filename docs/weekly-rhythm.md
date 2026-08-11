@@ -21,8 +21,10 @@
 | 步骤 | 命令 | 时间 |
 |------|------|------|
 | 扫描 | `python3 tools/unified_scanner.py` | 3 min |
-| IV + 环境（早盘）| `python3 tools/iv_collector.py`（含买方视角）| 3 min |
-| IV 收盘采集 | 15:00 后 `python3 tools/iv_collector.py`（结算价→iv_history）| 1 min |
+| IV 早盘·查看 | `tail -80 data/iv_collector_scheduler.log`（9:30 自动采集，查输出）| 2 min |
+| IV 收盘·对比 | `tail -40 data/iv_collector_scheduler.log`（14:56 自动采集，对比早盘变化）| 1 min |
+| 深虚 OTM | `python3 tools/deep_otm_collector.py` 盘前启动，收尾确认有今日数据 | — |
+| IV 数据健康 | 收尾：确认 iv_history.csv 今日有 morning+afternoon 各一条 | 10s |
 | 训练 | `python3 tools/drill_system.py B` + 4 个轮转模块 | 25 min |
 | 英文 | Mike 系列视频 + 跟读 + 90s 炸弹 + 笔译 | 20 min |
 | 影响力 | Scanner+IV 后立刻发 Twitter（≤2条/天） | 1 min |
