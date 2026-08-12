@@ -1,0 +1,294 @@
+{
+  "timestamp": "2026-08-12T09:23:32.645044",
+  "chains": {
+    "au": {
+      "contract": "au2610",
+      "futures": 952.0,
+      "dte": 44
+    },
+    "m": {
+      "contract": "m2609",
+      "futures": 3100.0,
+      "dte": 14
+    },
+    "c": {
+      "contract": "c2609",
+      "futures": 2260.0,
+      "dte": 14
+    },
+    "cf": {
+      "contract": "cf2609",
+      "futures": 16200.0,
+      "dte": 14
+    },
+    "sr": {
+      "contract": "sr2609",
+      "futures": 5200.0,
+      "dte": 14
+    },
+    "ta": {
+      "contract": "ta2609",
+      "futures": 5700.0,
+      "dte": 14
+    },
+    "i": {
+      "contract": "i2609",
+      "futures": 720.0,
+      "dte": 14
+    },
+    "ru": {
+      "contract": "ru2609",
+      "futures": 17000.0,
+      "dte": 14
+    },
+    "ma": {
+      "contract": "ma2609",
+      "futures": 2600.0,
+      "dte": 14
+    },
+    "rm": {
+      "contract": "rm2609",
+      "futures": 2300.0,
+      "dte": 14
+    }
+  },
+  "signals": [
+    {
+      "strategy": "credit_call",
+      "variety": "i",
+      "name": "铁矿石",
+      "contract": "i2609",
+      "tier": "PAPER",
+      "rr_ratio": 0.27,
+      "max_profit": 210.0,
+      "max_loss": 790.0,
+      "greeks": {
+        "vega": -0.1772,
+        "theta": 0.0877,
+        "delta": -0.1631,
+        "gamma": -0.0072
+      },
+      "edge_score": 46.9,
+      "liquidity_score": 75.0,
+      "metadata": {
+        "sell_strike": 730.0,
+        "buy_strike": 740.0,
+        "sell_bid": 4.2,
+        "buy_ask": 2.1,
+        "net_premium": 2.1,
+        "direction": "call",
+        "width_pct": 1.4,
+        "otm_pct": 1.4,
+        "delta": 0.30505754048627415,
+        "tier_color": "red",
+        "sell_spread": 2.4,
+        "buy_spread": 5.0
+      }
+    },
+    {
+      "strategy": "bull_call_spread",
+      "variety": "i",
+      "name": "铁矿石",
+      "contract": "i2609",
+      "tier": "PAPER",
+      "rr_ratio": 5.25,
+      "max_profit": 1680.0,
+      "max_loss": 320.0,
+      "greeks": {},
+      "edge_score": 0.0,
+      "liquidity_score": 54.5,
+      "metadata": {
+        "buy_strike": 730.0,
+        "sell_strike": 750.0,
+        "buy_ask": 4.3,
+        "sell_bid": 1.1,
+        "net_debit": 3.2,
+        "otm_pct": 1.4,
+        "break_even": 733.2,
+        "iv_percentile": null,
+        "event_days": null,
+        "color": "yellow"
+      }
+    },
+    {
+      "strategy": "bull_call_spread",
+      "variety": "i",
+      "name": "铁矿石",
+      "contract": "i2609",
+      "tier": "PAPER",
+      "rr_ratio": 9.0,
+      "max_profit": 900.0,
+      "max_loss": 100.0,
+      "greeks": {},
+      "edge_score": 0.0,
+      "liquidity_score": 54.5,
+      "metadata": {
+        "buy_strike": 740.0,
+        "sell_strike": 750.0,
+        "buy_ask": 2.1,
+        "sell_bid": 1.1,
+        "net_debit": 1.0,
+        "otm_pct": 2.8,
+        "break_even": 741.0,
+        "iv_percentile": null,
+        "event_days": null,
+        "color": "yellow"
+      }
+    },
+    {
+      "strategy": "bull_call_spread",
+      "variety": "ru",
+      "name": "橡胶",
+      "contract": "ru2609",
+      "tier": "PAPER",
+      "rr_ratio": 6.35,
+      "max_profit": 2160.0,
+      "max_loss": 340.0,
+      "greeks": {},
+      "edge_score": 0.0,
+      "liquidity_score": 80.8,
+      "metadata": {
+        "buy_strike": 17500.0,
+        "sell_strike": 17750.0,
+        "buy_ask": 86.0,
+        "sell_bid": 52.0,
+        "net_debit": 34.0,
+        "otm_pct": 2.9,
+        "break_even": 17534.0,
+        "iv_percentile": null,
+        "event_days": null,
+        "color": "yellow"
+      }
+    },
+    {
+      "strategy": "bull_call_spread",
+      "variety": "ru",
+      "name": "橡胶",
+      "contract": "ru2609",
+      "tier": "PAPER",
+      "rr_ratio": 9.2,
+      "max_profit": 4510.0,
+      "max_loss": 490.0,
+      "greeks": {},
+      "edge_score": 0.0,
+      "liquidity_score": 86.5,
+      "metadata": {
+        "buy_strike": 17500.0,
+        "sell_strike": 18000.0,
+        "buy_ask": 86.0,
+        "sell_bid": 37.0,
+        "net_debit": 49.0,
+        "otm_pct": 2.9,
+        "break_even": 17549.0,
+        "iv_percentile": null,
+        "event_days": null,
+        "color": "yellow"
+      }
+    },
+    {
+      "strategy": "bull_call_spread",
+      "variety": "ru",
+      "name": "橡胶",
+      "contract": "ru2609",
+      "tier": "PAPER",
+      "rr_ratio": 10.9,
+      "max_profit": 6870.0,
+      "max_loss": 630.0,
+      "greeks": {},
+      "edge_score": 0.0,
+      "liquidity_score": 78.3,
+      "metadata": {
+        "buy_strike": 17500.0,
+        "sell_strike": 18250.0,
+        "buy_ask": 86.0,
+        "sell_bid": 23.0,
+        "net_debit": 63.0,
+        "otm_pct": 2.9,
+        "break_even": 17563.0,
+        "iv_percentile": null,
+        "event_days": null,
+        "color": "yellow"
+      }
+    },
+    {
+      "strategy": "bull_call_spread",
+      "variety": "ru",
+      "name": "橡胶",
+      "contract": "ru2609",
+      "tier": "PAPER",
+      "rr_ratio": 13.71,
+      "max_profit": 2330.0,
+      "max_loss": 170.0,
+      "greeks": {},
+      "edge_score": 0.0,
+      "liquidity_score": 80.8,
+      "metadata": {
+        "buy_strike": 17750.0,
+        "sell_strike": 18000.0,
+        "buy_ask": 54.0,
+        "sell_bid": 37.0,
+        "net_debit": 17.0,
+        "otm_pct": 4.4,
+        "break_even": 17767.0,
+        "iv_percentile": null,
+        "event_days": null,
+        "color": "yellow"
+      }
+    },
+    {
+      "strategy": "bull_call_spread",
+      "variety": "ru",
+      "name": "橡胶",
+      "contract": "ru2609",
+      "tier": "PAPER",
+      "rr_ratio": 15.13,
+      "max_profit": 4690.0,
+      "max_loss": 310.0,
+      "greeks": {},
+      "edge_score": 0.0,
+      "liquidity_score": 78.3,
+      "metadata": {
+        "buy_strike": 17750.0,
+        "sell_strike": 18250.0,
+        "buy_ask": 54.0,
+        "sell_bid": 23.0,
+        "net_debit": 31.0,
+        "otm_pct": 4.4,
+        "break_even": 17781.0,
+        "iv_percentile": null,
+        "event_days": null,
+        "color": "yellow"
+      }
+    },
+    {
+      "strategy": "bull_call_spread",
+      "variety": "ru",
+      "name": "橡胶",
+      "contract": "ru2609",
+      "tier": "PAPER",
+      "rr_ratio": 18.23,
+      "max_profit": 7110.0,
+      "max_loss": 390.0,
+      "greeks": {},
+      "edge_score": 0.0,
+      "liquidity_score": 66.7,
+      "metadata": {
+        "buy_strike": 17750.0,
+        "sell_strike": 18500.0,
+        "buy_ask": 54.0,
+        "sell_bid": 15.0,
+        "net_debit": 39.0,
+        "otm_pct": 4.4,
+        "break_even": 17789.0,
+        "iv_percentile": null,
+        "event_days": null,
+        "color": "yellow"
+      }
+    }
+  ],
+  "summary": {
+    "exec": 0,
+    "paper": 9,
+    "observe": 0
+  }
+}

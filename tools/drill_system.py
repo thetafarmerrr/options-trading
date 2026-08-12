@@ -1795,12 +1795,12 @@ def run_drill_j(quick=False):
             print(f"\n  训练中断。")
             return
         el = (time.time() - t0) * 1000; total_time += el
-        matched = any(u == ek for ek in expected_keys)
-        if matched and u == expected:
+        matched_key = next((ek for ek in expected_keys if ek in u), None)
+        if matched_key == expected:
             correct += 1; score += 3 if el < 3000 else (2 if el < 6000 else 1)
             print(f"  ✅ {el/1000:.1f}s  {labels[expected]}  OTM={pct:.1f}%")
-        elif matched:
-            print(f"  ❌ {el/1000:.1f}s  你选{u}  实际{labels[expected]}  OTM={pct:.1f}%")
+        elif matched_key:
+            print(f"  ❌ {el/1000:.1f}s  你选{matched_key}  实际{labels[expected]}  OTM={pct:.1f}%")
         else:
             print(f"  ❌ {el/1000:.1f}s  输入{u}  → 请用 远OTM/近ATM/已实值")
 

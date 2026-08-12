@@ -663,6 +663,30 @@ def save_snapshot(spi: MdSpi, contracts: list, time_slot: str, time_label: str,
           f"(有报价:{has_bid} stale:{stale})")
 
 
+def _save_eod(spi, contracts):
+    """日终归档——退出前必跑，兜底保护。即使无行情也建空文件防丢失。"""
+    try:
+        now = datetime.now()
+        if now.hour == 15 and now.minute == 0 and now.second <= 10:
+            is_proxy = 0
+        else:
+            is_proxy = 1
+        time_slot = now.strftime("%H:%M")
+        save_snapshot(spi, contracts, time_slot, "日终", OUTPUT_EOD, is_proxy)
+        print(f"📊 自动日终归档 → {OUTPUT_EOD} (proxy={is_proxy})")
+    except Exception as e:
+        # 兜底：即使异常也至少建空文件，保证收尾检查能通过
+        print(f"⚠️ EOD 保存异常: {e}，创建空记录")
+        try:
+            OUTPUT_EOD.parent.mkdir(parents=True, exist_ok=True)
+            if not OUTPUT_EOD.exists():
+                with open(OUTPUT_EOD, "w", newline="", encoding="utf-8") as f:
+                    writer = csv.DictWriter(f, fieldnames=CSV_FIELDS)
+                    writer.writeheader()
+        except Exception:
+            pass  # 连这都失败就放弃了
+
+
 def run_collection(contracts: list, underlying_futures: dict = None,
                    output_path: Path = None):
     """主循环：连接 → 订阅 → 等待时点 → 保存快照 → 收盘退出。"""
@@ -721,6 +745,7 @@ def run_collection(contracts: list, underlying_futures: dict = None,
         # 保存当前快照作为收盘记录
         now_str = now.strftime("%H:%M")
         save_snapshot(spi, contracts, now_str, "手动收盘", output_path)
+        _save_eod(spi, contracts)
         api.Release()
         return
 
@@ -759,16 +784,8 @@ def run_collection(contracts: list, underlying_futures: dict = None,
 
     # ── 采集完成 ──
 
-    # 自动日终归档（14:55 后退出前顺手写一次）
-    now = datetime.now()
-    if now.hour >= 14 and now.minute >= 55:
-        if now.hour == 15 and now.minute == 0 and now.second <= 10:
-            is_proxy = 0  # 15:00:00–10：SimNow 大概率还连着
-        else:
-            is_proxy = 1
-        time_slot = now.strftime("%H:%M")
-        save_snapshot(spi, contracts, time_slot, "日终", OUTPUT_EOD, is_proxy)
-        print(f"📊 自动日终归档 → {OUTPUT_EOD} (proxy={is_proxy})")
+    # ── 自动日终归档（退出前必跑，兜底保护）──
+    _save_eod(spi, contracts)
 
     print(f"\n📊 本次采集完成: {len(saved_slots)} 个时点 → {output_path}")
 

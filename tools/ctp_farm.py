@@ -49,10 +49,10 @@ SYSTEM_INFO = f"macOS;goldopt/1.0.0;{APP_ID}"
 
 # ── 默认刷单合约（按日期轮换，优先流动性好的）───────────────
 DEFAULT_SYMBOLS = [
-    "MA609C2550",   # 甲醇 2609 Call 2550（near-ATM，价差 0.7%）
-    "TA609C5800",   # PTA 2609 Call 5800
-    "MA609P2500",   # 甲醇 2609 Put 2500
-    "TA609P5600",   # PTA 2609 Put 5600
+    "i2610C720",    # 铁矿石 2610 Call 720（近ATM，期货720）
+    "i2610P720",    # 铁矿石 2610 Put 720
+    "ru2610C17250", # 橡胶 2610 Call 17250（近ATM，期货17060）
+    "m2611C3100",   # 豆粕 2611 Call 3100（近ATM，期货3100）
 ]
 
 EXCHANGE_NAMES = {
