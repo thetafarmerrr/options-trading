@@ -10,7 +10,11 @@ iv_collector.py — 每日 IV 数据采集
   python3 iv_collector.py --variety m,c,rm    # 指定品种
 """
 
-import sys, os, csv, argparse
+import sys, os, csv, argparse, time as _time
+
+# ── 日志 ──
+WATCH_LOG = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))),
+                         "data", "iv_collector_watch.log")
 from datetime import datetime
 import numpy as np
 import pandas as pd
@@ -595,23 +599,15 @@ def _run_premarket_check(target_vcodes):
     print()
 
 
-def main():
-    parser = argparse.ArgumentParser(description="每日 IV 数据采集 + 开盘环境定性")
-    parser.add_argument("--variety", type=str, default="m,c,rm,ta,ma,au,cf,sr,i,ru",
-                        help="品种代码，逗号分隔。默认全部10品种")
-    parser.add_argument("--window", type=str, default=None,
-                        choices=["morning", "afternoon", "night"],
-                        help="采集窗口标签。不指定时按当前时间自动判定")
-    args = parser.parse_args()
+# ── watch 模式的采集时点 ──
+WATCH_TIMES = [("09:30", "morning"), ("14:50", "afternoon")]
 
-    # 手动指定的 window 覆盖自动检测
-    if args.window:
-        global _WINDOW_OVERRIDE
-        _WINDOW_OVERRIDE = args.window
+def _run_one_collection(target, window_label):
+    """执行一次完整的采集+写入+定性，返回写入行数。"""
+    global _WINDOW_OVERRIDE
+    _WINDOW_OVERRIDE = window_label
 
-    target = [v.strip() for v in args.variety.split(",")]
-
-    print(f"\n📊 iv_collector — {datetime.now().strftime('%Y-%m-%d %H:%M')}")
+    print(f"\n📊 iv_collector — {datetime.now().strftime('%Y-%m-%d %H:%M')} [{window_label}]")
     print(f"   品种: {', '.join(target)}")
     print()
 
@@ -626,19 +622,18 @@ def main():
             if result:
                 spread_too_wide = result["spread_pct"] >= 15
                 result["liquidity_ok"] = 0 if spread_too_wide else 1
-                rows.append(result)  # 始终写入，保留数据连续性
+                rows.append(result)
                 icon = "✅" if result["spread_pct"] < 10 else ("🚫" if spread_too_wide else "⚠️")
                 iv_str = f"{result['iv_est']:.1%}" if result['iv_est'] else "N/A"
                 hv20_str = f"{result['hv_20d']:.1%}" if result['hv_20d'] else "N/A"
                 hv60_str = f"{result['hv_60d']:.1%}" if result['hv_60d'] else "N/A"
-                # 20d vs 60d 差距标记
                 hv_gap = ""
                 if result['hv_20d'] and result['hv_60d']:
                     gap = result['hv_20d'] - result['hv_60d']
                     if gap > 0.03:
-                        hv_gap = "⚡"  # 近期剧烈
+                        hv_gap = "⚡"
                     elif gap < -0.03:
-                        hv_gap = "😴"  # 近期安静
+                        hv_gap = "😴"
                 slope = calc_iv_slope(vcode)
                 if slope is not None:
                     if slope > 0.003:
@@ -654,7 +649,6 @@ def main():
                       f"P bid/ask={result['put_bid']}/{result['put_ask']} "
                       f"价差={result['spread_pct']}% "
                       f"IV≈{iv_str}{iv_dir} HV₂₀={hv20_str} HV₆₀={hv60_str} {hv_gap}")
-                # 次月 IV 结构
                 if result.get('far_iv') and result.get('far_contract'):
                     far_iv_str = f"{result['far_iv']:.1%}"
                     if result['iv_est'] and result['far_iv']:
@@ -666,7 +660,6 @@ def main():
                 elif result.get('far_contract'):
                     print(f"         {' ' * (len(result['name']) + len(result['contract']) - 1)}"
                           f"次月 {result['far_contract']} 无流动性")
-                # IV-HV 分层标签
                 if result['iv_est'] and result['hv_20d'] and result['hv_20d'] > 0:
                     sp = result['iv_est'] - result['hv_20d']
                     if sp >= 0.05:
@@ -688,20 +681,16 @@ def main():
 
     if not rows:
         print("\n  无数据，未写入 CSV\n")
-        return
+        return 0
 
-    # 追加写入 CSV
     file_exists = os.path.exists(OUTPUT_FILE)
-
     if file_exists:
-        # 以现有头部为准，新列自动追加到末尾
         with open(OUTPUT_FILE, "r", encoding="utf-8") as f:
             reader = csv.DictReader(f)
             existing_fields = list(reader.fieldnames)
         new_fields = [f for f in rows[0].keys() if f not in existing_fields]
         fieldnames = existing_fields + new_fields
         if new_fields:
-            # 重写头部追加新列
             with open(OUTPUT_FILE, "r", encoding="utf-8") as f:
                 old_rows = f.readlines()[1:]
             with open(OUTPUT_FILE, "w", encoding="utf-8") as f:
@@ -710,7 +699,6 @@ def main():
     else:
         fieldnames = list(rows[0].keys())
 
-    # 去重：删除同日同品种同窗口旧条目，再追加新数据
     if file_exists:
         new_keys = {(r['date'], r['variety'], r.get('window', '')) for r in rows}
         with open(OUTPUT_FILE, "r", encoding="utf-8") as f:
@@ -732,13 +720,99 @@ def main():
     if dup_n > 0:
         print(f"  ♻️  替换同日旧条目 {dup_n} 条")
 
-    # ── 自动跑开盘环境定性 ──
     try:
         _run_premarket_check(target)
     except Exception:
-        pass  # 环境检查挂了不影响采集
+        pass
 
     print()
+    return len(rows)
+
+
+def main():
+    parser = argparse.ArgumentParser(description="每日 IV 数据采集 + 开盘环境定性")
+    parser.add_argument("--variety", type=str, default="m,c,rm,ta,ma,au,cf,sr,i,ru",
+                        help="品种代码，逗号分隔。默认全部10品种")
+    parser.add_argument("--window", type=str, default=None,
+                        choices=["morning", "afternoon", "night"],
+                        help="采集窗口标签。不指定时按当前时间自动判定")
+    parser.add_argument("--watch", action="store_true",
+                        help="常驻模式：盘前启动一次，自动在 09:30 + 14:50 各采一次")
+    parser.add_argument("--watch-times", type=str, default="09:30,14:50",
+                        help="--watch 的采集时点（逗号分隔 HH:MM），默认 09:30,14:50")
+    args = parser.parse_args()
+
+    target = [v.strip() for v in args.variety.split(",")]
+
+    if args.watch:
+        # 解析时点
+        if args.watch_times != "09:30,14:50":
+            custom = [(t.strip(), "morning" if i == 0 else "afternoon")
+                      for i, t in enumerate(args.watch_times.split(","))]
+        else:
+            custom = list(WATCH_TIMES)
+
+        print(f"🕐 IV Collector 常驻模式")
+        print(f"   采集时点: {', '.join(f'{t}({l})' for t, l in custom)}")
+        print(f"   品种: {', '.join(target)}")
+        print(f"   日志: {WATCH_LOG}")
+        print(f"   Ctrl+C 退出\n")
+
+        # tee 到日志文件
+        log_f = open(WATCH_LOG, "a", encoding="utf-8")
+        log_f.write(f"\n=== {datetime.now().strftime('%Y-%m-%d %H:%M:%S')} --watch 启动 ===\n")
+        _orig_stdout = sys.stdout
+        class _Tee:
+            def write(self, s):
+                _orig_stdout.write(s)
+                log_f.write(s)
+            def flush(self):
+                _orig_stdout.flush()
+                log_f.flush()
+        sys.stdout = _Tee()
+
+        remaining = list(custom)
+        total_collected = 0
+
+        while remaining:
+            now = datetime.now()
+            # 找下一个未到的时点
+            next_time, next_label = None, None
+            for t, lbl in remaining:
+                th, tm = map(int, t.split(":"))
+                target_dt = now.replace(hour=th, minute=tm, second=0, microsecond=0)
+                if now < target_dt:
+                    next_time, next_label = t, lbl
+                    break
+
+            if next_time is None:
+                # 所有时点已过——直接跑剩余
+                for t, lbl in remaining:
+                    total_collected += _run_one_collection(target, lbl)
+                break
+
+            # 等待到下一个时点
+            th, tm = map(int, next_time.split(":"))
+            target_dt = now.replace(hour=th, minute=tm, second=0, microsecond=0)
+            wait_sec = (target_dt - now).total_seconds()
+            print(f"⏰ 下一个采集: {next_time} ({next_label})，等待 {int(wait_sec/60)} 分钟…")
+            _time.sleep(max(wait_sec, 1))
+
+            total_collected += _run_one_collection(target, next_label)
+            remaining = [(t, l) for t, l in remaining if t != next_time]
+
+        sys.stdout = _orig_stdout
+        log_f.write(f"=== {datetime.now().strftime('%H:%M:%S')} 完成，{total_collected} 条 ===\n")
+        log_f.close()
+        print(f"✅ 常驻模式完成。今日采集 {total_collected} 条。日志 → {WATCH_LOG}")
+        return
+
+    # ── 单次模式（原有行为）──
+    window_label = args.window  # None = 自动判定
+    if window_label:
+        global _WINDOW_OVERRIDE
+        _WINDOW_OVERRIDE = window_label
+    _run_one_collection(target, window_label)
 
 
 if __name__ == "__main__":

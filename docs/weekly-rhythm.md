@@ -21,8 +21,7 @@
 | 步骤 | 命令 | 时间 |
 |------|------|------|
 | 扫描 | `python3 tools/unified_scanner.py` | 3 min |
-| IV 早盘·查看 | `tail -80 data/iv_collector_scheduler.log`（9:30 自动采集，查输出）| 2 min |
-| IV 收盘·对比 | `tail -40 data/iv_collector_scheduler.log`（14:56 自动采集，对比早盘变化）| 1 min |
+| IV 全天·常驻 | `python3 tools/iv_collector.py --watch`（09:30+14:50 自动双采，盘前启动常驻到下午）| 1 min |
 | 深虚 OTM | `python3 tools/deep_otm_collector.py` 盘前启动，收尾确认有今日数据 | — |
 | IV 数据健康 | 收尾：确认 iv_history.csv 今日有 morning+afternoon 各一条 | 10s |
 | 训练 | `python3 tools/drill_system.py B` + 4 个轮转模块 | 25 min |

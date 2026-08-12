@@ -189,11 +189,14 @@ class Reporter:
         # 分三类
         spreads = [s for s in all_signals if "spread" in s.strategy and s.tier == "PAPER"]
         straddles = [s for s in all_signals
-                     if s.strategy in ("long_straddle", "long_strangle")]
+                     if s.strategy in ("long_straddle", "long_strangle")
+                     and s.tier == "PAPER"]
         single_events = [s for s in all_signals
-                         if s.strategy in ("buy_call_event", "buy_put_event")]
+                         if s.strategy in ("buy_call_event", "buy_put_event")
+                         and s.tier == "PAPER"]
         single_trends = [s for s in all_signals
-                         if s.strategy in ("buy_call_trend", "buy_put_trend")]
+                         if s.strategy in ("buy_call_trend", "buy_put_trend")
+                         and s.tier == "PAPER"]
 
         # 买方价差
         if spreads:
@@ -201,7 +204,9 @@ class Reporter:
             seen = {}
             for s in sorted(spreads, key=lambda x: (
                 x.metadata.get("color") == "green", x.rr_ratio), reverse=True):
-                key = f"{s.variety}_{s.contract}_{s.strategy}"
+                buy_s = s.metadata.get('buy_strike', s.metadata.get('strike', '?'))
+                sell_s = s.metadata.get('sell_strike', '?')
+                key = f"{s.variety}_{s.contract}_{s.strategy}_{buy_s}_{sell_s}"
                 if key not in seen:
                     seen[key] = s
             for s in list(seen.values())[:self.show_limit or 5]:
@@ -218,7 +223,7 @@ class Reporter:
                       f"盈亏比 {s.rr_ratio}:1  "
                       f"ScP{s.metadata.get('iv_percentile','?')}{_cl_str(s)}  "
                       f"{ev_str}{buyer_nr}")
-            print(f"    ⚠️ 共 {len(spreads)} 个。不执行，仅纸面。")
+            print(f"    ⚠️ 共 {len(seen)} 个。不执行，仅纸面。")
         else:
             print(f"\n  🟡 [PAPER] 买方价差（2腿·封顶亏损）— 今日无")
 
