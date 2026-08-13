@@ -20,7 +20,7 @@
 
 | 步骤 | 命令 | 时间 |
 |------|------|------|
-| 扫描 | `python3 tools/unified_scanner.py` | 3 min |
+| 扫描 | `python3 -m tools.scanner.main` | 3 min |
 | IV 全天·常驻 | `python3 tools/iv_collector.py --watch`（09:30+14:50 自动双采，盘前启动常驻到下午）| 1 min |
 | 深虚 OTM | `python3 tools/deep_otm_collector.py` 盘前启动，收尾确认有今日数据 | — |
 | IV 数据健康 | 收尾：确认 iv_history.csv 今日有 morning+afternoon 各一条 | 10s |

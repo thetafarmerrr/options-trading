@@ -196,5 +196,11 @@
     "topic": "events",
     "correct": 3,
     "total": 3
+  },
+  {
+    "date": "2026-08-12T21:45:42.307351",
+    "topic": "strategy",
+    "correct": 1,
+    "total": 3
   }
 ]

@@ -24,7 +24,7 @@
 | # | 做什么 | 具体操作 |
 |---|--------|---------|
 | ☀️ | **英语·四步**（盘前 8:00）| ①视频：打开 Mike 播放列表https://youtube.com/playlist?list=PLPVve34yolHY43YaBegHMzN9WjrTnQfFr 从上次停的地方继续 1 集。看画面+字幕抓大意→张嘴跟读不停。不重播不查词。②挖矿：抓 3 个整句，追加到 `glossary.md` 底部 `## 句型库`。格式：`- 整句  （来源）`。③炸弹：张嘴 90 秒说刚看的内容——不停、不改、不查词。录音→语音转文字→瞥一眼差异。④笔译：把昨天的市场结论翻译成英文 2-3 句（当天 Scanner 还没跑，用昨天的） |
-| 1 | **Scanner** | `cd ~/Documents/AIcode/gold_option_tools && python3 tools/unified_scanner.py`。看输出 [EXEC] 部分：有信号→复制出来，进六步进场（monitoring-rules.md 第三节）；无信号→输出末尾会提示操作规程，记下干旱天数 |
+| 1 | **Scanner** | `cd ~/Documents/AIcode/gold_option_tools && python3 -m tools.scanner.main`。看输出 [EXEC] 部分：有信号→复制出来，进六步进场（monitoring-rules.md 第三节）；无信号→输出末尾会提示操作规程，记下干旱天数 |
 | 1b | **纸面挑信号** | Scanner 输出的 PAPER 区（买方价差/跨式/单腿），挑 1-2 个记到 `docs/paper-tracker.md`。**判据三条**：① IV 分位低（P30↓ 买方便宜）② 盈亏比≥5:1 ③ 近期事件/趋势配合。按星级（⭐~⭐⭐⭐）记一行。不挑也行——写"今日纸面无亮点"。15 秒。周六复盘回看 |
 | 2 | **IV 全天·常驻** | 盘前启动一次：`python3 tools/iv_collector.py --watch`。自动在 09:30 + 14:50 各采一次，常驻到下午采集完退出。终端看实时输出，事后翻 `tail -80 data/iv_collector_watch.log`。每个品种五条打分——≥3 条有利=可做卖方；≥3 条不利=今天不交易。买方视角：哪些品种 IV 分位 <30%→买方黄金窗口。下午对比早盘变化写进 journal 一句。⚠️ 收盘后部分品种无数据（akshare 断流），14:50 有足够 buffer |
 | 2c | **深虚 OTM 采集**（后台常驻） | **盘前启动一次**：`python3 tools/deep_otm_collector.py`。全天自动 8 时点采集→`data/deep_otm_trading.csv`。收尾时确认两文件有今日数据：`wc -l data/deep_otm_trading.csv data/deep_otm_eod.csv`。换月时脚本自动 discover，不需手动干预。 |

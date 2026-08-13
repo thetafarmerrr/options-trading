@@ -49,10 +49,11 @@ SYSTEM_INFO = f"macOS;goldopt/1.0.0;{APP_ID}"
 
 # ── 默认刷单合约（按日期轮换，优先流动性好的）───────────────
 DEFAULT_SYMBOLS = [
-    "i2610C720",    # 铁矿石 2610 Call 720（近ATM，期货720）
-    "i2610P720",    # 铁矿石 2610 Put 720
-    "ru2610C17250", # 橡胶 2610 Call 17250（近ATM，期货17060）
-    "m2611C3100",   # 豆粕 2611 Call 3100（近ATM，期货3100）
+    "RM701P2300",   # 菜籽粕 2701 Put 2300（8/13 实测跑通，spread 1.7%）
+    "RM701C2300",   # 菜籽粕 2701 Call 2300（spread 1.9%）
+    "MA701P2600",   # 甲醇 2701 Put 2600（spread 2.5%）
+    "MA701P2500",   # 甲醇 2701 Put 2500（spread 3.2%）
+    "CF701P15000",  # 棉花 2701 Put 15000（spread 1.9%）
 ]
 
 EXCHANGE_NAMES = {
@@ -98,6 +99,12 @@ class FarmSpi(tdapi.CThostFtdcTraderSpi):
         self.trade_volume = 0
         self.trade_filled = False
         self.order_error = ""
+
+        # 查询数据（--query）
+        self.trades = []            # 当日成交
+        self.trade_query_done = False
+        self.settlement_chunks = [] # 结算单内容片段
+        self.settlement_done = False
 
     def _next_id(self):
         self.request_id += 1
@@ -183,6 +190,43 @@ class FarmSpi(tdapi.CThostFtdcTraderSpi):
         with self._cond:
             self.confirmed = True
             self._cond.notify_all()
+
+    # ═══════════════════════════════════════════════════════════════
+    #  成交 / 结算单查询（--query 用）
+    # ═══════════════════════════════════════════════════════════════
+
+    def OnRspQryTrade(self, pTrade, pRspInfo, nRequestID, bIsLast):
+        if pRspInfo and pRspInfo.ErrorID != 0:
+            print(f"⚠️  成交查询: [{pRspInfo.ErrorID}] {pRspInfo.ErrorMsg}")
+            return
+        if pTrade:
+            self.trades.append({
+                "合约": pTrade.InstrumentID,
+                "方向": "买入" if pTrade.Direction == "0" else "卖出",
+                "开平": {"0": "开仓", "1": "平仓", "3": "平今"}.get(pTrade.OffsetFlag, pTrade.OffsetFlag),
+                "价格": pTrade.Price,
+                "数量": pTrade.Volume,
+                "时间": pTrade.TradeTime,
+                "交易日": pTrade.TradeDate,
+            })
+        if bIsLast:
+            with self._cond:
+                self.trade_query_done = True
+                self._cond.notify_all()
+
+    def OnRspQrySettlementInfo(self, pSettlementInfo, pRspInfo, nRequestID, bIsLast):
+        if pRspInfo and pRspInfo.ErrorID != 0:
+            print(f"⚠️  结算单查询: [{pRspInfo.ErrorID}] {pRspInfo.ErrorMsg}")
+            return
+        if pSettlementInfo and pSettlementInfo.Content:
+            content = pSettlementInfo.Content
+            if isinstance(content, bytes):
+                content = content.decode("gbk", errors="ignore")
+            self.settlement_chunks.append(content)
+        if bIsLast:
+            with self._cond:
+                self.settlement_done = True
+                self._cond.notify_all()
 
     # ═══════════════════════════════════════════════════════════════
     #  合约查询（侦察用）
@@ -529,6 +573,61 @@ def probe(api, spi):
     print(f"\n  汇总: 我们品种共 {our_trading} 个可交易期权合约")
 
 
+# ── 查询成交 + 结算单（开权限凭证）──────────────────────────────────
+def query_records(api, spi):
+    import json
+
+    # 1. 当日成交
+    spi.trade_query_done = False
+    qry = tdapi.CThostFtdcQryTradeField()
+    qry.BrokerID = BROKER_ID
+    qry.InvestorID = USER_ID
+    api.ReqQryTrade(qry, spi._next_id())
+    spi._wait_for("trade_query_done", timeout=10)
+
+    print(f"\n📊 当日成交（{len(spi.trades)} 笔）")
+    for t in spi.trades:
+        print(f"   {t['交易日']} {t['时间']} {t['合约']} {t['方向']}{t['开平']} {t['数量']}手 @ {t['价格']}")
+
+    # 2. 历史结算单（逐日，从本地日志读有成交的交易日）
+    log_path = Path(__file__).parent.parent / "data" / "ctp_farm_log.json"
+    days = []
+    if log_path.exists():
+        data = json.loads(log_path.read_text())
+        for run in data.get("runs", []):
+            if run.get("trades", 0) > 0:
+                days.append(run["date"].replace("-", ""))
+
+    print(f"\n📄 拉取 {len(days)} 天结算单（开权限凭证）")
+    saved = []
+    for d in days:
+        spi.settlement_chunks = []
+        spi.settlement_done = False
+        q = tdapi.CThostFtdcQrySettlementInfoField()
+        q.BrokerID = BROKER_ID
+        q.InvestorID = USER_ID
+        q.TradingDay = d
+        api.ReqQrySettlementInfo(q, spi._next_id())
+        spi._wait_for("settlement_done", timeout=10)
+        content = "".join(spi.settlement_chunks)
+        if not content:  # 错误90=查询未就绪，sleep后重试一次
+            time.sleep(2)
+            spi.settlement_done = False
+            api.ReqQrySettlementInfo(q, spi._next_id())
+            spi._wait_for("settlement_done", timeout=10)
+            content = "".join(spi.settlement_chunks)
+        if content:
+            out = Path(__file__).parent.parent / "data" / f"settlement_{d}.txt"
+            out.write_text(content)
+            saved.append(out.name)
+            print(f"   {d}: {len(content)} 字 → {out.name}")
+        else:
+            print(f"   {d}: ⚠️ 无结算单（柜台可能不保留或非交易日）")
+
+    if saved:
+        print(f"\n✅ 已存 {len(saved)} 份结算单到 data/。当日成交 + 结算单 = 开权限凭证。")
+
+
 # ── main ─────────────────────────────────────────────────────────────
 def main():
     if not USER_ID or not PASSWORD:
@@ -543,10 +642,13 @@ def main():
         probe(api, spi)
     elif "--farm" in sys.argv:
         farm(api, spi)
+    elif "--query" in sys.argv:
+        query_records(api, spi)
     else:
         print("用法:")
         print("  python3 tools/ctp_farm.py --probe             侦察可交易期权")
         print("  python3 tools/ctp_farm.py --farm              每天2轮=4笔交易")
+        print("  python3 tools/ctp_farm.py --query             拉成交+结算单（开权限）")
         print("  python3 tools/ctp_farm.py --farm --symbol X   指定合约刷单")
 
     print("\n👋 释放连接…")
