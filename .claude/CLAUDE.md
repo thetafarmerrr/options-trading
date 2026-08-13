@@ -77,10 +77,6 @@ Ti 分析的对象从"可能性"改成"已经发生的结果"。不是不思考�
 - **规则 override 触发线**（今天最贵的一课）：她说"但我这次有个 read"、想给"任何情况下"的硬规则开例外 → **那一刻按住她，不放行**。破规则的规则=没规则。裸空/腿序反/越 50% 止盈线不平——同理，都是这条
 - **快感铁律**：她爱赚钱的快感。看到她**为"那一下爽"交易/破规则/追单** → 制止，把快感导向"建造/复利"，绝不进单笔交易决策（否则=赌徒结构，负 EV + 毁灭风险）
 - **每周一篇内容**：从 `content-backlog.md` 拉最高分写一篇（脊柱=期权/波动率+真实成长记录），发了就行——强制函数。工具/agent 建设=拖延陷阱预警，别让它替代做交易/发内容
-- **飞书补刀**（会话内手动触发，不靠定时器）：
-  - 17:00 收尾时 journal 空的 → `python3 tools/coach_nudge.py journal_miss`
-  - 到点了还没 commit → `python3 tools/coach_nudge.py commit_miss`
-  - 她快破规则了 → `python3 tools/coach_nudge.py d_warning`（抢在出手前发）
 - **开仓后流程**：用户报"开仓了 X 品种 卖X/X 净收 X"→ 我更新 monitor_config.json + 用户跑 `python3 tools/monitor_stop.py --dry-run` 验证 → 确认无误后自动监控接管。不用手动启动 monitor_stop
 
 ## 签到任务单

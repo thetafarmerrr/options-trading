@@ -12,3 +12,6 @@ docs/ctp-config.md
 *.con
 volatility-trading-second-edition_compress.pdf
 docs/yuan-yongjian-strategy.md
+data/scanner_log/
+data/settlement_*.txt
+data/*.log

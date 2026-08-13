@@ -21,7 +21,7 @@
 
 | 工具 | 用途 | 命令 |
 |------|------|------|
-| `unified_scanner.py` | 多品种信用价差扫描（卖方）+ 买方机会扫描 | `python3 tools/unified_scanner.py` / `--buyer` |
+| `scanner`（分层引擎） | 多品种信用价差扫描（卖方）+ 买方机会扫描 | `python3 -m tools.scanner.main` / `--buyer` |
 | `iv_collector.py` | IV 数据采集 + 五条环境打分 + 买方视角 | `python3 tools/iv_collector.py` |
 | `drill_system.py` | 8 模块交易训练（A-H），每天 B + 轮转 | `python3 tools/drill_system.py B` |
 | `daily_quiz.py` | 每日验收题，commit 前 3 道 | `python3 tools/daily_quiz.py` |
@@ -71,7 +71,7 @@
 
 ```
 签到 → 任务单
-1. python3 tools/unified_scanner.py          # 扫描
+1. python3 -m tools.scanner.main            # 扫描
 2. python3 tools/iv_collector.py             # IV + 环境定性
 3. python3 tools/drill_system.py B           # 训练
 4. Sinclair 阅读                              # 期权教材
