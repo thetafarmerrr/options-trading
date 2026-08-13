@@ -4934,3 +4934,23 @@ D 17/20 · T买 1/60 · Data 9/60 · K 已过。无持仓。棉花条件单待�
 ### 流程调整
 - IV 采集从 launchd 改为手动 --watch（macOS 安全策略拦截）
 - 明天试新顺序：英语盘前 → Scanner → 身体下午（不做完不讨论策略/修 bug）
+
+## 2026-08-13 收尾：白糖换月谜题破案 + 五项代码改动 + DeepSeek涨价与模型配置
+
+### 认知突破
+- 白糖 IV 6.8% 谜题破案：换月 sr2609→sr2701，weekly_event_scan.json 是 8/10 写的静态文本没更新，Scanner 把旧文本当实时读数。教训=非 routine 文本要交叉核对数据源
+
+### 系统变更
+- ctp_farm 加 --query 拉结算单 + DEFAULT_SYMBOLS 换活跃合约
+- iv_collector 限流重试（sina 限流断流兜底）
+- Scanner weekly 方案B：换月品种取最新 IV-HV（修旧合约误报）
+- deep_otm 选档统一 0.30（用户纠正教练：复刻吾剑权利金≤0.5 最虚档，三品种口径必须一致）
+- event_calendar 摘除 sr
+
+### 决策
+- deep_otm 选档：教练只改 au 锚定沪金 U 型，用户反驳"都改否则复刻目标不一致"——教练认错，统一 0.30
+- 明日待办确认：CTP 刷第10天（开期权权限差1天）+ Scanner EXEC 不滤折价（先过反方）
+
+### 其他
+- DeepSeek 8/17 涨价（输出+350%），模型配置检查：实际 ANTHROPIC_MODEL=deepseek-v4-flash（三 tier 全映射 flash）
+- 教训：脱敏 sed 写错导致 API key 明文出现在终端输出，需轮换 key（sensitive-data-guard）
