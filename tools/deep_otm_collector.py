@@ -67,7 +67,7 @@ SYSTEM_INFO = f"macOS;goldopt/1.0.0;{APP_ID}"
 VARIETY_CONFIG = {
     "au": {
         "name": "沪金", "futures": 870, "interval": 8,
-        "otm_call_pct": 0.10, "otm_put_pct": 0.10, "n_strikes": 5,
+        "otm_call_pct": 0.30, "otm_put_pct": 0.30, "n_strikes": 5,
         "valid_months": [2, 4, 6, 8, 10, 12],
         "prefix": "au", "exchange": "SHFE",
         # SimNow 统一格式，无分隔符。2-digit year（已验证 ctp_farm.py）
@@ -75,14 +75,14 @@ VARIETY_CONFIG = {
     },
     "m": {
         "name": "豆粕", "futures": 2800, "interval": 50,
-        "otm_call_pct": 0.10, "otm_put_pct": 0.10, "n_strikes": 4,
+        "otm_call_pct": 0.30, "otm_put_pct": 0.30, "n_strikes": 4,
         "valid_months": [1, 5, 9],
         "prefix": "m", "exchange": "DCE",
         "ctp_fmt": "{prefix}{yymm}{cp}{strike}",
     },
     "ta": {
         "name": "PTA", "futures": 4800, "interval": 50,
-        "otm_call_pct": 0.10, "otm_put_pct": 0.10, "n_strikes": 4,
+        "otm_call_pct": 0.30, "otm_put_pct": 0.30, "n_strikes": 4,
         "valid_months": [1, 5, 9],
         "prefix": "TA", "exchange": "CZCE",
         # SimNow 郑商所：1 位年份（TA609 = TA + 6(2026) + 09(9月)）已验证 ctp_farm.py

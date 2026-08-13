@@ -32,7 +32,7 @@ from .config import (
 from .data_source import AKShareSource, CachedSource
 from .volatility import (
     load_iv_history, load_all_iv_rows, iv_percentile,
-    iv_hv_tier,
+    iv_hv_tier, _extract_variety,
 )
 from .events import EventEngine
 from .strategies.credit_spread import CreditSpreadStrategy
@@ -378,11 +378,27 @@ def main():
         print(f"\n  ┌─ 🔮 本周非例行扫描（至 {valid_until}）")
         for ev in weekly_scan_events:
             vname = ev.get("品种", "?")
+            vcode = ev.get("品种码", "")
             catalyst = ev.get("催化", "?")
             buyer = "✅买方窗口" if ev.get("买方窗口") else "❌买方不进"
             seller = ev.get("卖方预警", "")
             prob = ev.get("概率", "")
-            print(f"  │ 🟡 {vname}: {catalyst}  [{buyer}] [{seller}]  概率:{prob}")
+            # 方案B：自动附当前 IV-HV（weekly JSON 里 IV 数值随换月过时，用 iv_history 最新合约值兜底）
+            cur_note = ""
+            best_key, best_iv, best_hv20 = "", None, None
+            for contract, info in iv_hist.items():
+                if _extract_variety(contract) == vcode:
+                    key = info.get("date", "") + info.get("time", "")
+                    if key >= best_key:
+                        best_key = key
+                        best_iv = info.get("iv_est")
+                        best_hv20 = info.get("hv_20d")
+            if best_iv:
+                cur_note = f"  [当前 IV {best_iv:.1%}"
+                if best_hv20 and best_hv20 > 0:
+                    cur_note += f", HV₂₀ {best_hv20:.1%}"
+                cur_note += "]"
+            print(f"  │ 🟡 {vname}: {catalyst}  [{buyer}] [{seller}]  概率:{prob}{cur_note}")
         print(f"  └─ 手动扫描，Scanner 仅显示上下文——不参与判据")
 
     # IV 采样

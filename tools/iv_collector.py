@@ -602,6 +602,18 @@ def _run_premarket_check(target_vcodes):
 # ── watch 模式的采集时点 ──
 WATCH_TIMES = [("09:30", "morning"), ("14:50", "afternoon")]
 
+def _collect_retry(vcode, vinfo, attempts=2, delay=2.0):
+    """collect_variety 失败重试（sina 限流/断流兜底）。"""
+    for i in range(attempts):
+        try:
+            return collect_variety(vcode, vinfo)
+        except Exception:
+            if i == attempts - 1:
+                raise
+            print(f"  🔄 {vinfo['name']}: 连接失败，{delay:.0f}s 后重试…")
+            _time.sleep(delay)
+
+
 def _run_one_collection(target, window_label):
     """执行一次完整的采集+写入+定性，返回写入行数。"""
     global _WINDOW_OVERRIDE
@@ -618,7 +630,7 @@ def _run_one_collection(target, window_label):
             print(f"  ⚠️ 未知品种: {vcode}")
             continue
         try:
-            result = collect_variety(vcode, vinfo)
+            result = _collect_retry(vcode, vinfo)
             if result:
                 spread_too_wide = result["spread_pct"] >= 15
                 result["liquidity_ok"] = 0 if spread_too_wide else 1
@@ -678,6 +690,7 @@ def _run_one_collection(target, window_label):
                 print(f"  ❌ {vinfo['name']}: 无有效 ATM 数据")
         except Exception as e:
             print(f"  ❌ {vinfo['name']}: {str(e)[:50]}")
+        _time.sleep(1)  # 品种间隔，防 sina 限流
 
     if not rows:
         print("\n  无数据，未写入 CSV\n")
