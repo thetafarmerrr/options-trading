@@ -17,6 +17,7 @@ deep_otm_collector.py — CTP MdApi 深虚期权 8 时点采集
 
 import os
 import sys
+import re
 import csv
 import json
 import time
@@ -64,6 +65,7 @@ SYSTEM_INFO = f"macOS;goldopt/1.0.0;{APP_ID}"
 # ═══════════════════════════════════════════════════════════════
 # 品种参数：标的价格 + 行权价间隔 + 虚值深度
 # ═══════════════════════════════════════════════════════════════
+# otm_call_pct/otm_put_pct：已废弃（8/15 #15 改造后无引用），保留壳勿删 n_strikes
 VARIETY_CONFIG = {
     "au": {
         "name": "沪金", "futures": 870, "interval": 8,
@@ -187,30 +189,33 @@ def pick_active_month(vcode: str) -> tuple:
     return near, far
 
 
-def calc_otm_strikes(vcode: str, futures_price: float, direction: str) -> list:
-    """计算深虚 OTM 行权价列表（从最虚往近排）。"""
-    cfg = VARIETY_CONFIG[vcode]
-    interval = cfg["interval"]
-    n = cfg["n_strikes"]
+def futures_price_fallback(vcode: str) -> float:
+    """标的期货价兜底：优先 VARIETY_CONFIG.futures，否则 0（select_boundary 会空）。"""
+    return float(VARIETY_CONFIG[vcode].get("futures", 0) or 0)
 
+
+def select_boundary_strikes(avail: set, futures_price: float, direction: str,
+                            n: int, max_moneyness: float = 3.0) -> list:
+    """有效边界法：从挂牌链最虚端往近扫，取最虚 n 档。
+
+    只做结构选档（strike 列存在性），不做价格/流动性判断——
+    0.5 门槛 + 流动性留在采集/P0 层（yuan-yongjian-strategy.md §3.1 分层）。
+    僵尸剔除也在采集层（CTP 实测）：akshare 深虚档 bid/ask/last 常空，
+    discover 阶段无法可靠判僵尸（8/14 已确认沪金 P648 全空是常态）。
+    max_moneyness: 仅作异常剔除安全网（防 akshare 脏数据出现 3 倍价档）。
+    不设硬门槛——最虚档由挂牌链决定，非系数拍（8/15 实测 C1512
+    moneyness 1.60 曾被 1.6 误挡，P648 同理，硬上限会漏最虚档）。
+    """
+    strikes = sorted(avail)
     if direction == "C":
-        target = futures_price * (1 + cfg["otm_call_pct"])
+        ordered = list(reversed(strikes))  # 从高（最虚）往低扫
+        edge = [s for s in ordered
+                if futures_price > 0 and s / futures_price <= max_moneyness]
     else:
-        target = futures_price * (1 - cfg["otm_put_pct"])
-
-    # 找到目标行权价
-    base = round(target / interval) * interval
-
-    # 往更虚的方向取 n 个
-    strikes = []
-    if direction == "C":
-        for i in range(n):
-            strikes.append(base + i * interval)
-    else:
-        for i in range(n):
-            strikes.append(base - i * interval)
-
-    return strikes
+        ordered = strikes  # 从低（最虚）往高扫
+        edge = [s for s in ordered
+                if futures_price > 0 and futures_price / s <= max_moneyness]
+    return edge[:n]
 
 
 # ═══════════════════════════════════════════════════════════════
@@ -227,7 +232,7 @@ def discover_contracts():
 
     try:
         sys.path.insert(0, str(SCRIPT_DIR))
-        from _ak_data import pick_two_contracts, fetch_option_chain
+        from _ak_data import pick_active_months, fetch_option_chain
     except ImportError as e:
         print(f"❌ 无法导入 _ak_data: {e}")
         return None
@@ -247,78 +252,78 @@ def discover_contracts():
         name = cfg["name"]
         symbol = symbol_map[vcode]
 
-        # 用 pick_two_contracts 选近月+次远月（akshare 格式）
-        near_ak, far_ak = pick_two_contracts(symbol, vcode)
-        if not near_ak:
-            print(f"  ⚠️ {name}: pick_two_contracts 返回空")
+        # 选活跃月：按期权链总持仓排序取前 n 个月（近月+次近+远月）。
+        # discover 层只筛活跃度，不排 DTE/临近交割——真门槛（流动性/0.5）在
+        # 采集层 CTP 实测（yuan-yongjian-strategy.md §3.1 分层，8/15 定案）。
+        active_months = pick_active_months(symbol, vcode, n=3)
+        if not active_months:
+            print(f"  ⚠️ {name}: 无活跃月份")
             continue
 
-        print(f"  📡 {name}: 拉取 {symbol} {near_ak} 期权链…")
+        months_desc = ", ".join(f"{c}({oi/1000:.0f}K)" for c, oi in active_months)
+        print(f"  📡 {name}: 活跃月（总持仓降序）= {months_desc}")
 
-        try:
-            _, df, futures_price = fetch_option_chain(vcode, symbol, near_ak)
-        except Exception as e:
-            print(f"     ❌ 拉取失败: {e}")
-            continue
+        # 有效边界法选档：从各月份挂牌链最虚端往近扫，取最虚 n 档（纯结构，不含 0.5/流动性）
+        # 注意：每个月份独立拉链选档——远月链更宽（如 m2701 有 3600，近月 m2609 只有 3500），
+        # 复用近月 edge_map 会漏掉远月独有的更虚档（8/15 瞒瞒指出，已验证远月链含 3600）。
+        edge_map = {}          # ak -> {"C": [...], "P": [...]}
+        month_fpx = {}         # ak -> 该月独立期货价
+        month_yy_mm = {}       # ak -> (yy, mm)
+        month_oi = {c: oi for c, oi in active_months}
 
-        if df is None or df.empty:
-            print(f"     ❌ 无数据")
-            continue
-
-        print(f"     标的 ≈ {futures_price:.0f}  | 共 {len(df)} 个行权价")
-
-        # 解析近月合约的年月（兼容 3 位数字如 TA609）
-        import re
-        m = re.search(r'(\d{1,2})(\d{2})$', near_ak)
-        if m:
-            near_yy, near_mm = int(m.group(1)), int(m.group(2))
-            # 1 位年份 → 2 位（6 → 26，即 2026）
-            if near_yy < 10:
-                near_yy = 20 + near_yy
-        else:
-            near_yy, near_mm = today.year % 100, today.month + 1
-
-        # 次远月
-        far_yy = far_mm = None
-        if far_ak:
-            mf = re.search(r'(\d{1,2})(\d{2})$', far_ak)
-            if mf:
-                far_yy, far_mm = int(mf.group(1)), int(mf.group(2))
-                if far_yy < 10:
-                    far_yy = 20 + far_yy
-
-        # 计算深虚行权价
-        call_strikes = calc_otm_strikes(vcode, futures_price, "C")
-        put_strikes = calc_otm_strikes(vcode, futures_price, "P")
-        avail_strikes = set(df["strike"].astype(int).tolist())
-
-        for month_yy, month_mm, label in [(near_yy, near_mm, ""),
-                                            (far_yy, far_mm, "[远月]")]:
-            if month_yy is None:
+        for month_idx, (month_ak, _oi) in enumerate(active_months):
+            label = "" if month_idx == 0 else f"[{month_idx + 1}月]"
+            try:
+                _, mdf, mfpx = fetch_option_chain(vcode, symbol, month_ak)
+            except Exception as e:
+                print(f"     ⚠️ {month_ak} 拉取失败（跳过）: {e}")
+                continue
+            if mdf is None or mdf.empty:
+                print(f"     ⚠️ {month_ak} 无数据（跳过）")
                 continue
 
+            mfpx = mfpx if mfpx > 0 else futures_price_fallback(vcode)
+            month_fpx[month_ak] = mfpx
+
+            # 解析合约年月（兼容 1 位年份 TA609 / 2 位 m2609）
+            m2 = re.search(r'(\d{1,2})(\d{2})$', month_ak)
+            if m2:
+                myy, mm_ = int(m2.group(1)), int(m2.group(2))
+                if myy < 10:
+                    myy = 20 + myy
+            else:
+                myy, mm_ = today.year % 100, today.month + 1
+            month_yy_mm[month_ak] = (myy, mm_)
+
+            avail = set(mdf["strike"].astype(int).tolist())
+            edge_map[month_ak] = {
+                "C": select_boundary_strikes(avail, mfpx, "C", cfg["n_strikes"]),
+                "P": select_boundary_strikes(avail, mfpx, "P", cfg["n_strikes"]),
+            }
+            print(f"     {label}{month_ak}: 标的 ≈ {mfpx:.0f} | "
+                  f"共 {len(mdf)} 档 | 总持仓 {month_oi[month_ak]/1000:.0f}K")
+
+        for month_ak, strikes_map in edge_map.items():
+            myy, mm_ = month_yy_mm[month_ak]
+            fpx_this = month_fpx[month_ak]
+            label = "" if month_ak == active_months[0][0] else "[次月+]"
+
             used_strikes = set()  # 去重：同一月份+方向下不重复取同一行权价
-            for direction, strikes in [("C", call_strikes), ("P", put_strikes)]:
+            for direction, strikes in strikes_map.items():
                 for strike in strikes:
-                    if strike not in avail_strikes:
-                        diffs = [(abs(s - strike), s) for s in avail_strikes]
-                        if diffs:
-                            _, nearest = min(diffs)
-                            strike = nearest
-                        else:
-                            continue
+                    # select_boundary_strikes 输出必然在 avail 内，无需再校准
 
                     # 去重：同月份同方向同行权价只记一次
-                    dedup_key = (month_yy, month_mm, direction, strike)
+                    dedup_key = (myy, mm_, direction, strike)
                     if dedup_key in used_strikes:
                         continue
                     used_strikes.add(dedup_key)
 
-                    ctp_code = build_ctp_option_code(vcode, month_yy, month_mm,
+                    ctp_code = build_ctp_option_code(vcode, myy, mm_,
                                                       direction, strike)
-                    moneyness = (strike / futures_price
+                    moneyness = (strike / fpx_this
                                  if direction == "C"
-                                 else futures_price / strike)
+                                 else fpx_this / strike)
                     print(f"     ✅ {strike:<6} → {ctp_code:<16} {label} OTM {moneyness:.2%}")
 
                     all_contracts.append({
@@ -327,9 +332,9 @@ def discover_contracts():
                         "name": name,
                         "direction": direction,
                         "strike": strike,
-                        "month": f"{month_yy:02d}{month_mm:02d}",
+                        "month": f"{myy:02d}{mm_:02d}",
                         "moneyness": round(moneyness, 4),
-                        "futures_est": round(futures_price, 0),
+                        "futures_est": round(fpx_this, 0),
                     })
 
     if not all_contracts:
