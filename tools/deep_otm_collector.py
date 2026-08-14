@@ -255,7 +255,8 @@ def discover_contracts():
         # 选活跃月：按期权链总持仓排序取前 n 个月（近月+次近+远月）。
         # discover 层只筛活跃度，不排 DTE/临近交割——真门槛（流动性/0.5）在
         # 采集层 CTP 实测（yuan-yongjian-strategy.md §3.1 分层，8/15 定案）。
-        active_months = pick_active_months(symbol, vcode, n=3)
+        # refresh=True：手动 discover 总是强制重拉，不吃 scanner/iv_collector 的缓存。
+        active_months = pick_active_months(symbol, vcode, n=3, refresh=True)
         if not active_months:
             print(f"  ⚠️ {name}: 无活跃月份")
             continue
