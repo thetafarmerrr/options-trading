@@ -22,17 +22,33 @@ from datetime import datetime
 from tqsdk import TqApi, TqAuth
 
 # ============================================================
-# 配置 — 飞书 Webhook 和天勤账号
+# .env 加载（凭据不硬编码；绝对路径定位，launchd 定时跑也能找到）
 # ============================================================
-***REMOVED***
-***REMOVED***
-***REMOVED***
+_TOOLS_DIR = os.path.dirname(os.path.abspath(__file__))
+_PROJECT_DIR = os.path.dirname(_TOOLS_DIR)
+_ENV_FILE = os.path.join(_PROJECT_DIR, ".env")
+if os.path.exists(_ENV_FILE):
+    with open(_ENV_FILE) as _f:
+        for _line in _f:
+            _line = _line.strip()
+            if _line and not _line.startswith("#") and "=" in _line:
+                _k, _v = _line.split("=", 1)
+                os.environ.setdefault(_k.strip(), _v.strip().strip('"').strip("'"))
+
+# ============================================================
+# 配置 — 飞书 Webhook 和天勤账号（来自 .env）
+# ============================================================
+FEISHU_WEBHOOK = os.environ.get("FEISHU_WEBHOOK", "")
+TQ_USER = os.environ.get("TQ_USER", "")
+TQ_PASS = os.environ.get("TQ_PASS", "")
+
+if not TQ_USER or not TQ_PASS:
+    sys.exit("❌ .env 缺 TQ_USER/TQ_PASS，天勤凭据未配置。监控拒绝启动（宁可不跑，不带空凭据）")
+if not FEISHU_WEBHOOK:
+    print("⚠️ .env 缺 FEISHU_WEBHOOK，飞书告警失效（监控继续，桌面弹窗+声音不受影响）")
 
 # 监控配置文件路径
 CONFIG_FILE = os.path.join(os.path.dirname(os.path.abspath(__file__)), "monitor_config.json")
-
-# tools 目录（用于 import event_calendar / scanner 子包）
-_TOOLS_DIR = os.path.dirname(os.path.abspath(__file__))
 
 # 轮询间隔（秒）— 连续模式用
 POLL_INTERVAL = 3

@@ -1,12 +1,23 @@
 """天勤数据层 v2 — 批量订阅 + 超时 + 分批"""
 from datetime import datetime
+import os
 import time
 import pandas as pd
 from tqsdk import TqApi, TqAuth
 from tqsdk.exceptions import TqTimeoutError
 
-***REMOVED***
-***REMOVED***
+# 凭据来自 .env（不硬编码）
+_PROJECT_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+if os.path.exists(os.path.join(_PROJECT_DIR, ".env")):
+    with open(os.path.join(_PROJECT_DIR, ".env")) as _f:
+        for _line in _f:
+            _line = _line.strip()
+            if _line and not _line.startswith("#") and "=" in _line:
+                _k, _v = _line.split("=", 1)
+                os.environ.setdefault(_k.strip(), _v.strip().strip('"').strip("'"))
+
+TQ_USER = os.environ.get("TQ_USER", "")
+TQ_PASS = os.environ.get("TQ_PASS", "")
 
 VALID_MONTHS = {
     'm': [1, 5, 9], 'rm': [1, 5, 9], 'sr': [1, 5, 9], 'cf': [1, 5, 9],
