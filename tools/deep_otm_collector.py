@@ -167,28 +167,6 @@ def build_ctp_futures_code(vcode: str, yy: int, mm: int) -> str:
         strike="",
     )
 
-def pick_active_month(vcode: str) -> tuple:
-    """选当前活跃月份（近月）和次远月。"""
-    cfg = VARIETY_CONFIG[vcode]
-    valid = sorted(cfg["valid_months"])
-    today = date.today()
-    cur_month = today.month
-    cur_year = today.year % 100
-
-    # 跳过当月（可能已到期或临近到期）
-    ordered = []
-    for m in valid:
-        if m >= cur_month + 1:
-            ordered.append((m, cur_year))
-    for m in valid:
-        if m < cur_month + 1:
-            ordered.append((m, cur_year + 1))
-
-    near = ordered[0] if ordered else (cur_month + 1, cur_year)
-    far = ordered[1] if len(ordered) > 1 else None
-    return near, far
-
-
 def futures_price_fallback(vcode: str) -> float:
     """标的期货价兜底：优先 VARIETY_CONFIG.futures，否则 0（select_boundary 会空）。"""
     return float(VARIETY_CONFIG[vcode].get("futures", 0) or 0)
