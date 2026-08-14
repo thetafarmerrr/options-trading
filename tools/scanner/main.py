@@ -28,11 +28,12 @@ from .models import OptionChain, Signal, ScanContext
 from .config import (
     VARIETIES, MAX_SAME_DIRECTION, MAX_PORTFOLIO_DELTA_ABS,
     EVENT_PRICED_IV_PCT, EVENT_PRICED_DAYS, EVENT_SPREAD_MAX,
+    EXEC_RR_MIN,
 )
 from .data_source import AKShareSource, CachedSource
 from .volatility import (
     load_iv_history, load_all_iv_rows, iv_percentile,
-    iv_hv_tier, _extract_variety,
+    iv_hv_tier, _extract_variety, latest_healthy_iv,
 )
 from .events import EventEngine
 from .strategies.credit_spread import CreditSpreadStrategy
@@ -68,27 +69,15 @@ def _build_iv_hv_panel(iv_hist: dict, iv_hist_rows: list, target: list) -> list:
 
     panel = []
     for vcode in target:
-        # 找该品种最新合约的 HV 数据
-        hv_info = None
-        for contract, info in iv_hist.items():
-            v = _extract_variety(contract)
-            if v == vcode:
-                hv_info = info
-                break
+        # 找该品种最新且健康的合约（换月防污染：#16 修 break 取第一个的问题）
+        hv_info, is_healthy = latest_healthy_iv(iv_hist, vcode)
+        distorted = not is_healthy
 
         spread = None
         hv20 = None
-        distorted = False
         if hv_info:
             iv_est = hv_info.get("iv_est")
             hv20 = hv_info.get("hv_20d")
-            # 盘口健康闸：盘口失真数据不参与 IV-HV 档位判定（8/14 棉花 8:48 脏数据教训）
-            ok = hv_info.get("liquidity_ok", "1") not in ("0", "False")
-            try:
-                sp_pct = float(hv_info.get("spread_pct", 0) or 0)
-            except (ValueError, TypeError):
-                sp_pct = 0.0
-            distorted = (not ok) or sp_pct > 10
             if not distorted and iv_est and hv20 and hv20 > 0:
                 spread = iv_est - hv20
 
@@ -119,6 +108,31 @@ def _build_iv_hv_panel(iv_hist: dict, iv_hist_rows: list, target: list) -> list:
         })
 
     return panel
+
+
+def apply_iv_hv_gate(all_signals: list, iv_hist: dict):
+    """IV-HV 硬门槛（#12）：EXEC 信号必须 IV-HV ≥ 1%。
+
+    自己算 spread（latest_healthy_iv 的 iv_est−hv_20d，防换月污染 #16），
+    并把结果注入 metadata，供 output.py 复用——不在 output 打印阶段再算。
+    tier == "EXEC" 且 spread < 1% → 降级 INTERCEPTED。
+    credit_spread.py 不动——策略层保持纯腿质量判定。
+    """
+    for s in all_signals:
+        if s.tier != "EXEC":
+            continue
+        hv_info, _ = latest_healthy_iv(iv_hist, s.variety)
+        if not hv_info:
+            continue  # 无健康 IV-HV 数据：不拦截（保持 EXEC，交由上游标注）
+        iv_est = hv_info.get("iv_est")
+        hv20 = hv_info.get("hv_20d")
+        if iv_est is None or hv20 is None or hv20 <= 0:
+            continue
+        spread = iv_est - hv20
+        s.metadata["_iv_hv_spread"] = spread
+        if spread < 0.01:  # <1%（含折价 <0%）→ 拦截
+            s.tier = "INTERCEPTED"
+            s.metadata["intercept_reason"] = f"IV-HV {spread*100:+.1f}% < 1%"
 
 
 def fetch_futures_5d_change(vcode: str, source) -> Optional[float]:
@@ -255,9 +269,9 @@ def main():
         iv_pct, iv_days = iv_percentile(
             iv_est or 0.20, chain.dte, chain.contract, iv_hist_rows)
 
-        # HV
-        hv_info = iv_hist.get(chain.contract, {})
-        hv20 = hv_info.get("hv_20d")
+        # HV（取品种最新健康合约，防换月取到旧合约 #16）
+        hv_info, _ = latest_healthy_iv(iv_hist, vcode)
+        hv20 = hv_info.get("hv_20d") if hv_info else None
 
         # 5日趋势
         change_5d = fetch_futures_5d_change(vcode, source)
@@ -314,6 +328,9 @@ def main():
         ctx = contexts.get(vcode, ScanContext(capital=args.capital))
         signals = buyer_strategy.scan(chain, ctx)
         all_signals.extend(signals)
+
+    # ── IV-HV 硬门槛（#12）：EXEC 必须 IV-HV ≥1%；<1%（含折价）降级 INTERCEPTED ──
+    apply_iv_hv_gate(all_signals, iv_hist)
 
     # ── 组合风控 ──
     risk_warnings = check_portfolio_risk(all_signals, args.capital)
@@ -383,9 +400,14 @@ def main():
             with open(scan_path) as f:
                 raw = json.load(f)
             valid_until = raw.get("valid_until", "")
+            scan_date = raw.get("scan_date", "")
         except Exception:
             valid_until = "?"
-        print(f"\n  ┌─ 🔮 本周非例行扫描（至 {valid_until}）")
+            scan_date = ""
+        print(f"\n  ┌─ 🔮 本周非例行扫描（快照 {scan_date} · 有效至 {valid_until}）")
+        if scan_date:
+            print(f"  │ ⚠️ 此为 {scan_date} 手动扫描快照，催化/预警文本可能已过时；")
+            print(f"  │    今日决策以当天重扫输出为准，快照仅作背景上下文。")
         for ev in weekly_scan_events:
             vname = ev.get("品种", "?")
             vcode = ev.get("品种码", "")
@@ -393,17 +415,12 @@ def main():
             buyer = "✅买方窗口" if ev.get("买方窗口") else "❌买方不进"
             seller = ev.get("卖方预警", "")
             prob = ev.get("概率", "")
-            # 方案B：自动附当前 IV-HV（weekly JSON 里 IV 数值随换月过时，用 iv_history 最新合约值兜底）
+            # 方案B：自动附当前 IV-HV（weekly JSON 里 IV 数值随换月过时，用 iv_history 最新健康合约值兜底 #17）
             cur_note = ""
-            best_key, best_iv, best_hv20 = "", None, None
-            for contract, info in iv_hist.items():
-                if _extract_variety(contract) == vcode:
-                    key = info.get("date", "") + info.get("time", "")
-                    if key >= best_key:
-                        best_key = key
-                        best_iv = info.get("iv_est")
-                        best_hv20 = info.get("hv_20d")
-            if best_iv:
+            best_iv_info, _ = latest_healthy_iv(iv_hist, vcode)
+            if best_iv_info:
+                best_iv = best_iv_info.get("iv_est")
+                best_hv20 = best_iv_info.get("hv_20d")
                 cur_note = f"  [当前 IV {best_iv:.1%}"
                 if best_hv20 and best_hv20 > 0:
                     cur_note += f", HV₂₀ {best_hv20:.1%}"
@@ -460,10 +477,21 @@ def main():
         for w in risk_warnings:
             print(f"    {w}")
 
-    # 汇总
-    exec_n = len([s for s in all_signals if s.tier == "EXEC" and "credit" in s.strategy])
+    # 汇总（exec_n 与 EXEC 区口径一致：去重后每个品种合约保留 rr 最高者）
+    exec_candidates = [s for s in all_signals
+                       if s.tier == "EXEC" and "credit" in s.strategy
+                       and s.rr_ratio >= EXEC_RR_MIN]
+    exec_seen = {}
+    for s in sorted(exec_candidates, key=lambda x: x.rr_ratio, reverse=True):
+        key = f"{s.variety}_{s.contract}"
+        if key not in exec_seen:
+            exec_seen[key] = s
+    exec_n = len(exec_seen)
     paper_n = len([s for s in all_signals if s.tier == "PAPER"])
-    reporter.print_summary(exec_n, paper_n, observe_count, iv_hist)
+    intercepted_n = len([s for s in all_signals
+                         if s.tier == "INTERCEPTED" and "credit" in s.strategy])
+    reporter.print_summary(exec_n, paper_n, observe_count, iv_hist,
+                           intercepted_count=intercepted_n)
 
     # IV-HV 全品种面板
     panel_data = _build_iv_hv_panel(iv_hist, iv_hist_rows, target)
