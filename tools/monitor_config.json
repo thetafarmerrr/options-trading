@@ -1,8 +1,8 @@
 {
-  "active": false,
-  "name": "",
-  "sell_leg": "CZCE.RM609P2225",
-  "buy_leg": "CZCE.RM609P2200",
-  "credit": 0,
-  "stop_net": 0
+  "active": true,
+  "name": "棉花 cf2701 卖P16400/买P16200",
+  "sell_leg": "CZCE.CF701P16400",
+  "buy_leg": "CZCE.CF701P16200",
+  "credit": 69,
+  "stop_net": 34.5
 }

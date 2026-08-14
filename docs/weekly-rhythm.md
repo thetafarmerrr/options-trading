@@ -20,16 +20,14 @@
 
 | 步骤 | 命令 | 时间 |
 |------|------|------|
-| 扫描 | `python3 -m tools.scanner.main` | 3 min |
-| IV 全天·常驻 | `python3 tools/iv_collector.py --watch`（09:30+14:50 自动双采，盘前启动常驻到下午）| 1 min |
-| 深虚 OTM | `python3 tools/deep_otm_collector.py` 盘前启动，收尾确认有今日数据 | — |
-| IV 数据健康 | 收尾：确认 iv_history.csv 今日有 morning+afternoon 各一条 | 10s |
-| 训练 | `python3 tools/drill_system.py B` + 4 个轮转模块 | 25 min |
-| 英文 | Mike 系列视频 + 跟读 + 90s 炸弹 + 笔译 | 20 min |
-| 影响力 | Scanner+IV 后立刻发 Twitter（≤2条/天） | 1 min |
-| 验收 | `python3 tools/daily_quiz.py` | 2 min |
-| 日志 | `journal/YYYY-MM-DD.md` | 5 min |
-| commit | `git add` + `git commit` + `git push` | 1 min |
+| 英文（盘前清醒期 8:00）| Mike 系列视频 + 跟读 + 90s 炸弹 + 笔译 | 20 min |
+| 盘前启动（8:25）| `python3 tools/iv_collector.py --watch`（09:15+09:30+14:50 自动三采）+ `python3 tools/deep_otm_collector.py` + Scanner 盘前基线（**只看关注列表，不作决策**）| 5 min |
+| 开盘决策窗口（9:15-9:30）| 9:15 自动采完 → **重新执行** `python3 -m tools.scanner.main` → 用新输出确认 [EXEC]→六步进场→纸面挑信号 | 5 min |
+| 训练（决策后第一个·易拖优先）| `python3 tools/drill_system.py B` + 4 个轮转模块 | 25 min |
+| Sinclair（问题来了之后）| A 问题驱动（10:15）/ B 日志倒灌（一三五）| 15 min |
+| 收盘（14:50）| IV 自动采 + 影响力（有料就发 ≤2条）| 1 min |
+| 身体（收盘后 15:00）| 壶铃 S&S | 20 min |
+| 收尾（**18:00 硬截止**）| quiz + journal + IV 数据健康 + 深虚数据确认 + `git commit` + `git push` | 10 min |
 
 > 以上 ~50 分钟，雷打不动。哪怕扫描说"没机会"，仪式本身就值钱。
 

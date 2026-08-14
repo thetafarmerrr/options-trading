@@ -15,3 +15,4 @@ docs/yuan-yongjian-strategy.md
 data/scanner_log/
 data/settlement_*.txt
 data/*.log
+*.pyc

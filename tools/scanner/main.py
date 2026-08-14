@@ -78,10 +78,18 @@ def _build_iv_hv_panel(iv_hist: dict, iv_hist_rows: list, target: list) -> list:
 
         spread = None
         hv20 = None
+        distorted = False
         if hv_info:
             iv_est = hv_info.get("iv_est")
             hv20 = hv_info.get("hv_20d")
-            if iv_est and hv20 and hv20 > 0:
+            # 盘口健康闸：盘口失真数据不参与 IV-HV 档位判定（8/14 棉花 8:48 脏数据教训）
+            ok = hv_info.get("liquidity_ok", "1") not in ("0", "False")
+            try:
+                sp_pct = float(hv_info.get("spread_pct", 0) or 0)
+            except (ValueError, TypeError):
+                sp_pct = 0.0
+            distorted = (not ok) or sp_pct > 10
+            if not distorted and iv_est and hv20 and hv20 > 0:
                 spread = iv_est - hv20
 
         d5d = delta_5d_map.get(vcode)
@@ -93,7 +101,9 @@ def _build_iv_hv_panel(iv_hist: dict, iv_hist_rows: list, target: list) -> list:
             direction = "—"
 
         notes = ""
-        if spread is not None:
+        if distorted:
+            notes = "⚠️盘口失真"
+        elif spread is not None:
             if spread < -0.03:
                 notes = "🔻折价"
             elif spread > 0.03:

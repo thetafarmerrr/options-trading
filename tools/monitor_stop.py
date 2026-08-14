@@ -82,16 +82,16 @@ def check_once(cfg):
         buy_quote = api.get_quote(cfg["buy_leg"])
         api.wait_update()
 
-        sell_bid = sell_quote.bid_price1
-        buy_ask = buy_quote.ask_price1
+        sell_ask = sell_quote.ask_price1
+        buy_bid = buy_quote.bid_price1
 
-        if sell_bid and buy_ask and sell_bid > 0 and buy_ask > 0:
-            net_cost = buy_ask - sell_bid
+        if sell_ask and buy_bid and sell_ask > 0 and buy_bid > 0:
+            net_cost = sell_ask - buy_bid
             if net_cost <= cfg["stop_net"]:
                 title = f"止盈触发 — {cfg['name']}"
                 body = (
                     f"净价 {net_cost:.1f} ≤ 止盈线 {cfg['stop_net']}\n"
-                    f"卖腿bid={sell_bid:.1f}  买腿ask={buy_ask:.1f}\n"
+                    f"卖腿ask={sell_ask:.1f}  买腿bid={buy_bid:.1f}\n"
                     f"利润 ≈ {(cfg.get('credit', 0) - net_cost):.1f}（已扣净成本）"
                 )
                 send_alert(title, body)
@@ -185,15 +185,15 @@ def main():
         while True:
             api.wait_update()
 
-            sell_bid = sell_quote.bid_price1
-            buy_ask = buy_quote.ask_price1
+            sell_ask = sell_quote.ask_price1
+            buy_bid = buy_quote.bid_price1
 
-            if sell_bid and buy_ask and sell_bid > 0 and buy_ask > 0:
-                net_cost = buy_ask - sell_bid
+            if sell_ask and buy_bid and sell_ask > 0 and buy_bid > 0:
+                net_cost = sell_ask - buy_bid
 
                 if net_cost != last_net:
                     print(f"  [{time.strftime('%H:%M:%S')}] 净价={net_cost:.1f}  "
-                          f"卖腿bid={sell_bid:.1f} 买腿ask={buy_ask:.1f}  "
+                          f"卖腿ask={sell_ask:.1f} 买腿bid={buy_bid:.1f}  "
                           f"({'✅ 止盈' if net_cost <= cfg['stop_net'] else '⏳ 等待'})")
                     last_net = net_cost
 
@@ -201,7 +201,7 @@ def main():
                     title = f"止盈触发 — {cfg['name']}"
                     body = (
                         f"净价 {net_cost:.1f} ≤ 止盈线 {cfg['stop_net']}\n"
-                        f"卖腿bid={sell_bid:.1f}  买腿ask={buy_ask:.1f}\n"
+                        f"卖腿ask={sell_ask:.1f}  买腿bid={buy_bid:.1f}\n"
                         f"利润 ≈ {(cfg.get('credit', 0) - net_cost):.1f}（已扣净成本）"
                     )
                     send_alert(title, body)
