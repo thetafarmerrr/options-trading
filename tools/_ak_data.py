@@ -26,69 +26,61 @@ def pick_best_contract(symbol, vcode=None):
     return near
 
 
-def pick_two_contracts(symbol, vcode=None):
-    """选近月+次近月双合约（流动性验证）。
-    返回 (near_contract, far_contract)。far_contract 在单一活跃合约时为 None。"""
-    today = datetime.now()
-    cur_month = today.month
-    cur_year = today.year % 100
+def _month_total_oi(symbol, contract):
+    """拉某合约月期权链，返回 (总持仓, 档数)。失败返回 (0, 0)。"""
+    try:
+        df = ak.option_commodity_contract_table_sina(symbol=symbol, contract=contract)
+    except Exception:
+        return 0, 0
+    if df is None or df.empty:
+        return 0, 0
+    oi_cols = [c for c in df.columns if '持仓' in c]
+    total = float(df[oi_cols].sum().sum()) if oi_cols else 0.0
+    return total, len(df)
 
+
+def pick_active_months(symbol, vcode=None, n=2, min_oi=0):
+    """选活跃月份：按期权链总持仓排序，取前 n 个月。
+
+    分层标准（yuan-yongjian-strategy.md §3.1）：选月看总持仓（筛活跃度），
+    选档看边界，交易看盘口。本函数只做"哪个月有人玩"，不做"哪档能交易"。
+
+    已知局限（8/15 反方确认）：
+      - 总持仓是截面快照，链宽大的月份自然持仓高，可能压过链窄的活跃月
+      - akshare 新浪源深虚档 bid/ask/last 常空，总持仓含这些空档的 0 值
+      - 快交割月（DTE<30）持仓虚胖（套保堆积），不代表深虚档有盘口
+      这些局限不在此处理——边界法跳过空档，CTP 实测才是真门槛。
+
+    n: 返回月份数。discover 用 n=3（近月+次近+远月），iv_collector 用 n=2。
+    min_oi: 总持仓下限，低于此的月份剔除（僵尸月）。
+    返回: [(contract, total_oi), ...] 按总持仓降序。
+    """
     try:
         cdf = ak.option_commodity_contract_sina(symbol=symbol)
         all_contracts = cdf['合约'].tolist()
     except Exception:
-        return None, None
+        return []
     if not all_contracts:
+        return []
+
+    scored = []
+    for c in all_contracts:
+        total_oi, n_strikes = _month_total_oi(symbol, c)
+        if total_oi <= min_oi:
+            continue
+        scored.append((c, total_oi, n_strikes))
+
+    scored.sort(key=lambda x: -x[1])
+    return [(c, oi) for c, oi, _ in scored[:n]]
+
+
+def pick_two_contracts(symbol, vcode=None):
+    """选活跃月前 2 个（近月+次近月）。兼容 iv_collector 的 (near, far) 签名。"""
+    months = pick_active_months(symbol, vcode, n=2)
+    if not months:
         return None, None
-
-    if vcode and vcode in VALID_MONTHS:
-        valid = sorted(VALID_MONTHS[vcode])
-        ordered = [m for m in valid if m >= cur_month + 1] + [m for m in valid if m < cur_month + 1]
-        target_codes = []
-        for m in ordered:
-            yr = cur_year if m > cur_month else cur_year + 1
-            target_codes.append(f"{yr:02d}{m:02d}")
-        candidates = []
-        for tc in target_codes[:4]:
-            match = next((c for c in all_contracts if c.endswith(tc)), None)
-            if match:
-                candidates.append(match)
-        if not candidates:
-            c = all_contracts[0] if all_contracts else None
-            return c, None
-    else:
-        candidates = all_contracts[:3]
-
-    def _check_quality(contract):
-        try:
-            df = ak.option_commodity_contract_table_sina(symbol=symbol, contract=contract)
-            df = df.rename(columns={
-                '行权价': 'strike',
-                '看跌合约-买价': 'p_bid', '看涨合约-买价': 'c_bid',
-            })
-            df = df.sort_values('strike').reset_index(drop=True)
-            atm_idx = (df['p_bid'] - df['c_bid']).abs().idxmin()
-            if pd.isna(atm_idx):
-                return False
-            start, end = max(0, atm_idx - 5), min(len(df) - 1, atm_idx + 5)
-            if end - start < 5:
-                return False
-            window = df.iloc[start:end + 1]
-            ok = sum(1 for _, r in window.iterrows()
-                     if (r['p_bid'] if not pd.isna(r['p_bid']) else 0) > 0
-                     or (r['c_bid'] if not pd.isna(r['c_bid']) else 0) > 0)
-            return ok / len(window) >= 0.5
-        except Exception:
-            return False
-
-    good = []
-    for c in candidates:
-        if _check_quality(c):
-            good.append(c)
-            if len(good) >= 2:
-                break
-    near = good[0] if good else (candidates[0] if candidates else None)
-    far = good[1] if len(good) >= 2 else None
+    near = months[0][0]
+    far = months[1][0] if len(months) > 1 else None
     return near, far
 
 
