@@ -1,6 +1,7 @@
 """akshare 数据层 — scanner + iv_collector 共享（日频 REST，不挂）"""
 import re
 import math
+import time
 import pandas as pd
 from datetime import datetime
 
@@ -39,7 +40,13 @@ def _month_total_oi(symbol, contract):
     return total, len(df)
 
 
-def pick_active_months(symbol, vcode=None, n=2, min_oi=0):
+# 选月结果缓存：scanner/iv_collector 同 30 分钟多次运行不重复拉链（8/15 回归修复）。
+# 挂牌月持仓是日频量，30 分钟 TTL 足够；discover 手动跑传 refresh=True 强制重拉。
+_ACTIVE_MONTHS_CACHE = {}
+_ACTIVE_MONTHS_TTL = 1800
+
+
+def pick_active_months(symbol, vcode=None, n=2, min_oi=0, refresh=False):
     """选活跃月份：按期权链总持仓排序，取前 n 个月。
 
     分层标准（yuan-yongjian-strategy.md §3.1）：选月看总持仓（筛活跃度），
@@ -53,8 +60,15 @@ def pick_active_months(symbol, vcode=None, n=2, min_oi=0):
 
     n: 返回月份数。discover 用 n=3（近月+次近+远月），iv_collector 用 n=2。
     min_oi: 总持仓下限，低于此的月份剔除（僵尸月）。
+    refresh: True 强制重拉（discover 手动跑），False 命中 30 分钟 TTL 缓存。
     返回: [(contract, total_oi), ...] 按总持仓降序。
     """
+    cache_key = (symbol, n, min_oi)
+    now = time.time()
+    if not refresh and cache_key in _ACTIVE_MONTHS_CACHE:
+        cached_at, cached = _ACTIVE_MONTHS_CACHE[cache_key]
+        if now - cached_at < _ACTIVE_MONTHS_TTL:
+            return cached
     try:
         cdf = ak.option_commodity_contract_sina(symbol=symbol)
         all_contracts = cdf['合约'].tolist()
@@ -71,7 +85,9 @@ def pick_active_months(symbol, vcode=None, n=2, min_oi=0):
         scored.append((c, total_oi, n_strikes))
 
     scored.sort(key=lambda x: -x[1])
-    return [(c, oi) for c, oi, _ in scored[:n]]
+    result = [(c, oi) for c, oi, _ in scored[:n]]
+    _ACTIVE_MONTHS_CACHE[cache_key] = (time.time(), result)
+    return result
 
 
 def pick_two_contracts(symbol, vcode=None):
