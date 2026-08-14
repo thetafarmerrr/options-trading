@@ -49,9 +49,14 @@ class EventEngine:
         return False
 
     def nearest_event_days(self, vcode: str, variety_name: str) -> Optional[int]:
-        """最近事件天数（排除持续事件 days_until=-1）"""
+        """最近事件天数（排除持续事件 days_until=-1 和合约到期 category=expiry）
+
+        合约到期每月例行（au2608 最后交易日），不该当成品种级事件驱动
+        买方"有事件临近"判断——旧合约到期与新合约无关（8/14 修复）。
+        """
         dated = [e for e in self.for_variety(vcode, variety_name)
-                 if e.get("days_until", 0) >= 0]
+                 if e.get("days_until", 0) >= 0
+                 and e.get("category") != "expiry"]
         if not dated:
             return None
         return min(e["days_until"] for e in dated)

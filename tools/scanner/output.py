@@ -77,21 +77,44 @@ class Reporter:
                  and s.rr_ratio >= EXEC_RR_MIN
                  and "credit" in s.strategy]
 
+        # #12 IV-HV 拦截：腿质量达标但 IV-HV<1% 的信号（tier 已降为 INTERCEPTED）
+        intercepted = [s for s in all_signals
+                       if s.tier == "INTERCEPTED" and "credit" in s.strategy]
+
         if not cs_ok:
-            # 无信号 → 干旱总结
-            seller_windows = []
-            for contract, hv_info in iv_hv.items():
-                spread = hv_info.get("iv_est", 0) - hv_info.get("hv_20d", 0)
-                if spread >= 0.03:
-                    vcode_match = re.match(r'([a-z]+)', contract)
-                    if vcode_match:
-                        name = VARIETIES.get(vcode_match.group(1), {}).get("name", contract)
-                        seller_windows.append(f"{name}({spread*100:+.1f}%)")
-            if seller_windows:
-                print(f"    卖方窗口：{', '.join(seller_windows)}，但无可执行腿组合。")
-                print(f"    系统在拦，不在漏。")
+            if intercepted:
+                # 环境拦截日：有达标腿但被 IV-HV 拦，非干旱
+                print(f"  ⛔ [INTERCEPTED] 环境拦截（{len(intercepted)} 个）：腿达标但 IV-HV < 1%，非干旱")
+                for s in intercepted[:5]:
+                    reason = s.metadata.get("intercept_reason", "")
+                    print(f"      {s.name} {s.contract} 卖{s.metadata.get('sell_strike','?')}"
+                          f"/{s.metadata.get('buy_strike','?')}  {reason}")
+                # 卖方窗口补充
+                seller_windows = []
+                for contract, hv_info in iv_hv.items():
+                    spread = hv_info.get("iv_est", 0) - hv_info.get("hv_20d", 0)
+                    if spread >= 0.03:
+                        vcode_match = re.match(r'([a-z]+)', contract)
+                        if vcode_match:
+                            name = VARIETIES.get(vcode_match.group(1), {}).get("name", contract)
+                            seller_windows.append(f"{name}({spread*100:+.1f}%)")
+                if seller_windows:
+                    print(f"    卖方窗口：{', '.join(seller_windows)}，但被 IV-HV 拦截。")
             else:
-                print(f"    今日无卖方窗口（IV-HV ≥3% 品种=0）。")
+                # 真·干旱
+                seller_windows = []
+                for contract, hv_info in iv_hv.items():
+                    spread = hv_info.get("iv_est", 0) - hv_info.get("hv_20d", 0)
+                    if spread >= 0.03:
+                        vcode_match = re.match(r'([a-z]+)', contract)
+                        if vcode_match:
+                            name = VARIETIES.get(vcode_match.group(1), {}).get("name", contract)
+                            seller_windows.append(f"{name}({spread*100:+.1f}%)")
+                if seller_windows:
+                    print(f"    卖方窗口：{', '.join(seller_windows)}，但无可执行腿组合。")
+                    print(f"    系统在拦，不在漏。")
+                else:
+                    print(f"    今日无卖方窗口（IV-HV ≥3% 品种=0）。")
             return
 
         # 去重 + 排序
@@ -100,8 +123,9 @@ class Reporter:
             key = f"{s.variety}_{s.contract}"
             if key not in seen:
                 seen[key] = s
-                # 注入 IV-HV + 事件标签
-                hv_info = iv_hv.get(s.contract)
+                # 注入 IV-HV + 事件标签（取品种最新健康合约，防换月污染 #16）
+                from .volatility import latest_healthy_iv
+                hv_info, _ = latest_healthy_iv(iv_hv, s.variety)
                 if hv_info:
                     from .volatility import iv_hv_tier
                     spread, tier_str, action = iv_hv_tier(
@@ -159,6 +183,15 @@ class Reporter:
 
             tp = round(s.max_profit * 0.5, 0)
             print(f"        止盈 ¥{tp:.0f}/手  止损预警: {opt_type_short}{buy_strike}")
+
+        # #12 拦截信号（EXEC 有信号时也显示，不埋没）
+        if intercepted:
+            print(f"\n  ⛔ [INTERCEPTED] IV-HV<1% 拦截（{len(intercepted)} 个，非干旱）：")
+            for s in intercepted[:5]:
+                reason = s.metadata.get("intercept_reason", "")
+                opt_t = "C" if s.metadata.get("direction") == "call" else "P"
+                print(f"      {s.name} {s.contract} 卖{opt_t}{s.metadata.get('sell_strike','?')}"
+                      f"/{s.metadata.get('buy_strike','?')}  {reason}")
 
     # ── NEAR 近失 ──
 
@@ -275,14 +308,23 @@ class Reporter:
     # ── 汇总行 ──
 
     def print_summary(self, exec_count: int, paper_count: int,
-                      observe_count: int, iv_hv: dict):
-        """打印汇总行"""
+                      observe_count: int, iv_hv: dict,
+                      intercepted_count: int = 0):
+        """打印汇总行（#12：有被 IV-HV 拦截的信号 → 环境拦截日，非干旱）"""
         print(f"\n  {'─'*70}")
-        print(f"  📊 {exec_count} 可执行 + {paper_count} 纸面 + {observe_count} 观察 + 6 未扫描")
+        intercept_note = f" + {intercepted_count} 拦截" if intercepted_count else ""
+        print(f"  📊 {exec_count} 可执行 + {paper_count} 纸面 + {observe_count} 观察"
+              f"{intercept_note} + 6 未扫描")
         if exec_count == 0:
-            if paper_count > 0:
+            if intercepted_count > 0:
+                # 环境拦截日：有达标腿但被 IV-HV 拦 → 非干旱，不触发无信号日操作
+                print(f"  🌵 环境拦截日：{intercepted_count} 个腿达标但 IV-HV<1%。")
+                print(f"  📖 非干旱——不计入干旱天数（按 monitoring-rules.md 正常规程）。")
+            elif paper_count > 0:
                 print(f"  📋 买方/单腿纸面窗口已标出（共 {paper_count} 个），不执行仅跟踪。")
-            print(f"  📖 无信号日操作规程 → monitoring-rules.md「无信号日操作规程」")
+                print(f"  📖 无信号日操作规程 → monitoring-rules.md「无信号日操作规程」")
+            else:
+                print(f"  📖 无信号日操作规程 → monitoring-rules.md「无信号日操作规程」")
         print(f"  {'═'*70}\n")
 
     # ── IV-HV 全品种面板 ──

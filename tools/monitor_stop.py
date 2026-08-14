@@ -31,6 +31,9 @@ from tqsdk import TqApi, TqAuth
 # 监控配置文件路径
 CONFIG_FILE = os.path.join(os.path.dirname(os.path.abspath(__file__)), "monitor_config.json")
 
+# tools 目录（用于 import event_calendar / scanner 子包）
+_TOOLS_DIR = os.path.dirname(os.path.abspath(__file__))
+
 # 轮询间隔（秒）— 连续模式用
 POLL_INTERVAL = 3
 
@@ -102,6 +105,82 @@ def check_once(cfg):
         api.close()
 
 
+def check_event_buffer(cfg, futures_price=None):
+    """事件缓冲检查（#14）：持仓品种未来2天有事件时，比「缓冲 vs 事件预期波动」。
+
+    只报不平。数据源：
+    - 事件：event_calendar.get_upcoming_events(days=2)，跳过 category=expiry（8/14 修复）
+    - 预期波动：IV × √(1/242) × 2（单日 2σ，iv_history 数据可追溯，非 event_calendar 估算字段）
+    - 缓冲：卖腿行权价 → 期货价 OTM%（futures_price 由调用方 tqsdk 现拉）
+
+    判断（对应 monitoring-rules 离场六步第 6 条）：
+      缓冲 > 2σ → 持有（打不穿）
+      缓冲 < 1σ → 平（大概率打穿）
+      1σ ≤ 缓冲 ≤ 2σ → 缩仓减半（多手生效）+ D-1 重估
+
+    返回 (has_event, message)。无事件或无需提示返回 (False, "")。
+    """
+    import math
+    import re as _re
+
+    try:
+        sys.path.insert(0, _TOOLS_DIR)
+        from event_calendar import get_upcoming_events
+        from scanner.volatility import load_iv_history, _extract_variety, latest_healthy_iv
+    except Exception as exc:
+        return False, f"⚠️ 事件检查不可用：{exc}"
+
+    # 品种码：卖腿 "CZCE.CF701P16400" → "cf"
+    sell_leg = cfg.get("sell_leg", "")
+    vcode = _extract_variety(sell_leg)
+    if not vcode:
+        return False, ""
+
+    # 未来2天事件（跳过到期）
+    try:
+        events = [e for e in get_upcoming_events(days=2, varieties=[vcode])
+                  if e.get("category") != "expiry"
+                  and e.get("impact") in ("high", "medium")]
+    except Exception:
+        return False, ""
+
+    if not events:
+        return False, ""
+
+    # 事件预期波动：IV × √(1/242) × 2（单日2σ，取品种最新健康合约）
+    iv_hist = load_iv_history()
+    hv_info, _ = latest_healthy_iv(iv_hist, vcode)
+    if not hv_info or hv_info.get("iv_est") is None:
+        return True, f"⚠️ [{vcode}] 有事件（{events[0]['title']}）但无 IV 数据，无法算缓冲。"
+
+    iv = hv_info["iv_est"]
+    exp_move = iv * math.sqrt(1 / 242) * 2
+
+    # 卖腿行权价：卖腿 "CZCE.CF701P16400" → 16400
+    sell_strike = None
+    m = _re.search(r"[CP](\d+(?:\.\d+)?)$", sell_leg)
+    if m:
+        sell_strike = float(m.group(1))
+
+    # 无期货价或卖腿行权价 → 只报事件+预期波动，不做缓冲判断
+    if futures_price is None or sell_strike is None or futures_price <= 0:
+        return True, f"有事件 {events[0]['title']}，IV={iv*100:.1f}% 单日2σ={exp_move*100:.2f}%（缓冲判断需期货价）"
+
+    # 缓冲（卖 Put：缓冲 = 期货在卖腿之上多少；卖 Call 同式看距离）
+    buffer_pct = abs(futures_price - sell_strike) / futures_price
+    one_sigma = exp_move / 2  # 2σ → 1σ
+
+    if buffer_pct > exp_move:
+        action = "✅ 缓冲 > 2σ，事件打不穿，持有"
+    elif buffer_pct < one_sigma:
+        action = "⛔ 缓冲 < 1σ，D-0 建议平仓"
+    else:
+        action = "⚠️ 1σ≤缓冲≤2σ，缩仓减半（多手生效）+ D-1 重估"
+
+    return True, (f"事件 {events[0]['title']}：缓冲 {buffer_pct*100:.1f}% vs 预期2σ {exp_move*100:.2f}%"
+                  f" → {action}")
+
+
 def dry_run(cfg):
     """验证配置，不实际连接"""
     print("🔍 配置验证：")
@@ -160,6 +239,10 @@ def main():
         triggered = check_once(cfg)
         if not triggered and not quiet:
             print("   ⏳ 未触发止盈。")
+        # #14 事件缓冲检查（只报不平，非止盈检查的一部分）
+        has_ev, ev_msg = check_event_buffer(cfg)
+        if has_ev and not quiet:
+            print(f"   📅 {ev_msg}")
         return
 
     # ── 连续模式（手动启动）──
@@ -178,12 +261,33 @@ def main():
     sell_quote = api.get_quote(cfg["sell_leg"])
     buy_quote = api.get_quote(cfg["buy_leg"])
 
+    # #14 事件缓冲检查：从卖腿派生期货合约（CZCE.CF701P16400 → CZCE.CF701），拉期货价
+    fut_quote = None
+    import re as _re
+    _fm = _re.match(r"([A-Za-z]+\.[A-Za-z]+)", cfg["sell_leg"])
+    if _fm:
+        try:
+            fut_quote = api.get_quote(_fm.group(1))
+        except Exception:
+            fut_quote = None
+
     alerted = False
     last_net = None
+    ev_last_report = None  # 事件检查：只在一轮报告一次（有事件变化才重报）
 
     try:
         while True:
             api.wait_update()
+
+            # #14 事件缓冲检查（只报不平；无事件返回 False 不打扰）
+            try:
+                fut_price = fut_quote.last_price if fut_quote else None
+                has_ev, ev_msg = check_event_buffer(cfg, futures_price=fut_price)
+                if has_ev and ev_msg != ev_last_report:
+                    print(f"\n📅 {ev_msg}\n")
+                    ev_last_report = ev_msg
+            except Exception:
+                pass
 
             sell_ask = sell_quote.ask_price1
             buy_bid = buy_quote.bid_price1

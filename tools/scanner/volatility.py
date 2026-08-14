@@ -59,6 +59,33 @@ def load_iv_history() -> dict:
     return hist
 
 
+def latest_healthy_iv(iv_hist: dict, vcode: str):
+    """选某品种 date+time 最新且盘口健康的合约信息（换月防污染 #16）。
+
+    iv_hist: load_iv_history() 结果 {contract: info}
+    无健康数据时回退最新一条并返回 is_healthy=False（调用方标 ⚠️失真）。
+    Returns: (info_or_None, is_healthy)
+    """
+    best_any, best_key = None, ""
+    best_ok, ok_key = None, ""
+    for contract, info in iv_hist.items():
+        if _extract_variety(contract) != vcode:
+            continue
+        key = (info.get("date", ""), info.get("time", ""))
+        if best_any is None or key > best_key:
+            best_any, best_key = info, key
+        ok = info.get("liquidity_ok", "1") not in ("0", "False")
+        try:
+            sp = float(info.get("spread_pct", 0) or 0)
+        except (ValueError, TypeError):
+            sp = 0.0
+        if ok and sp <= 10 and (best_ok is None or key > ok_key):
+            best_ok, ok_key = info, key
+    if best_ok is not None:
+        return best_ok, True
+    return best_any, False
+
+
 def load_all_iv_rows() -> List[dict]:
     """读 iv_history.csv 全部行 → [{contract, iv_est, dte, date, ...}]"""
     csv_path = os.path.join(_REPO_ROOT, "data", "iv_history.csv")

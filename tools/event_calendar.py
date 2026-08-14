@@ -46,7 +46,7 @@ class CalendarEvent:
     impact: str            # "high" | "medium" | "low"
     category: str          # "report" | "data" | "weather" | "policy" | "expiry"
     description: str       # 一句话说明
-    expected_move_pct: float  # 历史平均波动幅度(%)
+    estimated_move_pct: float  # ⚠️常识估算，非实测，禁用于交易判断（7/27 数据诚实约束，8/14 核实无数据源）
     best_strategy: str     # "straddle" | "directional" | "ratio"
     routine: bool = True   # True=例行(已消化) False=非例行(意外·不可预知)
     time_edt: str = ""     # 美东发布时间 "14:00" / "10:30" 等，空=不适用
@@ -78,7 +78,7 @@ class OngoingEvent:
     impact: str
     description: str
     best_strategy: str
-    expected_move_pct: float
+    estimated_move_pct: float  # ⚠️常识估算，非实测（与 CalendarEvent 同约束）
     started: str  # 开始日期
 
 ONGOING_EVENTS = [
@@ -89,6 +89,9 @@ ONGOING_EVENTS = [
 # ═══════════════════════════════════════════
 # 2026 年事件日历
 # ═══════════════════════════════════════════
+# ⚠️ 数据诚实（8/14）：所有 estimated_move_pct 均为常识估算，无历史数据源/统计口径/回测。
+#    禁止用于交易判断（进/离场、仓位、缓冲比较）。真正的事件-波动库 → S2 待办。
+#    已有 IV 数据时优先用 volatility.expected_move_pct()（IV×√(DTE/365)，可追溯）。
 
 EVENTS_2026 = [
     # ── 月度报告类 ──
@@ -288,7 +291,7 @@ def resolve_recurring_events(events: List[CalendarEvent], from_date: date, days:
                             impact=ev.impact,
                             category=ev.category,
                             description=ev.description,
-                            expected_move_pct=ev.expected_move_pct,
+                            estimated_move_pct=ev.estimated_move_pct,
                             best_strategy=ev.best_strategy,
                             time_edt=ev.time_edt,
                         ))
@@ -309,7 +312,7 @@ def resolve_recurring_events(events: List[CalendarEvent], from_date: date, days:
                         impact=ev.impact,
                         category=ev.category,
                         description=ev.description,
-                        expected_move_pct=ev.expected_move_pct,
+                        estimated_move_pct=ev.estimated_move_pct,
                         best_strategy=ev.best_strategy,
                         time_edt=ev.time_edt,
                     ))
@@ -346,7 +349,7 @@ def get_upcoming_events(from_date: Optional[date] = None, days: int = 7,
             "impact": oe.impact,
             "category": "geo",
             "description": oe.description,
-            "expected_move_pct": oe.expected_move_pct,
+            "estimated_move_pct": oe.estimated_move_pct,
             "best_strategy": oe.best_strategy,
             "urgency": "🔴 持续中",
         })
@@ -376,7 +379,7 @@ def get_upcoming_events(from_date: Optional[date] = None, days: int = 7,
                 "category": ev.category,
                 "routine": getattr(ev, 'routine', True),
                 "description": ev.description,
-                "expected_move_pct": ev.expected_move_pct,
+                "estimated_move_pct": ev.estimated_move_pct,
                 "best_strategy": ev.best_strategy,
                 "time_edt": ev.time_edt,
                 "time_bjt": edt_to_bjt(ev.time_edt),
@@ -417,7 +420,7 @@ def print_events(events: List[dict]):
 
         print(f"\n  {urgency_icon} {days_str:>4} │ {impact_bar} {ev['title']}{time_display}")
         print(f"         │ 品种: {varieties_str}")
-        print(f"         │ 策略: {strategy_icon} {ev['best_strategy']}  |  历史波动: ±{ev['expected_move_pct']}%")
+        print(f"         │ 策略: {strategy_icon} {ev['best_strategy']}  |  预期波幅(常识估算): ±{ev['estimated_move_pct']}%")
         print(f"         │ {ev['description']}")
 
     print(f"\n{'─'*80}")
