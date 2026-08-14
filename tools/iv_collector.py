@@ -600,7 +600,7 @@ def _run_premarket_check(target_vcodes):
 
 
 # ── watch 模式的采集时点 ──
-WATCH_TIMES = [("09:30", "morning"), ("14:50", "afternoon")]
+WATCH_TIMES = [("09:15", "morning"), ("09:30", "morning"), ("14:50", "afternoon")]
 
 def _collect_retry(vcode, vinfo, attempts=2, delay=2.0):
     """collect_variety 失败重试（sina 限流/断流兜底）。"""
@@ -713,10 +713,10 @@ def _run_one_collection(target, window_label):
         fieldnames = list(rows[0].keys())
 
     if file_exists:
-        new_keys = {(r['date'], r['variety'], r.get('window', '')) for r in rows}
+        new_keys = {(r['date'], r['variety'], r.get('time', '')) for r in rows}
         with open(OUTPUT_FILE, "r", encoding="utf-8") as f:
             all_rows = list(csv.DictReader(f))
-        deduped = [r for r in all_rows if (r['date'], r['variety'], r.get('window', '')) not in new_keys]
+        deduped = [r for r in all_rows if (r['date'], r['variety'], r.get('time', '')) not in new_keys]
         with open(OUTPUT_FILE, "w", newline="", encoding="utf-8") as f:
             writer = csv.DictWriter(f, fieldnames=fieldnames)
             writer.writeheader()
@@ -750,18 +750,18 @@ def main():
                         choices=["morning", "afternoon", "night"],
                         help="采集窗口标签。不指定时按当前时间自动判定")
     parser.add_argument("--watch", action="store_true",
-                        help="常驻模式：盘前启动一次，自动在 09:30 + 14:50 各采一次")
-    parser.add_argument("--watch-times", type=str, default="09:30,14:50",
-                        help="--watch 的采集时点（逗号分隔 HH:MM），默认 09:30,14:50")
+                        help="常驻模式：盘前启动一次，自动在 09:15 + 09:30 + 14:50 各采一次")
+    parser.add_argument("--watch-times", type=str, default="09:15,09:30,14:50",
+                        help="--watch 的采集时点（逗号分隔 HH:MM），默认 09:15,09:30,14:50")
     args = parser.parse_args()
 
     target = [v.strip() for v in args.variety.split(",")]
 
     if args.watch:
         # 解析时点
-        if args.watch_times != "09:30,14:50":
-            custom = [(t.strip(), "morning" if i == 0 else "afternoon")
-                      for i, t in enumerate(args.watch_times.split(","))]
+        if args.watch_times != "09:15,09:30,14:50":
+            custom = [(t.strip(), "morning" if t.strip() < "12:00" else "afternoon")
+                      for t in args.watch_times.split(",")]
         else:
             custom = list(WATCH_TIMES)
 

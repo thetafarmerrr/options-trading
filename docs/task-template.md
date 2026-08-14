@@ -21,25 +21,22 @@
 
 ---
 
-| # | 做什么 | 具体操作 |
-|---|--------|---------|
-| ☀️ | **英语·四步**（盘前 8:00）| ①视频：打开 Mike 播放列表https://youtube.com/playlist?list=PLPVve34yolHY43YaBegHMzN9WjrTnQfFr 从上次停的地方继续 1 集。看画面+字幕抓大意→张嘴跟读不停。不重播不查词。②挖矿：抓 3 个整句，追加到 `glossary.md` 底部 `## 句型库`。格式：`- 整句  （来源）`。③炸弹：张嘴 90 秒说刚看的内容——不停、不改、不查词。录音→语音转文字→瞥一眼差异。④笔译：把昨天的市场结论翻译成英文 2-3 句（当天 Scanner 还没跑，用昨天的） |
-| 1 | **Scanner** | `cd ~/Documents/AIcode/gold_option_tools && python3 -m tools.scanner.main`。看输出 [EXEC] 部分：有信号→复制出来，进六步进场（monitoring-rules.md 第三节）；无信号→输出末尾会提示操作规程，记下干旱天数 |
-| 1b | **纸面挑信号** | Scanner 输出的 PAPER 区（买方价差/跨式/单腿），挑 1-2 个记到 `docs/paper-tracker.md`。**判据三条**：① IV 分位低（P30↓ 买方便宜）② 盈亏比≥5:1 ③ 近期事件/趋势配合。按星级（⭐~⭐⭐⭐）记一行。不挑也行——写"今日纸面无亮点"。15 秒。周六复盘回看 |
-| 2 | **IV 全天·常驻** | 盘前启动一次：`python3 tools/iv_collector.py --watch`。自动在 09:30 + 14:50 各采一次，常驻到下午采集完退出。终端看实时输出，事后翻 `tail -80 data/iv_collector_watch.log`。每个品种五条打分——≥3 条有利=可做卖方；≥3 条不利=今天不交易。买方视角：哪些品种 IV 分位 <30%→买方黄金窗口。下午对比早盘变化写进 journal 一句。⚠️ 收盘后部分品种无数据（akshare 断流），14:50 有足够 buffer |
-| 2c | **深虚 OTM 采集**（后台常驻） | **盘前启动一次**：`python3 tools/deep_otm_collector.py`。全天自动 8 时点采集→`data/deep_otm_trading.csv`。收尾时确认两文件有今日数据：`wc -l data/deep_otm_trading.csv data/deep_otm_eod.csv`。换月时脚本自动 discover，不需手动干预。 |
-| 2d | **IV 数据健康** | 收尾时扫一眼：`python3 -c "import csv; rows=list(csv.DictReader(open('data/iv_history.csv'))); dates=sorted(set(r['date'] for r in rows)); print(f'最新: {dates[-1]}, 天数: {len(dates)}')"`。确认今日 window 有 morning+afternoon 各一条。 |
-| 3 | **Drill B**（价差判断） | `python3 tools/drill_system.py B`。每天打底。报正确率和速度 |
-| 3b | **Drill 轮转 ×4** | `python3 tools/drill_system.py <模块>`。每天 4 个模块（B 之外），约 20 分钟。**周一** E+G+I+A | **周二** E+C+H+I | **周三** E+G+D+J | **周四** E+C+H+F | **周五** E+G+D+A | **周六** G+D+C+J | **周日** D+E+H+F。报分数。B+4 合计 25 分钟 |
-| 3c | **D-Drill** | `python3 tools/d_drill.py`。42 题。答「做/不做」+一句原因（写规则内容不是编号）。**每题选之前问「反证？」**——Ne 模式匹配抢在 Ti 验证之前 = INTP 第一漏洞。不跳这步 |
-| 4a | **Sinclair A**（问题驱动） | 带一个今天 Scanner 碰到的问题找教练。教练把问题压缩成一句话 → 你翻书定位到那一页 → 读到答案发回来 → 教练接上今天的信号拆解。**不从头读、不读 60 分钟**——每次只读能回答当前问题的那一段。覆盖 Ch3-6。读完在 journal 写：读到的概念 + 今天哪个信号验证了它 |
-| 4e | **Sinclair B**（日志倒灌·一三五） | 教练读近 3 天 journal→挑一个决策→搜 PDF 确认→指页码（Ch7-12）。你翻到那页读 2-3 页→回来报告对应关系。周三只跑 B 不跑 A。进度表在 `memory/quant-plan-state.md` §Sinclair B |
-| 4b | **Douglas** | 打开《Trading in the Zone》读 1 段（不要多）。读完写一句话：「今天交易/决策里有没有这个心理？」。有就写，没有就写"今日无关" |
-| 4c | **翻文档**（4 min） | 只翻不读，不写笔记，2 分钟后关。目的=知道东西在哪，不背。轮换表：**周一** monitoring-rules §零~一(IV-HV+三档) + mistakes 最新 5 条。**周二** glossary 最近 20 条 + monitoring-rules §三~六(进场+离场+禁止)。**周三** monitoring-rules §B(买方三条件+事件映射) + paper-tracker。**周四** mistakes 全部 + glossary 最近 20 条。**周五** monitoring-rules 速查表(§500 卖Put/Call速查) + paper-tracker |
-| 4d | **身体**（20 min） | Sinclair+Douglas 完成后起身。壶铃 S&S（摇摆×100 + 土耳其起立×10），壶铃到货前徒手三样（深蹲×20 + 俯卧撑×10 + 平板 60s）×3 轮。不改动作不改顺序——零选择。下午 journal 写清醒度 1-5 |
-| 5 | **影响力** | Scanner+IV 跑完→立刻检查有无可发。有→60 秒内发，不发就没了。收盘 IV 有额外发现→当天第二条（日上限 ≤2）。没料→过。5 分钟/条。格式：1-2 句中文 + 数据点，不标题党。Twitter 互动：只回复别人对你的回复，≤1 条/天，不主动刷存在感 |
-| 5b | **视频脚本** | 教练读昨日 `journal/YYYY-MM-DD.md` → 生成 90s 视频脚本（钩子+三段展开+结尾）。用户拿脚本录视频——不停、不改、不重录。录完存手机，不回看。**只录不发**——素材积累。格式：1 句天花板（今天最大认知）+ 发生了什么 + 我怎么想的 + 可复用规则 |
-| 6 | **收尾** | ① `python3 tools/daily_quiz.py` 3 题验收→② journal 底部写两行：**今天我有没有主动放弃的收益机会？（包括没去争取的）怕麻烦/回避少赚了吗？**→③ 训练分数、Scanner结论写进 `journal/YYYY-MM-DD.md`→④ `git add -A && git commit -m "YYYY-MM-DD" && git push` |
+| # | 时段 | 做什么 | 具体操作 |
+|---|------|--------|---------|
+| ☀️ | 8:00-8:25 | **英语·四步**（盘前清醒期）| ①视频：打开 Mike 播放列表https://youtube.com/playlist?list=PLPVve34yolHY43YaBegHMzN9WjrTnQfFr 从上次停的地方继续 1 集。看画面+字幕抓大意→张嘴跟读不停。不重播不查词。②挖矿：抓 3 个整句，追加到 `glossary.md` 底部 `## 句型库`。格式：`- 整句  （来源）`。③炸弹：张嘴 90 秒说刚看的内容——不停、不改、不查词。录音→语音转文字→瞥一眼差异。④笔译：把昨天的市场结论翻译成英文 2-3 句（当天 Scanner 还没跑，用昨天的）。**放盘前原因：张嘴需脑力+勇气，清醒期黄金** |
+| 0 | 8:25-8:45 | **盘前启动** | ① `python3 tools/iv_collector.py --watch`（常驻到 14:50 自动三采：9:15+9:30+14:50）② `python3 tools/deep_otm_collector.py`（后台 8 时点）③ `python3 -m tools.scanner.main` ——**盘前基线：只看关注列表，不作决策**。盘前实时盘口=昨收快照+盘口未稳（08:48 类脏数据），决策等 9:15 采完 |
+| 0b | 8:45-9:00 | **轻量清空** | Douglas（读 1 段+写一句「今天有没有这个心理」）+ 翻文档 4 min（轮换表见下）——不依赖数据，盘前顺手清空，给下午减负 |
+| 1 | 9:15-9:30 | **开盘决策窗口** | **9:15 iv_collector 自动采完 → 重新执行 `python3 -m tools.scanner.main` → 用新输出决策**（不用盘前那次输出——盘前是脏数据源）。有 [EXEC]→复制出来，进六步进场（monitoring-rules.md 第三节）；无信号→记干旱天数。**这是真正的决策锚点**——8:25 盘前基线不作决策依据 |
+| 1b | 9:00-9:30 | **纸面挑信号** | Scanner PAPER 区（买方价差/跨式/单腿），挑 1-2 个记到 `docs/paper-tracker.md`。**判据三条**：① IV 分位低（P30↓ 买方便宜）② 盈亏比≥5:1 ③ 近期事件/趋势配合。按星级（⭐~⭐⭐⭐）记一行。15 秒。周六复盘回看 |
+| 3 | 9:30-10:15 | **Drill B**（决策后第一个·易拖优先）| `python3 tools/drill_system.py B`。每天打底。报正确率和速度。**位置原因：重复肌肉不需要脑力巅峰，放盘前是浪费清醒；易拖项锚定决策窗口后第一个，防拖没** |
+| 3b | 9:30-10:15 | **Drill 轮转 ×4** | `python3 tools/drill_system.py <模块>`。每天 4 个模块（B 之外），约 20 分钟。**周一** E+G+I+A | **周二** E+C+H+I | **周三** E+G+D+J | **周四** E+C+H+F | **周五** E+G+D+A | **周六** G+D+C+J | **周日** D+E+H+F。报分数。B+4 合计 25 分钟 |
+| 3c | 9:30-10:15 | **D-Drill** | `python3 tools/d_drill.py`。42 题。答「做/不做」+一句原因（写规则内容不是编号）。**每题选之前问「反证？」**——Ne 模式匹配抢在 Ti 验证之前 = INTP 第一漏洞。不跳这步 |
+| 4a | 10:15-11:00 | **Sinclair A**（问题驱动） | 带今天 Scanner 的问题找教练。教练把问题压缩成一句话 → 翻书定位到那一页 → 读到答案发回来 → 教练接上今天信号拆解。**不从头读、不读 60 分钟**——只读能回答当前问题的那一段。覆盖 Ch3-6。读完 journal 写：概念 + 今天哪个信号验证了它。**位置原因：A 依赖当天 Scanner 问题，9:00 后才来** |
+| 4e | 10:15-11:00 | **Sinclair B**（日志倒灌·一三五） | 教练读近 3 天 journal→挑一个决策→搜 PDF 确认→指页码（Ch7-12）。翻到那页读 2-3 页→回来报告对应关系。周三只跑 B 不跑 A。进度表在 `memory/quant-plan-state.md` §Sinclair B |
+| 2 | 14:50 | **IV 收盘自动** | --watch 自动采。⚠️ 收盘后部分品种断流，14:50 有 buffer。买方视角：IV 分位 <30% 品种=黄金窗口，对比早盘变化写进 journal 一句 |
+| 4d | 15:00-15:30 | **身体**（20 min） | 壶铃 S&S（摇摆×100 + 土耳其起立×10），壶铃到货前徒手三样（深蹲×20 + 俯卧撑×10 + 平板 60s）×3 轮。不改动作不改顺序——零选择。收盘后起身，把僵坐解开。journal 写清醒度 1-5 |
+| 5 | 15:30-16:00 | **影响力 + 视频脚本** | Scanner+IV 跑完→检查有无可发，有→60 秒内发，不发就没了。收盘 IV 有发现→当天第二条（日上限 ≤2）。5 分钟/条，格式 1-2 句中文+数据点。视频脚本：教练读昨日 `journal/YYYY-MM-DD.md` → 90s 脚本（钩子+三段+结尾），用户只录不发 |
+| 6 | **18:00 硬截止** | **收尾** | ① `python3 tools/daily_quiz.py` 3 题验收→② journal 底部写两行：**今天我有没有主动放弃的收益机会？（包括没去争取的）怕麻烦/回避少赚了吗？**→③ 训练分数、Scanner 结论写进 `journal/YYYY-MM-DD.md`→④ **IV 数据健康**：`python3 -c "import csv; rows=list(csv.DictReader(open('data/iv_history.csv'))); dates=sorted(set(r['date'] for r in rows)); print(f'最新: {dates[-1]}, 天数: {len(dates)}')"` 确认今日有 morning+afternoon→⑤ 确认 deep_otm 两文件有今日数据 `wc -l data/deep_otm_trading.csv data/deep_otm_eod.csv`→⑥ `git add -A && git commit -m "YYYY-MM-DD" && git push`。**18:00 前必须 commit，防"再跑一次 scanner"拖没闭环** |
 
 > 特殊行——干旱 ≥3 天时插入：
 | * | **无信号日操作** | 打开 `trade_log.md`，随机抽一笔历史交易，重读进场离场逻辑。问自己：现在回头看当时该做吗？写一行答案进 journal。或打开 `docs/tail-events.md` 随机选一个事件，用今天的 IV 数据推演如果今天发生会怎样 |

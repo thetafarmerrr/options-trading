@@ -51,6 +51,8 @@ def load_iv_history() -> dict:
                     "dte": dte,
                     "date": row.get("date", ""),
                     "time": row.get("time", ""),
+                    "liquidity_ok": row.get("liquidity_ok", "1"),
+                    "spread_pct": row.get("spread_pct", ""),
                 }
             except (ValueError, TypeError):
                 continue
