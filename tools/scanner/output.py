@@ -338,7 +338,7 @@ class Reporter:
         from .config import VARIETIES
 
         print(f"  ┌─ 📊 全品种 IV-HV 一览（iv_history 最新）")
-        print(f"  │ {'品种':6s}  {'IV-HV':>8s}  {'5dΔ':>7s}  方向    标注")
+        print(f"  │ {'品种':6s}  {'IV-HV':>8s}  {'5dΔ':>7s}  方向    标注      IV数据点")
         for row in panel_data:
             vc = row["variety"]
             name = VARIETIES.get(vc, {}).get("name", vc)
@@ -348,8 +348,9 @@ class Reporter:
             d5d_str = f"{d5d*100:+.1f}pp" if d5d is not None else "N/A"
             direction = row.get("direction", "—")
             notes = row.get("notes", "")
-            print(f"  │ {name:6s}  {sp_str:>8s}  {d5d_str:>7s}      {direction}         {notes}")
-        print(f"  └─ 5dΔ = IV 近 5 日变动。→ 价差扩大 ← 收敛 — 持平\n")
+            point = row.get("iv_point") or "—"
+            print(f"  │ {name:6s}  {sp_str:>8s}  {d5d_str:>7s}      {direction}         {notes:<6s}  @{point}")
+        print(f"  └─ 5dΔ = IV 近 5 日变动。数据点 = 该品种最新健康 IV 的日期时间（旧日期/⚠️失真 = 盘前快照，决策前 9:15 重跑）\n")
 
     # ── 保存日志 ──
 

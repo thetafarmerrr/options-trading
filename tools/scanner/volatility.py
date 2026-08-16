@@ -64,6 +64,7 @@ def latest_healthy_iv(iv_hist: dict, vcode: str):
 
     iv_hist: load_iv_history() 结果 {contract: info}
     无健康数据时回退最新一条并返回 is_healthy=False（调用方标 ⚠️失真）。
+    健康 = liquidity_ok 且 spread≤10%。
     Returns: (info_or_None, is_healthy)
     """
     best_any, best_key = None, ""
