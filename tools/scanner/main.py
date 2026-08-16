@@ -105,6 +105,7 @@ def _build_iv_hv_panel(iv_hist: dict, iv_hist_rows: list, target: list) -> list:
             "delta_5d": d5d,
             "direction": direction,
             "notes": notes,
+            "iv_point": f"{hv_info['date'][5:]} {hv_info['time'][:5]}" if hv_info else None,
         })
 
     return panel
