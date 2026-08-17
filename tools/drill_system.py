@@ -1049,7 +1049,7 @@ def run_drill_e(quick=False):
                          if chain["prices"][i]["bid"] > 0 and chain["prices"][i]["ask"] > 0
                          and (chain["prices"][i]["ask"] - chain["prices"][i]["bid"]) / chain["prices"][i]["bid"] < 0.10]
 
-        # 注入可交易信用价差对（遍历所有配对，只要存在一个合法就注入）
+        # 收集所有可交易信用价差对（8/17 修正：不再取第一档 break，多个合法对都算答案）
         if len(valid_strikes) >= 2:
             sorted_by_strike = sorted(valid_strikes, key=lambda x: x[1], reverse=True)
             for i in range(len(sorted_by_strike)):
@@ -1062,10 +1062,8 @@ def run_drill_e(quick=False):
                         cs_pairs.append({
                             "sell_strike": high[1], "buy_strike": low[1],
                             "net_premium": round(sell_bid - buy_ask, 1),
+                            "strike_width": strike_width,
                         })
-                        break
-                if cs_pairs:
-                    break
 
         print(f"\n  [{round_num}/{n_rounds}] {chain['product']} 期货≈{chain['futures']}")
         col_fmt = f"  {{:>6}} │ {{:>8}} {{:>8}} {{:>8}}"
@@ -1108,11 +1106,13 @@ def run_drill_e(quick=False):
                 user_net = 0
 
         has_cs = len(cs_pairs) > 0
-        expected_pair = (cs_pairs[0]["sell_strike"], cs_pairs[0]["buy_strike"]) if has_cs else None
-        expected_net = cs_pairs[0]["net_premium"] if has_cs else 0
-
-        pair_ok = user_pair == expected_pair
-        net_ok = abs(user_net - expected_net) < 0.15 if has_cs else True
+        # 用户在合法集合里的那一对（8/17：多个合法对都算对，净利用用户选的那对）
+        user_pair_obj = None
+        if user_pair:
+            user_pair_obj = next((p for p in cs_pairs
+                                  if p["sell_strike"] == user_pair[0] and p["buy_strike"] == user_pair[1]), None)
+        pair_ok = user_pair_obj is not None
+        net_ok = abs(user_net - user_pair_obj["net_premium"]) < 0.15 if pair_ok else True
 
         if not has_cs:
             if user_pair is None:
@@ -1133,13 +1133,27 @@ def run_drill_e(quick=False):
         elif pair_ok and net_ok:
             correct += 1
             score += 3 if elapsed < 20000 else (2 if elapsed < 30000 else 1)
-            print(f"  ✅ 全对！卖P{expected_pair[0]}/买P{expected_pair[1]} 净收 ¥{expected_net} ({elapsed/1000:.1f}s)")
+            # 8/17：多个合法对时提示最优（净收/宽度比最高），教选腿不惩罚合理替代
+            best = max(cs_pairs, key=lambda p: p["net_premium"] / p["strike_width"]) if len(cs_pairs) > 1 else None
+            suffix = ""
+            if best:
+                bp = (best["sell_strike"], best["buy_strike"])
+                up = (user_pair_obj["sell_strike"], user_pair_obj["buy_strike"])
+                if bp != up:
+                    suffix = f"。提示：最优是卖P{best['sell_strike']}/买P{best['buy_strike']}（净收/宽度比最高）"
+            print(f"  ✅ 正确！卖P{user_pair_obj['sell_strike']}/买P{user_pair_obj['buy_strike']} 净收 ¥{user_pair_obj['net_premium']}{suffix} ({elapsed/1000:.1f}s)")
         elif pair_ok and not net_ok:
-            print(f"  ⚠️ 行权价对正确，但净利算错。你算¥{user_net}，正确¥{expected_net}")
-            print(f"     卖bid {cs_pairs[0]['sell_strike']}P, 买ask {cs_pairs[0]['buy_strike']}P")
+            print(f"  ⚠️ 行权价对正确，但净利算错。你算¥{user_net}，正确¥{user_pair_obj['net_premium']}")
+            print(f"     卖bid {user_pair_obj['sell_strike']}P, 买ask {user_pair_obj['buy_strike']}P")
             score += 1
         else:
-            print(f"  ❌ 正确答案：卖P{expected_pair[0]}/买P{expected_pair[1]} 净收 ¥{expected_net}")
+            # 用户选的腿不在合法集合（bid≤ask / 宽度超限 / 价差过宽），或答'无'漏了机会
+            best = max(cs_pairs, key=lambda p: p["net_premium"] / p["strike_width"])
+            if user_pair is None:
+                print(f"  ❌ 链面有 {len(cs_pairs)} 个可交易信用价差，答'无'漏了机会。")
+            else:
+                print(f"  ❌ 你选的 {user_pair[0]}/{user_pair[1]} 不在可交易对里（需卖bid>买ask 且宽度≤期货5%）。")
+            print(f"     合法示例（最优）：卖P{best['sell_strike']}/买P{best['buy_strike']} 净收 ¥{best['net_premium']}（净收/宽度比最高）")
             score += 0
 
         if round_num < n_rounds:
