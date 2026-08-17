@@ -619,7 +619,7 @@ def _run_one_collection(target, window_label):
     global _WINDOW_OVERRIDE
     _WINDOW_OVERRIDE = window_label
 
-    print(f"\n📊 iv_collector — {datetime.now().strftime('%Y-%m-%d %H:%M')} [{window_label}]")
+    print(f"\n📊 iv_collector — {datetime.now().strftime('%Y-%m-%d %H:%M')} [{_detect_window()}]")
     print(f"   品种: {', '.join(target)}")
     print()
 
@@ -804,12 +804,15 @@ def main():
                     total_collected += _run_one_collection(target, lbl)
                 break
 
-            # 等待到下一个时点
+            # 等待到下一个时点（轮询 30s，不用长 sleep）
+            # 8/17 bug：time.sleep 长睡被 macOS 系统休眠冻结，14:50 时点错过未触发。
+            # 轮询下系统唤醒后 30s 内必响应，最坏延迟 = 唤醒后 30s。
             th, tm = map(int, next_time.split(":"))
             target_dt = now.replace(hour=th, minute=tm, second=0, microsecond=0)
             wait_sec = (target_dt - now).total_seconds()
-            print(f"⏰ 下一个采集: {next_time} ({next_label})，等待 {int(wait_sec/60)} 分钟…")
-            _time.sleep(max(wait_sec, 1))
+            print(f"⏰ 下一个采集: {next_time} ({next_label})，等待 {int(wait_sec/60)} 分钟（每 30s 检查）…")
+            while datetime.now() < target_dt:
+                _time.sleep(30)
 
             total_collected += _run_one_collection(target, next_label)
             remaining = [(t, l) for t, l in remaining if t != next_time]

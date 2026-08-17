@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-deep_otm_collector.py — CTP MdApi 深虚期权 8 时点采集
+deep_otm_collector.py — 天勤(tqsdk) 深虚期权 8 时点采集
 ─────────────────────────────────────────────────────
 订阅沪金/豆粕/PTA 最虚 2-3 档 Call+Put，在袁永健 8 个决策时点
 自动保存 bid/ask/量快照到 CSV。积累 ≥6 个月后可用分位数。
@@ -8,11 +8,13 @@ deep_otm_collector.py — CTP MdApi 深虚期权 8 时点采集
 用法：
   python3 tools/deep_otm_collector.py --discover    # 发现深虚合约→写配置
   python3 tools/deep_otm_collector.py               # 订阅 + 8 时点采集
-  python3 tools/deep_otm_collector.py --check       # 检查 CTP 连接+合约是否可订阅
+  python3 tools/deep_otm_collector.py --check       # 检查天勤连接+合约是否可订阅
 
 原理：
-  CTP MdApi → SubscribeMarketData(合约列表) → OnRtnDepthMarketData 持续推送
+  天勤 tqsdk → TqApi.get_quote(合约) → wait_update 轮询快照
   → 在 8 个决策时点各存一次最新快照 → data/deep_otm_history.csv
+  8/17 换源：SimNow 无深虚盘口（m 全天 0、au 深虚空、ta 只有 last），
+  天勤有真实深虚行情且 78 合约并发 4.2s 全订阅、全有数据。
 """
 
 import os
@@ -26,7 +28,6 @@ import threading
 import argparse
 from datetime import datetime, date
 from pathlib import Path
-from openctp_ctp import mdapi
 
 # ═══════════════════════════════════════════════════════════════
 # 全局退出信号
@@ -61,6 +62,10 @@ AUTH_CODE = os.environ.get("CTP_AUTH_CODE", "")
 APP_ID = os.environ.get("CTP_APP_ID", "client_goldopt_1.0.0")
 MD_ADDR = os.environ.get("CTP_MD_ADDR", "tcp://140.206.167.53:53213")
 SYSTEM_INFO = f"macOS;goldopt/1.0.0;{APP_ID}"
+
+# 天勤行情源账号（8/17 换源后使用，monitor_stop 同源）
+TQ_USER = os.environ.get("TQ_USER", "")
+TQ_PASS = os.environ.get("TQ_PASS", "")
 
 # ═══════════════════════════════════════════════════════════════
 # 品种参数：标的价格 + 行权价间隔 + 虚值深度
@@ -166,6 +171,26 @@ def build_ctp_futures_code(vcode: str, yy: int, mm: int) -> str:
         cp="",
         strike="",
     )
+
+
+# 品种 → 天勤交易所前缀
+EXCHANGE_MAP = {"au": "SHFE", "m": "DCE", "ta": "CZCE"}
+
+
+def ctp_to_tq_code(code: str, vcode: str) -> str:
+    """CTP 合约代码 → 天勤代码（8/17 换源）。
+
+    DCE 必须带连字符，SHFE/CZCE 不带（8/17 实测 DCE.m2609C3400 报"不存在"）：
+      au2610C1512  → SHFE.au2610C1512
+      TA611P4800   → CZCE.TA611P4800
+      m2609C3400   → DCE.m2609-C-3400
+    """
+    ex = EXCHANGE_MAP.get(vcode, "")
+    if vcode == "m":
+        m = re.match(r"^([a-zA-Z]+)(\d{4})([CP])(\d+)$", code)
+        if m:
+            return f"DCE.{m.group(1)}{m.group(2)}-{m.group(3)}-{m.group(4)}"
+    return f"{ex}.{code}"
 
 def futures_price_fallback(vcode: str) -> float:
     """标的期货价兜底：优先 VARIETY_CONFIG.futures，否则 0（select_boundary 会空）。"""
@@ -359,22 +384,22 @@ def discover_contracts():
 
 
 # ═══════════════════════════════════════════════════════════════
-# CTP MdApi 采集
+# 天勤行情源（8/17 换源，替代 CTP MdApi）
 # ═══════════════════════════════════════════════════════════════
 
-class MdSpi(mdapi.CThostFtdcMdSpi):
-    """CTP 行情回调。"""
+class TqQuotes:
+    """天勤行情源（8/17 换源，替代 CTP MdSpi）。
+
+    保持对外接口：snapshots / underlying_prices / snap_lock / _opt_to_ul，
+    save_snapshot 与 8 时点逻辑无需改动。
+    数据获取：TqApi.get_quote 批量订阅 → refresh() 内 wait_update 轮询刷新。
+    """
 
     def __init__(self, underlying_map: dict = None):
-        super().__init__()
-        self.connected = False
-        self.logged_in = False
-        self.login_error = ""
         self.subscribed_count = 0
         self.sub_errors = []
-        self._cond = threading.Condition()
 
-        # 最新行情缓存: {InstrumentID: {bid, ask, ...}}
+        # 最新行情缓存: {ctp_code: {bid, ask, ...}}（与 MdSpi 同构）
         self.snapshots = {}
         self.snap_lock = threading.Lock()
 
@@ -383,150 +408,105 @@ class MdSpi(mdapi.CThostFtdcMdSpi):
         # 期权合约→标的期货映射: {option_ctp_code: futures_ctp_code}
         self._opt_to_ul = underlying_map or {}
 
-    def _signal(self, attr):
-        with self._cond:
-            setattr(self, attr, True)
-            self._cond.notify_all()
+        self.api = None          # TqApi 实例
+        self._quotes = {}        # {tq_symbol: Quote 对象}
+        self._code_to_tq = {}    # {option_ctp_code: tq_symbol}
+        self._ul_to_tq = {}      # {futures_ctp_code: tq_symbol}
 
-    def _wait(self, attr, timeout=20):
-        deadline = time.time() + timeout
-        with self._cond:
-            while not getattr(self, attr):
-                remaining = deadline - time.time()
-                if remaining <= 0:
-                    return False
-                self._cond.wait(timeout=remaining)
-        return True
+    @staticmethod
+    def _i(x) -> int:
+        """安全转 int（天勤无数据时可能返回 nan/None）。"""
+        try:
+            return int(float(x)) if x is not None and float(x) == float(x) else 0
+        except (ValueError, TypeError):
+            return 0
 
-    # ── 连接 ──
+    def connect(self, contracts: list, underlying_futures: dict = None) -> bool:
+        """连接天勤并批量订阅期权 + 标的期货。返回是否至少部分订阅成功。"""
+        if underlying_futures is None:
+            underlying_futures = UNDERLYING_FUTURES
+        if not TQ_USER or not TQ_PASS:
+            print("❌ .env 缺 TQ_USER/TQ_PASS，天勤凭据未配置")
+            return False
 
-    def OnFrontConnected(self):
-        print("✅ MdApi 前置连接成功 → 登录…")
-        req = mdapi.CThostFtdcReqUserLoginField()
-        req.BrokerID = BROKER_ID
-        req.UserID = USER_ID
-        req.Password = PASSWORD
-        self._api.ReqUserLogin(req, 0)
+        try:
+            from tqsdk import TqApi, TqAuth
+            print(f"🔗 连接天勤行情源…")
+            self.api = TqApi(auth=TqAuth(TQ_USER, TQ_PASS))
+        except Exception as e:
+            print(f"❌ 天勤连接失败: {e}")
+            return False
 
-    def OnFrontDisconnected(self, nReason):
-        reasons = {0x1001: "网络读失败", 0x1002: "网络写失败",
-                   0x2001: "心跳超时", 0x2002: "发送心跳失败", 0x2003: "收到错误报文"}
-        print(f"⚠️  MdApi 断开 (原因: {reasons.get(nReason, nReason)})")
-        self._signal("connected")
+        # 标的期货（天勤代码 = 交易所前缀 + CTP 代码）
+        for vcode, fut_code in underlying_futures.items():
+            tq = f"{EXCHANGE_MAP.get(vcode, '')}.{fut_code}"
+            self._ul_to_tq[fut_code] = tq
+            try:
+                self._quotes[tq] = self.api.get_quote(tq)
+                self.underlying_prices[fut_code] = 0.0
+                self.subscribed_count += 1
+            except Exception as e:
+                self.sub_errors.append(f"期货 {tq}: {str(e)[:60]}")
 
-    # ── 登录 ──
+        # 期权（DCE 需连字符格式）
+        codes = [c["ctp_code"] for c in contracts]
+        for c in contracts:
+            code = c["ctp_code"]
+            tq = ctp_to_tq_code(code, c["variety"])
+            self._code_to_tq[code] = tq
+            try:
+                self._quotes[tq] = self.api.get_quote(tq)
+                self.subscribed_count += 1
+            except Exception as e:
+                self.sub_errors.append(f"{code}: {str(e)[:60]}")
 
-    def OnRspUserLogin(self, pRsp, pRspInfo, nRequestID, bIsLast):
-        if pRspInfo and pRspInfo.ErrorID != 0:
-            self.login_error = f"[{pRspInfo.ErrorID}] {pRspInfo.ErrorMsg}"
-            print(f"❌ MdApi 登录失败: {self.login_error}")
-            self._signal("logged_in")
+        total = len(underlying_futures) + len(codes)
+        print(f"\n   订阅结果: {self.subscribed_count}/{total} 成功")
+        if self.sub_errors:
+            for err in self.sub_errors[:5]:
+                print(f"   {err}")
+        return self.subscribed_count > 0
+
+    def refresh(self):
+        """主循环轮询：wait_update 后用最新行情刷新 snapshots（与 MdSpi 同构）。"""
+        if self.api is None:
             return
-        print(f"✅ MdApi 登录成功！交易日: {pRsp.TradingDay}")
-        self._signal("logged_in")
-
-    # ── 行情推送 ──
-
-    def OnRtnDepthMarketData(self, pDepth):
-        """每 500ms 推送一次。缓存最新数据 + 标的价格 + 时间戳。"""
-        if not pDepth or not pDepth.InstrumentID:
-            return
-
-        instr = pDepth.InstrumentID
-
-        def _v(x):
-            """过滤无效值（CTP 无数据返回 DBL_MAX）。"""
-            return x if (x > 0 and x < 1e10) else 0.0
-
-        tick_time = f"{pDepth.UpdateTime}.{pDepth.UpdateMillisec:03d}"
-        last = _v(pDepth.LastPrice)
-
-        # 检测是否是标的期货
-        if instr in self.underlying_prices or instr in UNDERLYING_FUTURES.values():
-            if last > 0:
-                self.underlying_prices[instr] = last
-            return  # 标的期货不存入 snapshots
-
-        snap = {
-            "bid": _v(pDepth.BidPrice1),
-            "ask": _v(pDepth.AskPrice1),
-            "bid_vol": int(pDepth.BidVolume1) if pDepth.BidVolume1 > 0 else 0,
-            "ask_vol": int(pDepth.AskVolume1) if pDepth.AskVolume1 > 0 else 0,
-            "last": last,
-            "volume": int(pDepth.Volume) if pDepth.Volume > 0 else 0,
-            "oi": int(pDepth.OpenInterest) if pDepth.OpenInterest > 0 else 0,
-            "tick_time": tick_time,
-            "trading_day": pDepth.TradingDay,
-        }
+        self.api.wait_update(deadline=time.time() + 1)
         with self.snap_lock:
-            self.snapshots[instr] = snap
+            for code, tq in self._code_to_tq.items():
+                q = self._quotes.get(tq)
+                if q is None:
+                    continue
+                bid = float(q.bid_price1) if q.bid_price1 and q.bid_price1 > 0 else 0.0
+                ask = float(q.ask_price1) if q.ask_price1 and q.ask_price1 > 0 else 0.0
+                last = float(q.last_price) if q.last_price and q.last_price > 0 else 0.0
+                tick_time = ""
+                if q.datetime:
+                    s = str(q.datetime)
+                    tick_time = s.split(" ")[1] if " " in s else s
+                self.snapshots[code] = {
+                    "bid": bid,
+                    "ask": ask,
+                    "bid_vol": self._i(q.bid_volume1),
+                    "ask_vol": self._i(q.ask_volume1),
+                    "last": last,
+                    "volume": self._i(q.volume),
+                    "oi": self._i(q.open_interest),
+                    "tick_time": tick_time,
+                    "trading_day": str(q.datetime)[:10].replace("-", "") if q.datetime else "",
+                }
+            for fut_code, tq in self._ul_to_tq.items():
+                q = self._quotes.get(tq)
+                if q and q.last_price and q.last_price > 0:
+                    self.underlying_prices[fut_code] = float(q.last_price)
 
-    # ── 订阅回调 ──
-
-    def OnRspSubMarketData(self, pSpecificInstrument, pRspInfo, nRequestID, bIsLast):
-        if pRspInfo and pRspInfo.ErrorID != 0:
-            err = f"[{pRspInfo.ErrorID}] {pRspInfo.ErrorMsg} ({pSpecificInstrument.InstrumentID if pSpecificInstrument else '?'})"
-            self.sub_errors.append(err)
-            print(f"  ❌ 订阅失败: {err}")
-        else:
-            self.subscribed_count += 1
-            name = pSpecificInstrument.InstrumentID if pSpecificInstrument else "?"
-            print(f"  ✅ 订阅成功: {name}")
-
-    # ── 错误 ──
-
-    def OnRspError(self, pRspInfo, nRequestID, bIsLast):
-        if pRspInfo and pRspInfo.ErrorID != 0:
-            print(f"⚠️  MdApi 错误: [{pRspInfo.ErrorID}] {pRspInfo.ErrorMsg}")
-
-
-def connect_md(spi: MdSpi, contracts: list, underlying_futures: dict = None) -> tuple:
-    """连接 MdApi → 登录 → 批量订阅合约（期权 + 标的期货）。返回 (api, success)。"""
-    if underlying_futures is None:
-        underlying_futures = UNDERLYING_FUTURES
-
-    api = mdapi.CThostFtdcMdApi.CreateFtdcMdApi()
-    spi._api = api
-    api.RegisterSpi(spi)
-    api.RegisterFront(MD_ADDR)
-    api.Init()
-
-    print(f"🔗 连接行情前置: {MD_ADDR}")
-    print(f"   BrokerID: {BROKER_ID}  |  UserID: {USER_ID}")
-
-    if not spi._wait("logged_in", timeout=15):
-        print(f"\n❌ MdApi 登录超时: {spi.login_error}")
-        api.Release()
-        return None, False
-
-    # 先订阅标的期货（获取实时标的价格）
-    futures_codes = list(set(underlying_futures.values()))
-    print(f"\n📡 订阅 {len(futures_codes)} 个标的期货…")
-    for code in futures_codes:
-        api.SubscribeMarketData([code.encode()], 1)
-
-    # 批量订阅期权
-    codes = [c["ctp_code"] for c in contracts]
-    print(f"📡 订阅 {len(codes)} 个深虚期权…")
-    for code in codes:
-        api.SubscribeMarketData([code.encode()], 1)
-
-    # 等订阅回报
-    time.sleep(3.0)
-
-    total_subs = len(futures_codes) + len(codes)
-    ok = spi.subscribed_count
-    print(f"\n   订阅结果: {ok}/{total_subs} 成功")
-    if spi.sub_errors:
-        for err in spi.sub_errors[:5]:
-            print(f"   {err}")
-
-    if ok == 0:
-        print(f"\n❌ 所有合约订阅失败，无法采集")
-        api.Release()
-        return None, False
-
-    return api, True
+    def close(self):
+        if self.api is not None:
+            try:
+                self.api.close()
+            except Exception:
+                pass
+            self.api = None
 
 
 # ═══════════════════════════════════════════════════════════════
@@ -549,7 +529,7 @@ def _time_passed(now: datetime, target: str) -> bool:
     return current_minutes > target_minutes
 
 
-def save_snapshot(spi: MdSpi, contracts: list, time_slot: str, time_label: str,
+def save_snapshot(spi, contracts: list, time_slot: str, time_label: str,
                   output_path: Path = None, is_eod_proxy: int = 0):
     """保存当前所有订阅合约的最新行情到 CSV。
 
@@ -697,20 +677,21 @@ def run_collection(contracts: list, underlying_futures: dict = None,
     print(f"   时点: {', '.join(t for t, _ in SNAPSHOT_TIMES)}")
     print(f"   输出: {output_path}\n")
 
-    # ── 连接 MdApi ──
-    spi = MdSpi(underlying_map=opt_to_ul)
-    # 预填充 underlying_prices 的 key，方便 OnRtnDepthMarketData 判断
+    # ── 连接天勤 ──
+    spi = TqQuotes(underlying_map=opt_to_ul)
+    # 预填充 underlying_prices 的 key
     for ul_code in underlying_futures.values():
         spi.underlying_prices[ul_code] = 0.0
 
-    api, ok = connect_md(spi, contracts, underlying_futures)
+    ok = spi.connect(contracts, underlying_futures)
     if not ok:
         return
 
-    # ── 等待行情到达 ──
+    # ── 等待行情到达（天勤需 refresh 才填充 snapshots）──
     print("\n⏳ 等待行情推送…")
     wait_start = time.time()
     while time.time() - wait_start < 30:
+        spi.refresh()
         with spi.snap_lock:
             count = len(spi.snapshots)
         if count > 0:
@@ -730,7 +711,7 @@ def run_collection(contracts: list, underlying_futures: dict = None,
         now_str = now.strftime("%H:%M")
         save_snapshot(spi, contracts, now_str, "手动收盘", output_path)
         _save_eod(spi, contracts)
-        api.Release()
+        spi.close()
         return
 
     print(f"\n📋 待采集时点: {len(pending)} 个")
@@ -749,6 +730,14 @@ def run_collection(contracts: list, underlying_futures: dict = None,
         if now.hour >= 15 and now.minute >= 5:
             print(f"\n🛑 {now.strftime('%H:%M')} 已收盘，退出")
             break
+
+        # 刷新行情（天勤轮询）
+        try:
+            spi.refresh()
+        except Exception as e:
+            print(f"⚠️ [{time.strftime('%H:%M:%S')}] 行情刷新失败: {e}，3 秒后重试")
+            time.sleep(3)
+            continue
 
         # 检查是否有未保存的时点
         for time_slot, time_label in pending:
@@ -783,15 +772,15 @@ def run_collection(contracts: list, underlying_futures: dict = None,
                     total_rows += 1
     print(f"   今日累计: {total_rows} 行")
 
-    api.Release()
+    spi.close()
 
 
 # ═══════════════════════════════════════════════════════════════
-# 检查模式：快速验证 CTP 连接 + 合约可订阅
+# 检查模式：快速验证天勤连接 + 合约可订阅
 # ═══════════════════════════════════════════════════════════════
 
 def check_connection():
-    """快速检查 MdApi 连接 + 订阅是否可用。"""
+    """快速检查天勤连接 + 订阅是否可用（8/17 换源）。"""
     if not CONFIG_FILE.exists():
         print(f"❌ 配置文件不存在: {CONFIG_FILE}")
         print(f"   请先运行: python3 tools/deep_otm_collector.py --discover")
@@ -799,45 +788,34 @@ def check_connection():
 
     config = json.loads(CONFIG_FILE.read_text())
     contracts = config["contracts"]
+    underlying = config.get("underlying_futures", UNDERLYING_FUTURES)
     first_5 = contracts[:5]
 
-    print(f"🔍 检查模式：验证 CTP MdApi 连接…")
-    print(f"   测试合约: {len(first_5)} 个（{', '.join(c['ctp_code'] for c in first_5)}）")
+    print(f"🔍 检查模式：验证天勤连接…")
+    print(f"   测试: {len(first_5)} 个期权 + {len(underlying)} 个标的期货")
 
-    spi = MdSpi()
-    api = mdapi.CThostFtdcMdApi.CreateFtdcMdApi()
-    spi._api = api
-    api.RegisterSpi(spi)
-    api.RegisterFront(MD_ADDR)
-    api.Init()
-
-    if not spi._wait("logged_in", timeout=15):
-        print(f"❌ 登录失败: {spi.login_error}")
-        api.Release()
+    spi = TqQuotes()
+    ok = spi.connect(first_5, underlying)
+    if not ok:
+        print(f"❌ 天勤订阅失败")
+        if spi.sub_errors:
+            for e in spi.sub_errors[:5]:
+                print(f"   错误: {e}")
         return
-
-    # 订阅测试
-    for c in first_5:
-        api.SubscribeMarketData([c["ctp_code"].encode()], 1)
-
-    time.sleep(3.0)
-    print(f"\n   订阅: {spi.subscribed_count}/{len(first_5)} 成功")
-    if spi.sub_errors:
-        for e in spi.sub_errors:
-            print(f"   错误: {e}")
 
     # 等待行情
     time.sleep(5)
+    spi.refresh()
     with spi.snap_lock:
         count = len(spi.snapshots)
     print(f"   行情: {count} 个合约有推送")
 
     if count > 0:
-        print(f"\n✅ CTP MdApi 连接正常，可以运行采集")
+        print(f"\n✅ 天勤连接正常，可以运行采集")
     else:
         print(f"\n⚠️ 连接正常但无行情推送（非交易时段？）")
 
-    api.Release()
+    spi.close()
 
 
 # ═══════════════════════════════════════════════════════════════
@@ -887,11 +865,11 @@ def load_or_discover_config(force: bool = False) -> dict:
 
 def main():
     parser = argparse.ArgumentParser(
-        description="深虚期权 8 时点采集（CTP MdApi）")
+        description="深虚期权 8 时点采集（天勤行情源）")
     parser.add_argument("--discover", action="store_true",
                         help="发现深虚合约并写入配置文件")
     parser.add_argument("--check", action="store_true",
-                        help="快速验证 CTP 连接+合约可订阅")
+                        help="快速验证天勤连接+合约可订阅")
     parser.add_argument("--eod", action="store_true",
                         help="日终归档（兜底）：盘中模式已自动追加日终，此参数仅在进程崩溃后补采")
     args = parser.parse_args()
@@ -927,18 +905,19 @@ def main():
         print(f"   期权: {len(contracts)} 个  |  标的期货: {len(set(underlying.values()))} 个")
         print(f"   输出: {OUTPUT_EOD}\n")
 
-        spi = MdSpi(underlying_map=opt_to_ul)
+        spi = TqQuotes(underlying_map=opt_to_ul)
         for ul_code in underlying.values():
             spi.underlying_prices[ul_code] = 0.0
 
-        api, ok = connect_md(spi, contracts, underlying)
+        ok = spi.connect(contracts, underlying)
         if not ok:
             sys.exit(1)
 
-        # 等待行情
+        # 等待行情（天勤需 refresh）
         print("\n⏳ 等待行情推送…")
         wait_start = time.time()
         while time.time() - wait_start < 30:
+            spi.refresh()
             with spi.snap_lock:
                 count = len(spi.snapshots)
             if count > 0:
@@ -953,7 +932,7 @@ def main():
         # 仅允许 14:55 之后运行
         if now.hour < 14 or (now.hour == 14 and now.minute < 55):
             print("❌ 日终模式只能在 14:55 后运行")
-            api.Release()
+            spi.close()
             sys.exit(1)
 
         if now.hour == 15 and now.minute == 0 and now.second <= 10:
@@ -966,7 +945,7 @@ def main():
             is_proxy = 1
 
         save_snapshot(spi, contracts, time_slot, "日终", OUTPUT_EOD, is_proxy)
-        api.Release()
+        spi.close()
         print(f"\n📊 日终归档完成 → {OUTPUT_EOD}")
     else:
         # ── 正常采集模式（自动发现 + 8 时点 + 日终归档）──
