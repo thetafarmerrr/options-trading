@@ -53,18 +53,26 @@ CONFIG_FILE = os.path.join(os.path.dirname(os.path.abspath(__file__)), "monitor_
 # 轮询间隔（秒）— 连续模式用
 POLL_INTERVAL = 3
 
-# 交易时段（北京时间）
-TRADING_HOURS_DAY = (9, 0), (15, 0)     # 日盘 9:00-15:00
-TRADING_HOURS_NIGHT = (21, 0), (23, 0)  # 夜盘 21:00-23:00（简化，实际到 23:00）
+# 交易时段（北京时间，日盘两段含午休，夜盘一段）
+# 注意：每段必须是 (start, end) 二元组，嵌套结构写错会在盘中崩 is_trading_time（8/17 教训：夜盘少套一层）
+TRADING_HOURS = (
+    ((9, 0), (11, 30)),
+    ((13, 30), (15, 0)),
+    ((21, 0), (23, 0)),
+)
+# 加载时自检：结构必须全是「两个二元组」，结构错误 → 启动即崩，不等到 11:30 才炸
+assert all(len(r) == 2 and all(isinstance(x, tuple) and len(x) == 2 for x in r) for r in TRADING_HOURS), \
+    f"❌ TRADING_HOURS 结构错误: {TRADING_HOURS}"
 
 
 def is_trading_time():
     """当前是否在交易时段内"""
     now = datetime.now()
     t = (now.hour, now.minute)
-    d_start, d_end = TRADING_HOURS_DAY
-    n_start, n_end = TRADING_HOURS_NIGHT
-    return (d_start <= t < d_end) or (n_start <= t < n_end)
+    for start, end in TRADING_HOURS:
+        if start <= t < end:
+            return True
+    return False
 
 
 def load_config():
@@ -223,6 +231,27 @@ def dry_run(cfg):
         return True
 
 
+def _connect_quotes(cfg):
+    """建立连接并订阅卖腿/买腿/期货报价。返回 (api, sell_quote, buy_quote, fut_quote)。
+
+    #14 事件缓冲需要期货价：卖腿 "CZCE.CF701P16400" → 期货 "CZCE.CF701"。
+    8/17 bug 修复：旧正则漏了合约月份数字，得到不存在的 "CZCE.CF"
+    → get_quote 报错 → 坏订阅污染连接 → wait_update 静默卡死。
+    """
+    import re as _re
+    api = TqApi(auth=TqAuth(TQ_USER, TQ_PASS))
+    sell_quote = api.get_quote(cfg["sell_leg"])
+    buy_quote = api.get_quote(cfg["buy_leg"])
+    fut_quote = None
+    _fm = _re.match(r"([A-Za-z]+\.[A-Za-z]+\d+)", cfg["sell_leg"])
+    if _fm:
+        try:
+            fut_quote = api.get_quote(_fm.group(1))
+        except Exception:
+            fut_quote = None
+    return api, sell_quote, buy_quote, fut_quote
+
+
 def main():
     args = sys.argv[1:]
     once = "--once" in args
@@ -273,70 +302,101 @@ def main():
     print(f"   轮询间隔: {POLL_INTERVAL}s")
     print()
 
-    api = TqApi(auth=TqAuth(TQ_USER, TQ_PASS))
-    sell_quote = api.get_quote(cfg["sell_leg"])
-    buy_quote = api.get_quote(cfg["buy_leg"])
-
-    # #14 事件缓冲检查：从卖腿派生期货合约（CZCE.CF701P16400 → CZCE.CF701），拉期货价
-    fut_quote = None
-    import re as _re
-    _fm = _re.match(r"([A-Za-z]+\.[A-Za-z]+)", cfg["sell_leg"])
-    if _fm:
-        try:
-            fut_quote = api.get_quote(_fm.group(1))
-        except Exception:
-            fut_quote = None
-
     alerted = False
     last_net = None
     ev_last_report = None  # 事件检查：只在一轮报告一次（有事件变化才重报）
 
     try:
+        # 外层循环：连接失败/报价停更 → 重建连接，绝不静默死掉（8/17 加固）
         while True:
-            api.wait_update()
-
-            # #14 事件缓冲检查（只报不平；无事件返回 False 不打扰）
             try:
-                fut_price = fut_quote.last_price if fut_quote else None
-                has_ev, ev_msg = check_event_buffer(cfg, futures_price=fut_price)
-                if has_ev and ev_msg != ev_last_report:
-                    print(f"\n📅 {ev_msg}\n")
-                    ev_last_report = ev_msg
-            except Exception:
-                pass
+                api, sell_quote, buy_quote, fut_quote = _connect_quotes(cfg)
+            except Exception as exc:
+                print(f"⚠️ [{time.strftime('%H:%M:%S')}] 连接失败: {exc}")
+                print("   5 秒后重试...")
+                time.sleep(5)
+                continue
 
-            sell_ask = sell_quote.ask_price1
-            buy_bid = buy_quote.bid_price1
+            last_activity = time.time()   # 最近一次报价流动的墙钟时间
+            last_q_dt = None              # 上一次看到的报价 datetime
+            last_heartbeat = time.time()
 
-            if sell_ask and buy_bid and sell_ask > 0 and buy_bid > 0:
-                net_cost = sell_ask - buy_bid
+            try:
+                while True:
+                    try:
+                        api.wait_update(deadline=time.time() + 5)
+                    except Exception:
+                        pass
 
-                if net_cost != last_net:
-                    print(f"  [{time.strftime('%H:%M:%S')}] 净价={net_cost:.1f}  "
-                          f"卖腿ask={sell_ask:.1f} 买腿bid={buy_bid:.1f}  "
-                          f"({'✅ 止盈' if net_cost <= cfg['stop_net'] else '⏳ 等待'})")
-                    last_net = net_cost
+                    # 报价健康信号：sell_quote.datetime 前进 = 行情还在流动
+                    q_dt = str(sell_quote.datetime)
+                    if q_dt and q_dt != last_q_dt:
+                        last_q_dt = q_dt
+                        last_activity = time.time()
 
-                if net_cost <= cfg["stop_net"] and not alerted:
-                    title = f"止盈触发 — {cfg['name']}"
-                    body = (
-                        f"净价 {net_cost:.1f} ≤ 止盈线 {cfg['stop_net']}\n"
-                        f"卖腿ask={sell_ask:.1f}  买腿bid={buy_bid:.1f}\n"
-                        f"利润 ≈ {(cfg.get('credit', 0) - net_cost):.1f}（已扣净成本）"
-                    )
-                    send_alert(title, body)
-                    print(f"\n🚨 {title}\n{body}\n")
-                    alerted = True
+                    # #14 事件缓冲检查（只报不平；无事件返回 False 不打扰）
+                    try:
+                        fut_price = fut_quote.last_price if fut_quote else None
+                        has_ev, ev_msg = check_event_buffer(cfg, futures_price=fut_price)
+                        if has_ev and ev_msg != ev_last_report:
+                            print(f"\n📅 {ev_msg}\n")
+                            ev_last_report = ev_msg
+                    except Exception:
+                        pass
 
-                    print("告警已发送，监控退出。需要继续监控请重新启动。")
-                    break
+                    sell_ask = sell_quote.ask_price1
+                    buy_bid = buy_quote.bid_price1
 
-            time.sleep(POLL_INTERVAL)
+                    if sell_ask and buy_bid and sell_ask > 0 and buy_bid > 0:
+                        net_cost = sell_ask - buy_bid
+
+                        if net_cost != last_net:
+                            print(f"  [{time.strftime('%H:%M:%S')}] 净价={net_cost:.1f}  "
+                                  f"卖腿ask={sell_ask:.1f} 买腿bid={buy_bid:.1f}  "
+                                  f"({'✅ 止盈' if net_cost <= cfg['stop_net'] else '⏳ 等待'})")
+                            last_net = net_cost
+
+                        if net_cost <= cfg["stop_net"] and not alerted:
+                            title = f"止盈触发 — {cfg['name']}"
+                            body = (
+                                f"净价 {net_cost:.1f} ≤ 止盈线 {cfg['stop_net']}\n"
+                                f"卖腿ask={sell_ask:.1f}  买腿bid={buy_bid:.1f}\n"
+                                f"利润 ≈ {(cfg.get('credit', 0) - net_cost):.1f}（已扣净成本）"
+                            )
+                            send_alert(title, body)
+                            print(f"\n🚨 {title}\n{body}\n")
+                            alerted = True
+                            break
+
+                    # 看门狗：交易时段内报价 5 分钟不流动 → 重建连接
+                    now = time.time()
+                    if is_trading_time() and now - last_activity > 300:
+                        print(f"⚠️ [{time.strftime('%H:%M:%S')}] 报价 5 分钟未流动"
+                              f"（最近更新 {time.strftime('%H:%M:%S', time.localtime(last_activity))}）")
+                        print("   重建连接...")
+                        break
+
+                    # 心跳：静默但有心跳（交易时段 10 分钟，非交易时段 30 分钟）
+                    hb_interval = 600 if is_trading_time() else 1800
+                    if now - last_heartbeat > hb_interval:
+                        net_disp = f"{last_net:.1f}" if last_net is not None else "?"
+                        print(f"  [{time.strftime('%H:%M:%S')}] 仍在监控 净价={net_disp} "
+                              f"最近更新={time.strftime('%H:%M:%S', time.localtime(last_activity))}")
+                        last_heartbeat = now
+
+                    time.sleep(POLL_INTERVAL)
+            finally:
+                try:
+                    api.close()
+                except Exception:
+                    pass
+
+            if alerted:
+                print("告警已发送，监控退出。需要继续监控请重新启动。")
+                break
 
     except KeyboardInterrupt:
         print("\n⏹️  监控已手动停止。")
-    finally:
-        api.close()
 
 
 if __name__ == "__main__":
