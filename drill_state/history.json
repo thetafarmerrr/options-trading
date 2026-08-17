@@ -1,15 +1,6 @@
 {
   "sessions": [
     {
-      "date": "2026-06-24T23:02:13.372171",
-      "module": "B",
-      "score": 19,
-      "accuracy": 76.0,
-      "avg_time_ms": 17161.0,
-      "total_questions": 25,
-      "day_of_week": "Wednesday"
-    },
-    {
       "date": "2026-06-24T23:10:30.075578",
       "module": "D",
       "score": 15,
@@ -1798,6 +1789,15 @@
       "accuracy": 100.0,
       "avg_time_ms": 14124.0,
       "total_questions": 10,
+      "day_of_week": "Monday"
+    },
+    {
+      "date": "2026-08-17T22:29:39.838489",
+      "module": "B",
+      "score": 71,
+      "accuracy": 96.0,
+      "avg_time_ms": 1543.0,
+      "total_questions": 25,
       "day_of_week": "Monday"
     }
   ],
