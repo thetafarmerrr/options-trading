@@ -46,8 +46,8 @@ _ACTIVE_MONTHS_CACHE = {}
 _ACTIVE_MONTHS_TTL = 1800
 
 
-def pick_active_months(symbol, vcode=None, n=2, min_oi=0, refresh=False):
-    """选活跃月份：按期权链总持仓排序，取前 n 个月。
+def pick_active_months(symbol, vcode=None, n=2, min_oi=0, refresh=False, dte_min=20):
+    """选活跃月份：先滤快交割月，再按期权链总持仓排序取前 n 个月。
 
     分层标准（yuan-yongjian-strategy.md §3.1）：选月看总持仓（筛活跃度），
     选档看边界，交易看盘口。本函数只做"哪个月有人玩"，不做"哪档能交易"。
@@ -55,15 +55,19 @@ def pick_active_months(symbol, vcode=None, n=2, min_oi=0, refresh=False):
     已知局限（8/15 反方确认）：
       - 总持仓是截面快照，链宽大的月份自然持仓高，可能压过链窄的活跃月
       - akshare 新浪源深虚档 bid/ask/last 常空，总持仓含这些空档的 0 值
-      - 快交割月（DTE<30）持仓虚胖（套保堆积），不代表深虚档有盘口
-      这些局限不在此处理——边界法跳过空档，CTP 实测才是真门槛。
+      - ~~快交割月（DTE<30）持仓虚胖（套保堆积）~~ → 8/18 已处理：先按
+        _est_dte 滤掉临近交割月（默认 dte_min=20），再排序，见下方。
+      边界法跳过空档，CTP 实测才是真门槛。
 
     n: 返回月份数。discover 用 n=3（近月+次近+远月），iv_collector 用 n=2。
     min_oi: 总持仓下限，低于此的月份剔除（僵尸月）。
     refresh: True 强制重拉（discover 手动跑），False 命中 30 分钟 TTL 缓存。
+    dte_min: 估算到期天数 ≤ 此值的月份直接剔除（8/18 修：2609 系持仓虚胖
+      压过真实主力，m2609 估算 dte=9 被滤、au2610=39/m2611=70/i2701=131 保留）。
+      全滤空时回退不过滤，保证至少返回近月。
     返回: [(contract, total_oi), ...] 按总持仓降序。
     """
-    cache_key = (symbol, n, min_oi)
+    cache_key = (symbol, n, min_oi, dte_min)
     now = time.time()
     if not refresh and cache_key in _ACTIVE_MONTHS_CACHE:
         cached_at, cached = _ACTIVE_MONTHS_CACHE[cache_key]
@@ -84,8 +88,12 @@ def pick_active_months(symbol, vcode=None, n=2, min_oi=0, refresh=False):
             continue
         scored.append((c, total_oi, n_strikes))
 
-    scored.sort(key=lambda x: -x[1])
-    result = [(c, oi) for c, oi, _ in scored[:n]]
+    # 8/18 修复：快交割月（dte_min=20 内）持仓虚胖压过真实主力。
+    eligible = [x for x in scored if _est_dte(x[0]) > dte_min]
+    if not eligible:
+        eligible = scored  # 全滤空（临近全员交割）回退原逻辑
+    eligible.sort(key=lambda x: -x[1])
+    result = [(c, oi) for c, oi, _ in eligible[:n]]
     _ACTIVE_MONTHS_CACHE[cache_key] = (time.time(), result)
     return result
 

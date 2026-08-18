@@ -35,6 +35,19 @@ STRIKE_INTERVALS = {
     "铁矿石": 20, "橡胶": 500,
 }
 
+# 8/18 新增：交易所标准手续费（元/手，2025-11 更新）÷ 合约乘数（吨/克每手）。
+# 判 E 合法价差时，净权利金必须覆盖两腿（卖+买）手续费，否则做了白做。
+# 说明：drill 里 net_premium 是"每单位权利金"（点数），所以门槛 = fee×2/乘数。
+# 注意这是交易所规费最低下限，实盘期货公司还加佣金——真正开仓要留更厚。
+VARIETY_FEE = {
+    "沪金": 2, "豆粕": 2, "玉米": 2, "PTA": 1, "甲醇": 1,
+    "菜籽粕": 0.5, "白糖": 1.5, "棉花": 1.5, "铁矿石": 2, "橡胶": 1.5,
+}
+VARIETY_MULTIPLIER = {
+    "沪金": 1000, "豆粕": 10, "玉米": 10, "PTA": 5, "甲醇": 10,
+    "菜籽粕": 10, "白糖": 10, "棉花": 5, "铁矿石": 100, "橡胶": 10,
+}
+
 # ── 数据持久化 ──
 
 def load_history():
@@ -1058,7 +1071,9 @@ def run_drill_e(quick=False):
                     sell_bid = high[2]["bid"]
                     buy_ask = low[2]["ask"]
                     strike_width = high[1] - low[1]
-                    if sell_bid > buy_ask and strike_width <= chain['futures'] * 0.05:
+                    # 8/18：净权利金必须覆盖两腿交易所手续费（净权利金×乘数 > 费×2）
+                    min_net = VARIETY_FEE.get(chain['product'], 0) * 2 / VARIETY_MULTIPLIER.get(chain['product'], 1)
+                    if (sell_bid - buy_ask) > min_net and strike_width <= chain['futures'] * 0.05:
                         cs_pairs.append({
                             "sell_strike": high[1], "buy_strike": low[1],
                             "net_premium": round(sell_bid - buy_ask, 1),
