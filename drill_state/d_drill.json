@@ -244,6 +244,20 @@
       "correct": 21,
       "total": 21,
       "accuracy": 100.0
+    },
+    {
+      "date": "2026-08-18",
+      "pool": "B",
+      "correct": 6,
+      "total": 21,
+      "accuracy": 28.6
+    },
+    {
+      "date": "2026-08-18",
+      "pool": "B",
+      "correct": 21,
+      "total": 21,
+      "accuracy": 100.0
     }
   ],
   "streak": 1,
