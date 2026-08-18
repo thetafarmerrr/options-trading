@@ -157,6 +157,9 @@
 | 期望值 | Expected Value (EV) | 胜率×盈利 − 败率×亏损，负 EV 别做 |
 | 尾部风险 | Tail Risk | 小概率大损失（USDA 跳空那种）|
 | 事件驱动 | Event-Driven | 报告/数据前后的波动 |
+| 期权活跃月 ≠ 期货主力月 | Option Active Month ≠ Futures Front Month | 选月看期权链自身成交/持仓，期货主力月是期货概念（8/18，铁矿石 i2610 期权链活跃 3.4× i2701）|
+| 例行高冲击事件 | Routine High-Impact Event | 例行发布（日期已知）但结果不可预知（WASDE 供需数字能跳空）≠ 低冲击例行（作物周报已预期）|
+| 期权价格第一因 | Underlying-Driven Pricing | 涨跌第一因是标的价格（内含价值=max(行权价−标的,0)），不是"谁在买谁在卖"（资金流只影响 IV）|
 
 ## 策略（补充）
 
