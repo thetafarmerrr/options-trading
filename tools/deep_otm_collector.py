@@ -5,6 +5,11 @@ deep_otm_collector.py — 天勤(tqsdk) 深虚期权 8 时点采集
 订阅沪金/豆粕/PTA 最虚 2-3 档 Call+Put，在袁永健 8 个决策时点
 自动保存 bid/ask/量快照到 CSV。积累 ≥6 个月后可用分位数。
 
+【用途：袁永健买方策略数据搜集器 —— 深度虚值"买彩票"】
+  深虚权利金标准化价格 < 自身历史 P25（不含今日）→ 便宜彩票可埋伏（买方，低成
+  本小仓位博尾部行情，占总资金 ≤5%）。不是卖方扫描器，数据不用于"卖它收权利
+  金"判断。8/18 标记：曾被误当卖方工具，特此注明。
+
 用法：
   python3 tools/deep_otm_collector.py --discover    # 发现深虚合约→写配置
   python3 tools/deep_otm_collector.py               # 订阅 + 8 时点采集
