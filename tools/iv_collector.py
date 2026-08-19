@@ -664,7 +664,12 @@ def _run_one_collection(target, window_label):
                 if result.get('far_iv') and result.get('far_contract'):
                     far_iv_str = f"{result['far_iv']:.1%}"
                     if result['iv_est'] and result['far_iv']:
-                        structure = "⚠️近>远" if result['iv_est'] > result['far_iv'] else "→近<远"
+                        dte_main = result['dte']
+                        dte_far = _est_dte(result['far_contract'])
+                        main_is_near = dte_main <= dte_far
+                        near_iv = result['iv_est'] if main_is_near else result['far_iv']
+                        far_iv_v = result['far_iv'] if main_is_near else result['iv_est']
+                        structure = "⚠️近月>远月·倒挂" if near_iv > far_iv_v else "→近月<远月·正常"
                     else:
                         structure = ""
                     print(f"         {' ' * (len(result['name']) + len(result['contract']) - 1)}"
