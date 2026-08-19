@@ -79,6 +79,16 @@ def save_session(module, score, accuracy, avg_time, total_q):
     HISTORY_FILE.write_text(json.dumps(h, ensure_ascii=False, indent=2))
 
 
+def _match_key(u, keys):
+    """宽松匹配标准答案键：整词包含(ek in u)、简写(u in ek)、漏字/乱序(set(u)<=set(ek))。空输入不匹配。"""
+    if not u:
+        return None
+    for ek in keys:
+        if ek in u or u in ek or set(u) <= set(ek):
+            return ek
+    return None
+
+
 def show_progress():
     h = load_history()
     if not h["sessions"]:
@@ -1444,15 +1454,12 @@ def run_drill_g(quick=False):
             print(f"\n  训练中断。")
             return
         el = (time.time() - t0) * 1000; total_time += el
-        matched = False
-        for ek in expected_keys:
-            if u == ek:
-                matched = True; break
-        if matched and u == expected:
+        matched_key = _match_key(u, expected_keys)
+        if matched_key == expected:
             correct += 1; score += 3 if el < 3000 else (2 if el < 6000 else 1)
             print(f"  ✅ {el/1000:.1f}s  {labels[expected]}  OTM={pct:.1f}%")
-        elif matched:
-            print(f"  ❌ {el/1000:.1f}s  你选{u}  实际{labels[expected]}  OTM={pct:.1f}%")
+        elif matched_key:
+            print(f"  ❌ {el/1000:.1f}s  你选{matched_key}  实际{labels[expected]}  OTM={pct:.1f}%")
         else:
             print(f"  ❌ {el/1000:.1f}s  输入{u}  → 请用 虚可卖/近不做该平/实不做")
 
@@ -1824,7 +1831,7 @@ def run_drill_j(quick=False):
             print(f"\n  训练中断。")
             return
         el = (time.time() - t0) * 1000; total_time += el
-        matched_key = next((ek for ek in expected_keys if ek in u), None)
+        matched_key = _match_key(u, expected_keys)
         if matched_key == expected:
             correct += 1; score += 3 if el < 3000 else (2 if el < 6000 else 1)
             print(f"  ✅ {el/1000:.1f}s  {labels[expected]}  OTM={pct:.1f}%")
