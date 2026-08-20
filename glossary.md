@@ -441,3 +441,6 @@ when we look at hedging, we're basically looking at minimizing risk. So when we'
 - Intrinsic value is black and white and has an exact calculable number, while extrinsic value is more gray when you break down its components.  （Mike E07, Extrinsic Value）
 - Time value — this is the extra cost you pay for time remaining on an option contract. Just like any legal contract, the longer the valid term, the higher its value.  （Mike E07, Extrinsic Value）
 - We have a simple standalone formula for intrinsic value, but time and volatility do not split neatly into separate calculable figures for extrinsic value — they work hand in hand and interact dynamically.  （Mike E07, Extrinsic Value）
+
+### Delta 与 ITM 概率
+- Deltas roughly equate to probability of being in the money. So it's not going to be totally accurate or completely equal, but when you're looking at deltas and probability of being in the money, they're pretty much going to be similar values.  （Mike E11, Options Delta Explained）

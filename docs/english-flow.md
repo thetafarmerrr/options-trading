@@ -4,7 +4,7 @@
 
 ## 当前进度
 
-**Phase 1 · 地基** | 第 5/10 集 | 下一集：**Intrinsic Value Explained**（原#31）
+**Phase 2 · 希腊字母** | 已看 1/8 | 下一集：**Delta & Directional Assumption Explained**（原#88）
 
 ---
 
