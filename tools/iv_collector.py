@@ -243,13 +243,12 @@ def collect_variety(vcode, vinfo):
     if best_row is None:
         return None
 
-    yesterday_atm = get_last_atm(vcode)
-    if yesterday_atm and yesterday_atm > 0:
-        deviation = abs(best_strike - yesterday_atm) / yesterday_atm
-        if deviation > 0.05:
-            best_strike = yesterday_atm
-            closest = df.iloc[(df["strike"] - yesterday_atm).abs().argsort()[:1]]
-            best_row = closest.iloc[0] if len(closest) > 0 else best_row
+    # 8/20 修复：删除 yesterday_atm 覆盖逻辑（ATM 粘滞 bug）
+    # 旧逻辑：best_strike 偏离昨日 ATM >5% → 钉回昨日值。趋势行情（橡胶 8/17-20
+    # 期货 17790→18460）新 ATM 被旧值覆盖，IV 估算 S 用错 → IV/IV-HV/分位全污染。
+    # 防抖做错了层次：噪声应平滑在 IV 序列层（3 日 SMA），不在 ATM 选择层覆盖——
+    # 用"昨天的判断"覆盖"今天的数据"= 原 bug 本质。选 strike 信任 224-242 的
+    # futures_price ±5% 过滤。
 
     p_bid = _safe(best_row["p_bid"])
     p_ask = _safe(best_row["p_ask"])
@@ -261,7 +260,7 @@ def collect_variety(vcode, vinfo):
     spread_pct = round(max(put_spread, call_spread) * 100, 1)
 
     dte = _est_dte(fut_contract)
-    iv = _est_iv(float(best_strike), p_bid, p_ask, c_bid, c_ask, dte)
+    iv = _est_iv(float(futures_price), p_bid, p_ask, c_bid, c_ask, dte)
     hv_20 = calc_parkinson_hv(vcode, window=20)
     hv_60 = calc_parkinson_hv(vcode, window=60)
     iv_slope = calc_iv_slope(vcode)
@@ -290,7 +289,8 @@ def collect_variety(vcode, vinfo):
                     c_b_f = _safe(f_row["c_bid"])
                     c_a_f = _safe(f_row["c_ask"])
                     dte_f = _est_dte(far_contract)
-                    far_iv = _est_iv(float(f_strike), p_b_f, p_a_f, c_b_f, c_a_f, dte_f)
+                    if far_fp and far_fp > 0:
+                        far_iv = _est_iv(float(far_fp), p_b_f, p_a_f, c_b_f, c_a_f, dte_f)
                     far_contract_str = far_contract
         except Exception:
             pass
@@ -314,7 +314,7 @@ def collect_variety(vcode, vinfo):
         "hv_60d": hv_60,
         "iv_slope": round(iv_slope, 6) if iv_slope is not None else None,
         "dte": dte,
-        "inferred_futures": best_strike,
+        "inferred_futures": futures_price,
         "far_contract": far_contract_str,
         "far_iv": far_iv,
     }
