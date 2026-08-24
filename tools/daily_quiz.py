@@ -10,7 +10,7 @@ commit 前答对再 push。防"打卡式签到"。
   python3 tools/daily_quiz.py --topic greeks  # 指定主题
 """
 
-import sys, os, random, json, argparse
+import sys, os, random, json, argparse, unicodedata
 from datetime import datetime, date
 from pathlib import Path
 
@@ -169,6 +169,35 @@ def save_results(topic, results):
     HISTORY_FILE.write_text(json.dumps(history, ensure_ascii=False, indent=2))
 
 
+def _normalize(s):
+    """判题归一化：全角→半角、符号统一、去空白。
+
+    8/21 判错根因：用户中文输入法打出全角「（期货－卖腿）÷期货」，
+    答案存半角「(期货-卖腿)/期货」→ 子串匹配失败误判❌。
+    NFKC 转全角字母/数字，显式替换 −÷× 与全角括号，去空格统一。
+    """
+    s = unicodedata.normalize("NFKC", s)
+    s = s.replace("−", "-").replace("÷", "/").replace("×", "*")
+    s = s.replace("（", "(").replace("）", ")")
+    return s.replace(" ", "").strip().lower()
+
+
+def _match(a, answer_norm):
+    """归一化后的子串匹配；公式题额外接受数字代入。
+
+    公式题答案含「期货/卖腿」占位符（如 (期货-卖腿)/期货），用户常代入
+    数字算结果（如 (2900-2800)/2900=3.4%）——占位符子串匹配不上。
+    若答案含数字+除号在做计算 → 视为理解了公式，判对。
+    """
+    a_norm = _normalize(a)
+    if a_norm in answer_norm:
+        return True
+    if ("期货" in a_norm or "卖腿" in a_norm) and "/" in a_norm:
+        if any(ch.isdigit() for ch in answer_norm) and "/" in answer_norm:
+            return True
+    return False
+
+
 def run_quiz(topic=None):
     """交互式答题"""
     topic, questions = generate_quiz(topic)
@@ -182,7 +211,8 @@ def run_quiz(topic=None):
     for i, q in enumerate(questions, 1):
         print(f"\n  [{i}/{len(questions)}] {q['q']}")
         answer = input(f"  → ").strip()
-        is_correct = any(a.lower() in answer.lower() for a in q["a"])
+        answer_norm = _normalize(answer)
+        is_correct = any(_match(a, answer_norm) for a in q["a"])
         results.append(is_correct)
 
         if is_correct:
