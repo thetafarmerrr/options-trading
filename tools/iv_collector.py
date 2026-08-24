@@ -222,6 +222,7 @@ def collect_variety(vcode, vinfo):
         return None
 
     best_strike, best_score, best_row = None, -1, None
+    best_dist = float('inf')
     for _, row in df.iterrows():
         strike = int(row["strike"])
         # 优先过滤：偏离标的价格 >5% 直接跳过，避免选到深度虚值
@@ -236,7 +237,11 @@ def collect_variety(vcode, vinfo):
             activity = (p_bid + c_bid) / 2
             # 用 bid 活跃度在 5% 范围内选最优
             score = activity / max(diff, 0.01)
-            if score > best_score:
+            # 8/24 修复：ATM 定义=距期货价最近的健康档。原 score=activity/diff
+            # 会让 p_bid≈c_bid 的稀疏浅虚值档虚高（cf 选到 17600 而非真 ATM 17000，
+            # spread 245% 被标失真）。主排序距离、同距离再比 score。
+            if distance < best_dist or (distance == best_dist and score > best_score):
+                best_dist = distance
                 best_score = score
                 best_strike = strike
                 best_row = row
@@ -272,6 +277,7 @@ def collect_variety(vcode, vinfo):
             _, far_df, far_fp = fetch_option_chain(vcode, symbol, far_contract)
             if not far_df.empty:
                 f_strike, f_score, f_row = None, -1, None
+                f_best_dist = float('inf')
                 for _, row in far_df.iterrows():
                     p_b = _safe(row["p_bid"])
                     c_b = _safe(row["c_bid"])
@@ -279,7 +285,15 @@ def collect_variety(vcode, vinfo):
                         diff_f = abs(p_b - c_b)
                         act_f = (p_b + c_b) / 2
                         sc_f = act_f / max(diff_f, 0.01)
-                        if sc_f > f_score:
+                        # 8/24 修复：与主 ATM 同构——距次月期货价最近的健康档
+                        if far_fp and far_fp > 0:
+                            f_dist = abs(int(row["strike"]) - far_fp) / far_fp
+                            if f_dist > 0.05:
+                                continue
+                        else:
+                            f_dist = float('inf')
+                        if f_dist < f_best_dist or (f_dist == f_best_dist and sc_f > f_score):
+                            f_best_dist = f_dist
                             f_score = sc_f
                             f_strike = int(row["strike"])
                             f_row = row

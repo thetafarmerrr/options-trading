@@ -14,8 +14,8 @@ VALID_MONTHS = {
     'i': [1, 5, 9], 'au': [2, 4, 6, 8, 10, 12],
 }
 
-DEFAULT_FUTURES = {"au": 870, "m": 2800, "c": 2300, "cf": 13500, "sr": 5600,
-                   "ta": 4800, "i": 780, "ru": 17000, "ma": 2450, "rm": 2500}
+DEFAULT_FUTURES = {"au": 990, "m": 3250, "c": 2300, "cf": 17000, "sr": 5600,
+                   "ta": 5900, "i": 780, "ru": 18500, "ma": 2900, "rm": 2250}
 
 STRIKE_INTERVAL = {"au": 8, "m": 50, "c": 40, "cf": 200, "sr": 100,
                    "ta": 50, "ma": 50, "i": 20, "ru": 500, "rm": 50}
@@ -165,10 +165,19 @@ def fetch_option_chain(vcode, symbol, contract=None):
                 best_diff = diff
                 best_strike = row['strike']
     if best_strike:
-        df_default = DEFAULT_FUTURES.get(vcode, 3000)
-        # 安全网：推断价偏离默认价超过 25%，取默认价
-        if abs(best_strike - df_default) / df_default > 0.25:
-            futures_price = df_default
+        # 安全网参照：优先真实期货价（fetch_futures_daily 最新收盘），失败回退静态默认。
+        # 8/21 根因：静态 DEFAULT_FUTURES["cf"]=13500 过期，best_strike≈17000 偏离 25.9%>25%
+        # → 强制 futures_price=13500 → ATM 全错。参照改真实价后 cf 偏差 0.4%，正确采用。
+        ref_price = DEFAULT_FUTURES.get(vcode, 3000)
+        try:
+            dl = fetch_futures_daily(vcode, 30)
+            if dl is not None and len(dl) > 0:
+                ref_price = float(dl.sort_values("date")["close"].iloc[-1])
+        except Exception:
+            pass
+        # 安全网：推断价偏离参照价超过 25%，取参照价
+        if abs(best_strike - ref_price) / ref_price > 0.25:
+            futures_price = ref_price
         else:
             futures_price = best_strike
     else:
