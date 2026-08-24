@@ -135,7 +135,7 @@ EVENTS_2026 = [
 
     # ── 每周数据 ──
     CalendarEvent(
-        "weekly-monday", "USDA 作物生长进度 (每周二早)",
+        "weekly-tuesday", "USDA 作物生长进度 (每周二早)",
         ["c", "m", "rm", "cf"], "medium", "data",
         "优良率变化是天气炒作核心指标",
         1.5, "directional",
