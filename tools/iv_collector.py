@@ -271,7 +271,7 @@ def collect_variety(vcode, vinfo):
     iv_slope = calc_iv_slope(vcode)
 
     # ── 次月 ATM IV ──
-    far_contract_str, far_iv = None, None
+    far_contract_str, far_iv, far_liquidity_ok = None, None, None
     if far_contract and far_contract != main_contract:
         try:
             _, far_df, far_fp = fetch_option_chain(vcode, symbol, far_contract)
@@ -303,9 +303,16 @@ def collect_variety(vcode, vinfo):
                     c_b_f = _safe(f_row["c_bid"])
                     c_a_f = _safe(f_row["c_ask"])
                     dte_f = _est_dte(far_contract)
-                    if far_fp and far_fp > 0:
-                        far_iv = _est_iv(float(far_fp), p_b_f, p_a_f, c_b_f, c_a_f, dte_f)
+                    # 8/25 修复：次月盘口质量闸——薄链档位 spread 过宽 → 不采 far_iv，
+                    # 避免 8/25 au2612 早盘 8.6%→收盘 26.1% 类噪声污染倒挂标签。
+                    # 与主采同构：max(put,call) 价差比 ≥15% = 失真。
+                    f_put_spread = (p_a_f - p_b_f) / p_b_f if p_b_f > 0 else 999
+                    f_call_spread = (c_a_f - c_b_f) / c_b_f if c_b_f > 0 else 999
+                    far_spread_pct = round(max(f_put_spread, f_call_spread) * 100, 1)
+                    far_liquidity_ok = 0 if far_spread_pct >= 15 else 1
                     far_contract_str = far_contract
+                    if far_liquidity_ok and far_fp and far_fp > 0:
+                        far_iv = _est_iv(float(far_fp), p_b_f, p_a_f, c_b_f, c_a_f, dte_f)
         except Exception:
             pass
 
@@ -331,6 +338,7 @@ def collect_variety(vcode, vinfo):
         "inferred_futures": futures_price,
         "far_contract": far_contract_str,
         "far_iv": far_iv,
+        "far_liquidity_ok": far_liquidity_ok,
     }
 
 
@@ -675,22 +683,24 @@ def _run_one_collection(target, window_label):
                       f"P bid/ask={result['put_bid']}/{result['put_ask']} "
                       f"价差={result['spread_pct']}% "
                       f"IV≈{iv_str}{iv_dir} HV₂₀={hv20_str} HV₆₀={hv60_str} {hv_gap}")
-                if result.get('far_iv') and result.get('far_contract'):
-                    far_iv_str = f"{result['far_iv']:.1%}"
-                    if result['iv_est'] and result['far_iv']:
-                        dte_main = result['dte']
-                        dte_far = _est_dte(result['far_contract'])
-                        main_is_near = dte_main <= dte_far
-                        near_iv = result['iv_est'] if main_is_near else result['far_iv']
-                        far_iv_v = result['far_iv'] if main_is_near else result['iv_est']
-                        structure = "⚠️近月>远月·倒挂" if near_iv > far_iv_v else "→近月<远月·正常"
+                pad = ' ' * (len(result['name']) + len(result['contract']) - 1)
+                if result.get('far_contract'):
+                    if result.get('far_iv'):
+                        far_iv_str = f"{result['far_iv']:.1%}"
+                        if result['iv_est'] and result['far_iv']:
+                            dte_main = result['dte']
+                            dte_far = _est_dte(result['far_contract'])
+                            main_is_near = dte_main <= dte_far
+                            near_iv = result['iv_est'] if main_is_near else result['far_iv']
+                            far_iv_v = result['far_iv'] if main_is_near else result['iv_est']
+                            structure = "⚠️近月>远月·倒挂" if near_iv > far_iv_v else "→近月<远月·正常"
+                        else:
+                            structure = ""
+                        print(f"         {pad}次月 {result['far_contract']} IV≈{far_iv_str} {structure}")
+                    elif result.get('far_liquidity_ok') == 0:
+                        print(f"         {pad}次月 {result['far_contract']} 盘口失真 · 倒挂不判定")
                     else:
-                        structure = ""
-                    print(f"         {' ' * (len(result['name']) + len(result['contract']) - 1)}"
-                          f"次月 {result['far_contract']} IV≈{far_iv_str} {structure}")
-                elif result.get('far_contract'):
-                    print(f"         {' ' * (len(result['name']) + len(result['contract']) - 1)}"
-                          f"次月 {result['far_contract']} 无流动性")
+                        print(f"         {pad}次月 {result['far_contract']} 无流动性")
                 if result['iv_est'] and result['hv_20d'] and result['hv_20d'] > 0:
                     sp = result['iv_est'] - result['hv_20d']
                     if sp >= 0.05:
