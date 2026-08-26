@@ -62,6 +62,7 @@
 | 倒挂（近月IV > 远月）| Backwardation | 恐慌——大家都在抢近期保险 |
 | 偏度 | Skew | OTM Put IV > OTM Call IV，下跌风险被定价更高 |
 | 期限结构 | Term Structure | IV 随到期时间变化的曲线 |
+| 近远月IV比 | Near/Far IV Ratio | 理论恒定 ≈0.85、实际 ≈0.95——远月对近月变动近全传导（非衰减），倒挂时"卖远月躲事件"不成立；形状=环境预警（单月卖方）非错价机会（日历价差=S2） |
 | 波动率微笑 | Volatility Smile | 不同行权价的 IV 连成 U 形曲线 |
 | 杠杆效应 | Leverage Effect | 价格跌 → IV 涨（价格驱动波动率） |
 | 波动率反馈 | Volatility Feedback | IV 涨 → 恐慌抛售 → 价格跌（波动率反驱价格） |
