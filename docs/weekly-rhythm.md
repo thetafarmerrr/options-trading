@@ -22,7 +22,7 @@
 |------|------|------|
 | 英文（盘前清醒期 8:00）| Mike 系列视频 + 跟读 + 90s 炸弹 + 笔译 | 20 min |
 | 盘前启动（8:25）| `python3 tools/iv_collector.py --watch`（09:15+09:30+14:50 自动三采）+ `./start_deep_otm.sh`（discover 换月+启动采集）。**盘前不跑 scanner**（8/14 盘前脏数据污染实锤：盘口未稳+价差 295%），决策只用 9:15 采完那次输出 | 5 min |
-| 开盘决策窗口（9:15-9:30）| 9:15 自动采完 → **执行** `python3 -m tools.scanner.main` → 用新输出确认 [EXEC]→六步进场→纸面挑信号 | 5 min |
+| 开盘决策窗口（9:15-9:30）| 9:15 自动采完 → **执行** `python3 -m tools.scanner.main` → **四层独立讲清 + IV 方向预测**（先写 10 品种「做/不做+理由」→有信号品种预测 5 日 IV 升/降 append `data/iv_direction_pred.csv`→贴教练对答案，8/27 起）→ 用新输出确认 [EXEC]→六步进场→纸面挑信号 | 10 min |
 | 训练（决策后第一个·易拖优先）| `python3 tools/drill_system.py B` + 4 个轮转模块 | 25 min |
 | Sinclair（问题来了之后）| A 问题驱动（10:15）/ B 日志倒灌（一三五）| 15 min |
 | 收盘（14:50）| IV 自动采 + 影响力（有料就发 ≤2条）| 1 min |
