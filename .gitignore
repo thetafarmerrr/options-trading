@@ -2,6 +2,7 @@ __pycache__/
 *.pyc
 .DS_Store
 data/*.csv
+!data/iv_direction_pred.csv
 data/*.json
 drill_state/
 mistakes.md

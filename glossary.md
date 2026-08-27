@@ -63,6 +63,7 @@
 | 偏度 | Skew | OTM Put IV > OTM Call IV，下跌风险被定价更高 |
 | 期限结构 | Term Structure | IV 随到期时间变化的曲线 |
 | 近远月IV比 | Near/Far IV Ratio | 理论恒定 ≈0.85、实际 ≈0.95——远月对近月变动近全传导（非衰减），倒挂时"卖远月躲事件"不成立；形状=环境预警（单月卖方）非错价机会（日历价差=S2） |
+| 倒挂粘性 | Inversion Stickiness | 倒挂收窄极慢：每单位近月回落价差只缩 0.05（1−0.95）。闭合=恐慌走完的终点信号非起点——"等修复再进场"规则内吃不到溢价。8/27 m 全天价差 1.7→2.0pp 微扩实证 |
 | 波动率微笑 | Volatility Smile | 不同行权价的 IV 连成 U 形曲线 |
 | 杠杆效应 | Leverage Effect | 价格跌 → IV 涨（价格驱动波动率） |
 | 波动率反馈 | Volatility Feedback | IV 涨 → 恐慌抛售 → 价格跌（波动率反驱价格） |
@@ -149,6 +150,7 @@
 | 现手（最近一笔成交量）| Last Traded Size |
 | 组合单 / 价差单 | Combo Order / Spread Order |
 | 分腿（先平一腿再平另一腿）| Legging (In / Out) |
+| Pro Farmer 作物巡游 | Pro Farmer Crop Tour（8 月底实地测产→全国单产预估，2026 创纪录 53.3 vs USDA 52.7，弱化减产叙事）|
 
 ## 决策与纪律
 
