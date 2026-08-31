@@ -262,5 +262,11 @@
     "topic": "strategy",
     "correct": 3,
     "total": 3
+  },
+  {
+    "date": "2026-08-31T21:42:12.726489",
+    "topic": "greeks",
+    "correct": 2,
+    "total": 3
   }
 ]
