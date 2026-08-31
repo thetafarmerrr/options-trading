@@ -1,51 +1,6 @@
 {
   "sessions": [
     {
-      "date": "2026-07-04T21:38:09.714989",
-      "module": "E",
-      "score": 19,
-      "accuracy": 70.0,
-      "avg_time_ms": 21856.0,
-      "total_questions": 10,
-      "day_of_week": "Saturday"
-    },
-    {
-      "date": "2026-07-05T20:32:43.784011",
-      "module": "B",
-      "score": 64,
-      "accuracy": 88.0,
-      "avg_time_ms": 2583.0,
-      "total_questions": 25,
-      "day_of_week": "Sunday"
-    },
-    {
-      "date": "2026-07-05T20:35:55.005864",
-      "module": "D",
-      "score": 15,
-      "accuracy": 90.0,
-      "avg_time_ms": 18215.0,
-      "total_questions": 10,
-      "day_of_week": "Sunday"
-    },
-    {
-      "date": "2026-07-06T10:54:24.701270",
-      "module": "A",
-      "score": 23,
-      "accuracy": 80.0,
-      "avg_time_ms": 12233.0,
-      "total_questions": 10,
-      "day_of_week": "Monday"
-    },
-    {
-      "date": "2026-07-06T11:01:56.742274",
-      "module": "B",
-      "score": 56,
-      "accuracy": 92.0,
-      "avg_time_ms": 3821.0,
-      "total_questions": 25,
-      "day_of_week": "Monday"
-    },
-    {
       "date": "2026-07-07T11:25:59.710528",
       "module": "B",
       "score": 59,
@@ -1799,6 +1754,51 @@
       "avg_time_ms": 7016.0,
       "total_questions": 10,
       "day_of_week": "Friday"
+    },
+    {
+      "date": "2026-08-31T10:23:34.486806",
+      "module": "B",
+      "score": 68,
+      "accuracy": 96.0,
+      "avg_time_ms": 2206.0,
+      "total_questions": 25,
+      "day_of_week": "Monday"
+    },
+    {
+      "date": "2026-08-31T10:33:41.353442",
+      "module": "E",
+      "score": 30,
+      "accuracy": 100.0,
+      "avg_time_ms": 1841.0,
+      "total_questions": 10,
+      "day_of_week": "Monday"
+    },
+    {
+      "date": "2026-08-31T10:36:09.197251",
+      "module": "G",
+      "score": 42,
+      "accuracy": 96.0,
+      "avg_time_ms": 5374.0,
+      "total_questions": 25,
+      "day_of_week": "Monday"
+    },
+    {
+      "date": "2026-08-31T10:40:11.203724",
+      "module": "I",
+      "score": 15,
+      "accuracy": 91.7,
+      "avg_time_ms": 19210.0,
+      "total_questions": 12,
+      "day_of_week": "Monday"
+    },
+    {
+      "date": "2026-08-31T10:41:31.050707",
+      "module": "A",
+      "score": 24,
+      "accuracy": 80.0,
+      "avg_time_ms": 4368.0,
+      "total_questions": 10,
+      "day_of_week": "Monday"
     }
   ],
   "personal_bests": {

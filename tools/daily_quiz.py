@@ -179,6 +179,10 @@ def _normalize(s):
     s = unicodedata.normalize("NFKC", s)
     s = s.replace("−", "-").replace("÷", "/").replace("×", "*")
     s = s.replace("（", "(").replace("）", ")")
+    # 8/31 判错根因：用户中文输入法写"gamma和vega"、"朋友，敌人"，
+    # 中文连词/标点把答案词隔开 → 子串匹配失败误杀。统一替换为空格再去除。
+    for sep in ["和", "与", "及", "跟", "，", "、", "。", "：", "；", "·", ","]:
+        s = s.replace(sep, " ")
     return s.replace(" ", "").strip().lower()
 
 
