@@ -44,6 +44,7 @@ def load_iv_history() -> dict:
                 hv20 = float(row.get("hv_20d", 0) or 0)
                 hv60 = float(row.get("hv_60d", 0) or 0)
                 dte = int(row.get("dte", 30) or 30)
+                far_iv_raw = row.get("far_iv", "")
                 hist[c] = {
                     "iv_est": iv,
                     "hv_20d": hv20,
@@ -53,6 +54,8 @@ def load_iv_history() -> dict:
                     "time": row.get("time", ""),
                     "liquidity_ok": row.get("liquidity_ok", "1"),
                     "spread_pct": row.get("spread_pct", ""),
+                    "far_iv": float(far_iv_raw) if far_iv_raw not in (None, "") else None,
+                    "far_contract": row.get("far_contract", ""),
                 }
             except (ValueError, TypeError):
                 continue
@@ -85,6 +88,53 @@ def latest_healthy_iv(iv_hist: dict, vcode: str):
     if best_ok is not None:
         return best_ok, True
     return best_any, False
+
+
+def detect_term_structure_inversion(info: dict) -> Optional[dict]:
+    """期限结构倒挂检测（法则①）：近月 IV > 远月 IV = 倒挂。
+
+    输入：latest_healthy_iv() 返回的单品种最新健康合约 info（含 far_iv/far_contract）。
+    有效性闸（9/2 立，吸取 9/1 c 坏数据教训）：
+      - far_iv 缺失/空/<5%（物理不可能）→ 不判（None）
+      - far_contract 无法解析月份 → 不判
+    返回 None（无倒挂/数据不可判）或 {near_iv, far_iv, near_dte, msg}。
+    """
+    try:
+        main_iv = float(info.get("iv_est") or 0)
+        far_iv = info.get("far_iv")
+        far_iv = float(far_iv) if far_iv is not None else 0.0
+    except (ValueError, TypeError):
+        return None
+    if main_iv <= 0 or far_iv < 0.05:          # far_iv <5% = 坏数据不判
+        return None
+    far_contract = info.get("far_contract", "") or ""
+    try:
+        main_dte = int(info.get("dte") or 0)
+    except (ValueError, TypeError):
+        main_dte = 0
+    if main_dte <= 0 or not far_contract:
+        return None
+    m = re.search(r"(\d{4})$", far_contract)   # far 合约月份 YYMM
+    if not m:
+        return None
+    yy, mm = int(m.group(1)[:2]), int(m.group(1)[2:])
+    try:
+        far_dte = max((date(2000 + yy, mm, 1) - date.today()).days - 5, 5)
+    except ValueError:
+        return None
+    # 谁 DTE 短谁是近月
+    if main_dte < far_dte:                      # 主采=近月
+        near_iv, far_iv_v = main_iv, far_iv
+    else:                                       # far=近月（主采为远月，如 m2701 vs m2611）
+        near_iv, far_iv_v = far_iv, main_iv
+    if near_iv > far_iv_v:
+        return {
+            "near_iv": near_iv,
+            "far_iv": far_iv_v,
+            "near_dte": min(main_dte, far_dte),
+            "msg": f"近{near_iv:.1%} > 远{far_iv_v:.1%}",
+        }
+    return None
 
 
 def load_all_iv_rows() -> List[dict]:

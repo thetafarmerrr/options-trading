@@ -143,6 +143,10 @@ class Reporter:
         limit = min(self.show_limit, len(filtered)) if self.show_limit > 0 else len(filtered)
 
         for i, s in enumerate(filtered[:limit], 1):
+            inv_note = ""
+            if s.metadata.get("inversion"):
+                inv_msg = s.metadata.get("inversion_msg", "")
+                inv_note = f" ⚠️倒挂·法则①禁卖方({inv_msg})"
             warn = " ⚠️有事件" if s.metadata.get("_event_warning") else ""
             nr_note = ""
             if s.variety in weekly_scan_map:
@@ -178,7 +182,7 @@ class Reporter:
                   f"卖{opt_type_short}{sell_strike}/{buy_strike}  "
                   f"净收 ¥{net_premium}  卖bid ¥{sell_bid} 买ask ¥{buy_ask}  "
                   f"盈亏比 {s.rr_ratio}:1  OTM {s.metadata.get('otm_pct','?')}%"
-                  f"{warn}{nr_note}")
+                  f"{inv_note}{warn}{nr_note}")
             print(f"        {tier_str}")
 
             tp = round(s.max_profit * 0.5, 0)

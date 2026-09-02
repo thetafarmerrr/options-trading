@@ -34,6 +34,7 @@ from .data_source import AKShareSource, CachedSource
 from .volatility import (
     load_iv_history, load_all_iv_rows, iv_percentile,
     iv_hv_tier, _extract_variety, latest_healthy_iv,
+    detect_term_structure_inversion,
 )
 from .events import EventEngine
 from .strategies.credit_spread import CreditSpreadStrategy
@@ -134,6 +135,26 @@ def apply_iv_hv_gate(all_signals: list, iv_hist: dict):
         if spread < 0.01:  # <1%（含折价 <0%）→ 拦截
             s.tier = "INTERCEPTED"
             s.metadata["intercept_reason"] = f"IV-HV {spread*100:+.1f}% < 1%"
+
+
+def apply_inversion_gate(all_signals: list, iv_hist: dict):
+    """期限结构倒挂硬闸（法则①，9/2 立）：EXEC 且近月 IV>远月 IV → 🟡 + 标注禁卖方。
+
+    数据源 = iv_history 动态 far_iv（取代 weekly_event_scan 手写过时备注）。
+    **不降 tier（保留 EXEC）**——纪律需"当天有 EXEC + 人脑逐层毙"才计数，
+    直接拦掉 = 无信号日 = 纪律白费。倒挂信号保持可见，四层负责毙。
+    """
+    for s in all_signals:
+        if s.tier != "EXEC":
+            continue
+        hv_info, _ = latest_healthy_iv(iv_hist, s.variety)
+        if not hv_info:
+            continue
+        inv = detect_term_structure_inversion(hv_info)
+        if inv:
+            s.metadata["inversion"] = True
+            s.metadata["inversion_msg"] = inv["msg"]
+            s.metadata["tier_color"] = "yellow"
 
 
 def fetch_futures_5d_change(vcode: str, source) -> Optional[float]:
@@ -332,6 +353,7 @@ def main():
 
     # ── IV-HV 硬门槛（#12）：EXEC 必须 IV-HV ≥1%；<1%（含折价）降级 INTERCEPTED ──
     apply_iv_hv_gate(all_signals, iv_hist)
+    apply_inversion_gate(all_signals, iv_hist)
 
     # ── 组合风控 ──
     risk_warnings = check_portfolio_risk(all_signals, args.capital)
