@@ -4,7 +4,7 @@
 
 ## 当前进度
 
-**Phase 2 · 希腊字母** | 已看 1/8 | 下一集：**Delta & Directional Assumption Explained**（原#88）
+**Phase 2 · 希腊字母** | 已看 2/8 | 下一集：**Theta Explained**（原#21）（9/3 收尾同步——若当日英语有推进请回改）
 
 ---
 

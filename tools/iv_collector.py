@@ -44,6 +44,13 @@ TRADING_DAYS = 242
 PARKINSON_WINDOW = 60
 MIN_VALID_DAYS = 15
 
+# far_iv 物理带宽闸参数（9/3 立）：lo/hi = 次月相对主月 IV 的可信比区间。
+# 低流动性次月冻结报价会算出 1.3-5.5% 物理不可能 IV（c2701/ru2610），
+# abs_floor 兜绝对下限（同 scanner 侧 <5% 闸），lo_ratio 补相对下限
+# （ru 5.5% vs 主月 19% 这类地板漏网）。暂不品种化——真倒挂保留样本
+# 仅 c 一个，品种化是 overfit。触发条件见 journal 9/3 搁置。
+IV_BANDWIDTH = {"lo_ratio": 0.6, "hi_ratio": 3.0, "abs_floor": 0.05}
+
 OUTPUT_FILE = os.path.join(os.path.dirname(SCRIPT_DIR), "data", "iv_history.csv")
 os.makedirs(os.path.dirname(OUTPUT_FILE), exist_ok=True)
 
@@ -313,6 +320,18 @@ def collect_variety(vcode, vinfo):
                     far_contract_str = far_contract
                     if far_liquidity_ok and far_fp and far_fp > 0:
                         far_iv = _est_iv(float(far_fp), p_b_f, p_a_f, c_b_f, c_a_f, dte_f)
+                        # 9/3 修复：物理带宽闸。低流动性次月"双bid>0"多为冻结老报价，
+                        # 双bid/距far_fp 5%/spread<15% 三关全过仍算出 1.3-5.5% 物理不可能
+                        # IV（c2701/ru2610 坏数实锤）。闸建在 IV 结果上：次月不可能低于
+                        # max(abs_floor, lo_ratio×主月IV) 或高于 hi_ratio×主月IV。触发→
+                        # 置空+far_liquidity_ok=0，显示端自动落"盘口失真·倒挂不判定"(700行)，
+                        # CSV 同步不写脏。参数见顶部 IV_BANDWIDTH。主采 iv 缺失时保守跳过
+                        # (不判不拦)，scanner 侧 <5% 闸仍兜底。
+                        if far_iv and iv:
+                            _bw = IV_BANDWIDTH
+                            if not (max(_bw["abs_floor"], _bw["lo_ratio"] * iv) <= far_iv <= _bw["hi_ratio"] * iv):
+                                far_iv = None
+                                far_liquidity_ok = 0
         except Exception:
             pass
 
