@@ -30,3 +30,5 @@
 /bin/bash: /Users/mm/Documents/AIcode/gold_option_tools/tools/iv_collector_launcher.sh: Operation not permitted
 /bin/bash: /Users/mm/Documents/AIcode/gold_option_tools/tools/iv_collector_launcher.sh: Operation not permitted
 /bin/bash: /Users/mm/Documents/AIcode/gold_option_tools/tools/iv_collector_launcher.sh: Operation not permitted
+/bin/bash: /Users/mm/Documents/AIcode/gold_option_tools/tools/iv_collector_launcher.sh: Operation not permitted
+=== 9/5 /bin/bash 已授完全磁盘访问；reload+kickstart runs=1 exit 0（周六周末守卫静默，无 scheduler.log 属预期）。此后此文件不应再出现 EPERM。真实首验 = 9/7 09:15。===
