@@ -333,6 +333,31 @@
 
 ---
 
+## 天气宏观映射 · 厄尔尼诺 → 品种（9/4 记）
+
+**一句话机制**：赤道东太平洋海温异常偏暖 → 雨带搬家——西太平洋/东南亚/印度/澳洲偏旱，南美（阿根廷/巴西南部）偏湿，中国南方多雨、北方偏旱、冬季偏暖，西北太平洋台风生成数偏少。
+
+**「利多」是双刃**：El Niño 给受灾品种的是不确定溢价——价格先涨、IV 先抬、再等物理减产证实或证伪。卖方在溢价抬到位后反而是卖点（事件落地即 crush），不是追涨点。
+
+| 品种 | El Niño 主通道 | 价格方向 | 对 IV | 强度 |
+|------|--------------|---------|-------|------|
+| ru 橡胶 | 东南亚（泰/印尼/马）降雨异常：旱则胶林缺水减产，涝则断割胶 | 偏多 | ↑ 天气溢价 | 强——活叙事核心 |
+| sr 白糖 | 泰国/印度/澳洲旱 → 甘蔗减产（全球糖） | 偏多 | ↑ | 中强 |
+| cf 棉花 | 印度季风弱 + 澳洲旱 → 减产（全球棉） | 偏多 | ↑ | 中——被抛储/配额盖过 |
+| m 豆粕 | 阿根廷/巴西南部多雨 → 下季南美豆增产预期 | 远期偏空 | 弱 | 弱-中 |
+| c 玉米 | 美国主产区影响小（发展期）+ 南美增产 | 中性偏空 | 弱 | 弱 |
+| rm 菜粕 | 澳洲菜籽旱利多 vs 加拿大影响小 | 中性 | 弱 | 弱 |
+| ta | 台风少 → 封航/供应中断少；跟原油不跟 ENSO | 中性 | 弱 | 弱 |
+| ma | 无直接 ENSO 通道（走能源） | 中性 | 弱 | 弱 |
+| au | 无直接通道（只绕通胀） | 中性 | 弱 | 弱 |
+| i 铁矿 | 澳西北台风少 → 发运顺 → 少了扰动溢价 | 中性偏空 | 弱 | 弱 |
+
+**记法**：对你有意义的厄尔尼诺利多 = **ru（东南亚）+ sr（全球糖，非台风）> cf（印度/澳洲，被政策盖）**；其余偏空或弱相关。
+
+**⚠️ 自相打架的叙事**：El Niño 结构上压制西北太平洋台风——sr 押「台风连击」与 ru 押「厄尔尼诺预期」不能同时都当真 El Niño 结果推。用哪个叙事，先确认当期 ENSO 实况与区域主导模态（MJO/副高）。
+
+---
+
 ## 句型库
 
 So any contracts that are just out there open, they haven't been assigned, they haven't been exercised, they haven't been closed. So how I like to think of it is basically open contracts that are out there that I can become a part of in some way. So volume is essentially tracking the number of contracts that were closed or traded that day。
