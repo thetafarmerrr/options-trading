@@ -20,6 +20,13 @@ DEFAULT_FUTURES = {"au": 990, "m": 3250, "c": 2300, "cf": 17000, "sr": 5600,
 STRIKE_INTERVAL = {"au": 8, "m": 50, "c": 40, "cf": 200, "sr": 100,
                    "ta": 50, "ma": 50, "i": 20, "ru": 500, "rm": 50}
 
+# 新浪实时行情接口(futures_zh_realtime)接受的品种中文名。
+# 注意与期权链函数命名不同：rm=菜粕(非菜籽粕)、ma=郑醇(非甲醇)。9/5 验证。
+FUTURES_ZH_NAME = {
+    "m": "豆粕", "c": "玉米", "rm": "菜粕", "ta": "PTA", "ma": "郑醇",
+    "au": "黄金", "cf": "棉花", "sr": "白糖", "i": "铁矿石", "ru": "橡胶",
+}
+
 
 def pick_best_contract(symbol, vcode=None):
     """选主力合约。实际委托 pick_two_contracts，只返回近月。"""
@@ -112,6 +119,81 @@ def _safe(v):
     return v if not pd.isna(v) else 0
 
 
+# 期货真实最新价缓存（9/5）：主/次月两次 fetch_option_chain 同秒调用，品种级共享一次拉取。
+_REALTIME_CACHE = {}
+_REALTIME_TTL = 60
+
+
+def fetch_futures_realtime(vcode, contract):
+    """取指定合约（如 m2611）的期货真实最新价（新浪实时，按品种名一次拉全合约 df 查行）。
+
+    9/5 far_fp 根治：次月薄链冻结档会让 best_strike 平价推断偏 ~7%（m2611 推断 3650/
+    实 3406、c2701 2460/实 2330），旧 25% 安全网以主力价参照太松拦不住 → far ATM 选错
+    档 → 真倒挂被带宽闸遮蔽。实时价直接当 S；失败/查无 → None（上层降级推断）。"""
+    if not vcode or not contract:
+        return None
+    name = FUTURES_ZH_NAME.get(vcode)
+    if not name:
+        return None
+    now = time.time()
+    hit = _REALTIME_CACHE.get(vcode)
+    df = hit[1] if hit and now - hit[0] < _REALTIME_TTL else None
+    if df is None:
+        try:
+            df = ak.futures_zh_realtime(symbol=name)
+        except Exception:
+            return None
+        if df is None or df.empty or "symbol" not in df.columns:
+            return None
+        _REALTIME_CACHE[vcode] = (now, df)
+    rows = df[df["symbol"] == contract.upper()]
+    if rows.empty:
+        return None
+    r = rows.iloc[0]
+    for col in ("trade", "close"):  # 字段稳定性：trade 缺失/为 0 试 close
+        if col in df.columns:
+            v = _safe(r.get(col, 0))
+            if v and v > 0:
+                return float(v)
+    return None
+
+
+def _infer_futures_price(df, vcode):
+    """推断期货价（fetch_option_chain 回退路径）：ATM Put/Call bid 最接近且流动性好的
+    行权价作平价估计。8/21 修 cf：静态默认 13500 过期 → 参照真实主力收盘，偏离 >25% 取
+    参照。9/5 起仅作新浪实时价拉不到时的兜底，低频触发。"""
+    best_strike, best_diff = None, float('inf')
+    for _, row in df.iterrows():
+        p_bid = _safe(row.get('p_bid', 0))
+        c_bid = _safe(row.get('c_bid', 0))
+        p_ask = _safe(row.get('p_ask', 0))
+        c_ask = _safe(row.get('c_ask', 0))
+        if p_bid > 0 and c_bid > 0:
+            diff = abs(p_bid - c_bid)
+            # 过滤明显流动性差的：Put 或 Call 价差 > 50%（假 ATM）
+            p_sp = (p_ask - p_bid) / p_bid if p_bid > 0 else 999
+            c_sp = (c_ask - c_bid) / c_bid if c_bid > 0 else 999
+            if p_sp > 0.50 or c_sp > 0.50:
+                continue
+            if diff < best_diff:
+                best_diff = diff
+                best_strike = row['strike']
+    if best_strike:
+        # 安全网参照：优先真实期货价（fetch_futures_daily 最新收盘），失败回退静态默认。
+        ref_price = DEFAULT_FUTURES.get(vcode, 3000)
+        try:
+            dl = fetch_futures_daily(vcode, 30)
+            if dl is not None and len(dl) > 0:
+                ref_price = float(dl.sort_values("date")["close"].iloc[-1])
+        except Exception:
+            pass
+        # 安全网：推断价偏离参照价超过 25%，取参照价
+        if abs(best_strike - ref_price) / ref_price > 0.25:
+            return ref_price
+        return best_strike
+    return DEFAULT_FUTURES.get(vcode, 3000)
+
+
 def fetch_option_chain(vcode, symbol, contract=None):
     """用 akshare 拉完整期权链，返回 (contract_code, DataFrame, futures_price)"""
     if contract is None:
@@ -147,41 +229,14 @@ def fetch_option_chain(vcode, symbol, contract=None):
 
     df['strike'] = df['strike'].astype(float)
 
-    # 推断期货价：ATM Put/Call bid 最接近且流动性好的行权价
-    best_strike, best_diff = None, float('inf')
-    for _, row in df.iterrows():
-        p_bid = _safe(row.get('p_bid', 0))
-        c_bid = _safe(row.get('c_bid', 0))
-        p_ask = _safe(row.get('p_ask', 0))
-        c_ask = _safe(row.get('c_ask', 0))
-        if p_bid > 0 and c_bid > 0:
-            diff = abs(p_bid - c_bid)
-            # 过滤明显流动性差的：Put 或 Call 价差 > 50%（假 ATM）
-            p_sp = (p_ask - p_bid) / p_bid if p_bid > 0 else 999
-            c_sp = (c_ask - c_bid) / c_bid if c_bid > 0 else 999
-            if p_sp > 0.50 or c_sp > 0.50:
-                continue
-            if diff < best_diff:
-                best_diff = diff
-                best_strike = row['strike']
-    if best_strike:
-        # 安全网参照：优先真实期货价（fetch_futures_daily 最新收盘），失败回退静态默认。
-        # 8/21 根因：静态 DEFAULT_FUTURES["cf"]=13500 过期，best_strike≈17000 偏离 25.9%>25%
-        # → 强制 futures_price=13500 → ATM 全错。参照改真实价后 cf 偏差 0.4%，正确采用。
-        ref_price = DEFAULT_FUTURES.get(vcode, 3000)
-        try:
-            dl = fetch_futures_daily(vcode, 30)
-            if dl is not None and len(dl) > 0:
-                ref_price = float(dl.sort_values("date")["close"].iloc[-1])
-        except Exception:
-            pass
-        # 安全网：推断价偏离参照价超过 25%，取参照价
-        if abs(best_strike - ref_price) / ref_price > 0.25:
-            futures_price = ref_price
-        else:
-            futures_price = best_strike
-    else:
-        futures_price = DEFAULT_FUTURES.get(vcode, 3000)
+    # 期货价：优先该合约自身真实最新价（新浪实时）。9/5 far_fp 根治——次月薄链
+    # 平价推断吃冻结报价偏 ~7%（m2611 推断 3650/实 3406、c2701 2460/实 2330），
+    # 旧 25% 主力参照太松拦不住 → far ATM 选错档 → 真倒挂被带宽闸遮蔽。实时价
+    # 失败才降级 _infer_futures_price（原推断+安全网兜底，低频）。全路径统一，无
+    # near/far 分支——主力 liquid 时推断≈实时（差≤1 档），换源净变化≈0。
+    futures_price = fetch_futures_realtime(vcode, contract)
+    if not futures_price:
+        futures_price = _infer_futures_price(df, vcode)
 
     return contract, df, futures_price
 
