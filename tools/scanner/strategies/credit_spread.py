@@ -142,7 +142,8 @@ class CreditSpreadStrategy(Strategy):
                         elif tier == "yellow":
                             tier = "red"
 
-                    # D-1 事件降级已由 ScanContext.event_priced 统一处理
+                    # 注意：event_priced 仅 buyer.py 消费。卖方事件风险窗由两条闸兜底——
+                    # ①期限结构倒挂闸 apply_inversion_gate ②补偿推定 apply_compensation_presumption（9/8）
 
                     # ── 组合 Greeks ──
                     sell_greeks = {

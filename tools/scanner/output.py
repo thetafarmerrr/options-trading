@@ -148,9 +148,13 @@ class Reporter:
                 inv_msg = s.metadata.get("inversion_msg", "")
                 inv_note = f" ⚠️倒挂·法则①禁卖方({inv_msg})"
             warn = " ⚠️有事件" if s.metadata.get("_event_warning") else ""
-            nr_note = ""
-            if s.variety in weekly_scan_map:
-                nr_note = f" 🔮[非例行: {weekly_scan_map[s.variety][0][:20]}]"
+            comp_note = ""
+            if s.metadata.get("compensation"):
+                comp_msg = s.metadata.get("compensation_msg", "")
+                comp_note = (f" 🔮补偿推定·{comp_msg}"
+                             f" → 四层先证伪「这是补偿」才可卖")
+            elif s.variety in weekly_scan_map:
+                comp_note = f" 🔮[非例行: {weekly_scan_map[s.variety][0][:20]}]"
 
             tier_color = s.metadata.get("tier_color")
             if tier_color == "green":
@@ -182,7 +186,7 @@ class Reporter:
                   f"卖{opt_type_short}{sell_strike}/{buy_strike}  "
                   f"净收 ¥{net_premium}  卖bid ¥{sell_bid} 买ask ¥{buy_ask}  "
                   f"盈亏比 {s.rr_ratio}:1  OTM {s.metadata.get('otm_pct','?')}%"
-                  f"{inv_note}{warn}{nr_note}")
+                  f"{inv_note}{warn}{comp_note}")
             print(f"        {tier_str}")
 
             tp = round(s.max_profit * 0.5, 0)

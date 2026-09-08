@@ -157,6 +157,27 @@ def apply_inversion_gate(all_signals: list, iv_hist: dict):
             s.metadata["tier_color"] = "yellow"
 
 
+def apply_compensation_presumption(all_signals: list, weekly_risks: dict):
+    """错价 vs 补偿推定（9/8 认知落地）：真实物理风险登记窗内 + 卖方 EXEC → 黄标推定补偿。
+
+    数据源 = weekly_event_scan.json 结构化「真实风险」字段（非散文关键词）。
+    学倒挂闸（apply_inversion_gate）：**不降 tier（保留 EXEC）**——纪律需"当天有 EXEC +
+    人脑逐层毙"才计数；黄标 = 四层必须先证伪「这是补偿」才可卖。
+    判别问句（9/8）：这个贵背后有没有真实的、会落在合约窗内的风险？有 = 补偿（不做）。
+    """
+    for s in all_signals:
+        if s.tier != "EXEC" or "credit" not in s.strategy:
+            continue
+        risk = weekly_risks.get(s.variety)
+        if not risk or not risk.get("真实风险"):
+            continue
+        s.metadata["compensation"] = True
+        category = risk.get("风险类别", "?")
+        warn = risk.get("卖方预警", "")
+        s.metadata["compensation_msg"] = f"{category}·{warn[:60]}"
+        s.metadata["tier_color"] = "yellow"
+
+
 def fetch_futures_5d_change(vcode: str, source) -> Optional[float]:
     """拉取 5 日涨跌幅"""
     try:
@@ -171,10 +192,15 @@ def fetch_futures_5d_change(vcode: str, source) -> Optional[float]:
 
 
 def load_weekly_scan() -> tuple:
-    """加载每周非例行扫描 → (events_list, variety_map)"""
+    """加载每周非例行扫描 → (events_list, variety_map, weekly_risks)
+
+    weekly_risks[vcode] = 结构化风险条目（风险类别/真实风险/卖方预警）——
+    供 apply_compensation_presumption 补偿推定黄标用（9/8 认知落地）。
+    """
     scan_path = os.path.join(_TOOLS_DIR, "..", "data", "weekly_event_scan.json")
     events = []
     vmap = {}
+    risks = {}
     try:
         with open(scan_path) as f:
             data = json.load(f)
@@ -192,12 +218,16 @@ def load_weekly_scan() -> tuple:
                 vmap.setdefault(ag_code, []).append(
                     ev.get("催化", "") if ev.get("买方窗口")
                     else ev.get("卖方预警", ev.get("催化", "")))
+                if ev.get("真实风险"):
+                    risks.setdefault(ag_code, ev)
         elif vcode:
             vmap.setdefault(vcode, []).append(
                 ev.get("催化", "") if ev.get("买方窗口")
                 else ev.get("卖方预警", ev.get("催化", "")))
+            if ev.get("真实风险"):
+                risks.setdefault(vcode, ev)
 
-    return events, vmap
+    return events, vmap, risks
 
 
 def check_portfolio_risk(signals: List[Signal], capital: float) -> List[str]:
@@ -261,7 +291,7 @@ def main():
     # ── IV 历史 + 非例行扫描（全程复用）──
     iv_hist_rows = load_all_iv_rows()
     iv_hist = load_iv_history()
-    weekly_scan_events, weekly_map = load_weekly_scan()
+    weekly_scan_events, weekly_map, weekly_risks = load_weekly_scan()
 
     # ── 预计算 ScanContext ──
     contexts: Dict[str, ScanContext] = {}
@@ -354,6 +384,8 @@ def main():
     # ── IV-HV 硬门槛（#12）：EXEC 必须 IV-HV ≥1%；<1%（含折价）降级 INTERCEPTED ──
     apply_iv_hv_gate(all_signals, iv_hist)
     apply_inversion_gate(all_signals, iv_hist)
+    # ── 错价vs补偿推定（9/8）：真实物理风险窗内 + 卖方 EXEC → 黄标，四层证伪补偿才可卖
+    apply_compensation_presumption(all_signals, weekly_risks)
 
     # ── 组合风控 ──
     risk_warnings = check_portfolio_risk(all_signals, args.capital)
