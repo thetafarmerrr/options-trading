@@ -377,8 +377,15 @@
       "correct": 21,
       "total": 21,
       "accuracy": 100.0
+    },
+    {
+      "date": "2026-09-10",
+      "pool": "B",
+      "correct": 21,
+      "total": 21,
+      "accuracy": 100.0
     }
   ],
-  "streak": 8,
-  "best_streak": 8
+  "streak": 9,
+  "best_streak": 9
 }

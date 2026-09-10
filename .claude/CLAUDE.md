@@ -94,9 +94,10 @@ Ti 分析的对象从"可能性"改成"已经发生的结果"。不是不思考�
 - 可变状态（Phase/持仓/训练分/进度）→ 只在 `memory/quant-plan-state.md`，别处不复制
 - 错误（交易/决策/知识）→ `mistakes.md`（蒸馏教训：错在哪+以后）＋ `journal/`（当天时间线）。两处不同粒度，非复制
 - 搁置/延后项 → `MASTER_PLAN.md` 搁置表
+- 品种属性（IV−HV / 盘口 / 流动性 / 保证金 / 适配策略）→ `docs/variety-cards.md`（9/10 立）。**事件驱动建档**：某品种在讨论中被激活时才写/更新一张，5 分钟，字段从已有数据填。不是每日任务，不占时间槽
 - 稳定规则/战略/模板 → CLAUDE.md、MASTER_PLAN.md、docs/
 - 复盘：模板在 CLAUDE.md；每周实例签到时生成进当周六 journal
-- 一句话：错误进 mistakes(+journal)，任务进 MASTER_PLAN，状态进 memory，规则进 CLAUDE.md/docs，时间线进 journal
+- 一句话：错误进 mistakes(+journal)，任务进 MASTER_PLAN，状态进 memory，品种属性进 variety-cards，规则进 CLAUDE.md/docs，时间线进 journal
 
 ### 日志审查三条（说"检查日志 / 日志有误 / 调整格式"时）
 先分清"格式问题"vs"内容问题"，只修格式不动内容：
