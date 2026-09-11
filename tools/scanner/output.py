@@ -45,17 +45,37 @@ class Reporter:
         print(f"  🔭 全策略扫描 v4 — {now.strftime('%Y-%m-%d %H:%M')}")
         print(f"  {'█'*70}")
 
-    def print_chain_status(self, chains: Dict[str, Optional[OptionChain]]):
-        """打印期权链拉取状态"""
+    def print_chain_status(self, chains: Dict[str, Optional[OptionChain]],
+                           status: Optional[Dict[str, str]] = None):
+        """打印期权链拉取状态 —— 三态，不是两态。
+
+        为什么拆三态（2026-09-11）：原版只有「成功 / 拉取失败」。但 None 有三个来源：
+          · akshare 没拉到（网络/无数据）    → ❌ 真·拉取失败
+          · **拉到了、但被无套利闸判为不可信** → ⚠️ 拦截（数据到手，是质量问题）
+          · 代码异常                        → ❌ 异常
+        把第二种显示成「拉取失败」，会让人直接得出「该品种没数据」——9/11 教练就是
+        这么对用户说的（「au 无数据，跳过」），而 **collector 层 au 数据其实完整**，
+        用户差点把已采到的真实数据丢掉。显示层一个错标签，直接变成一个错判断。
+        """
         print(f"\n  📡 akshare 拉取期权链中...")
+        status = status or {}
         for vcode, chain in chains.items():
             vinfo = VARIETIES.get(vcode, {})
             vname = vinfo.get("name", vcode)
-            if chain is None:
-                print(f"     ❌ {vname:6s} → 拉取失败")
-            else:
+            st = status.get(vcode, "")
+            if chain is not None:
                 print(f"     ✅ {vname:6s} {chain.contract} → "
                       f"期货 {chain.futures_price} | 链 {len(chain.puts)} 档")
+            elif st.startswith("blocked:"):
+                print(f"     ⚠️ {vname:6s} 拉取成功但被拦截 → {st[len('blocked:'):].strip()}")
+                print(f"        （数据到手，质量问题。★不是「该品种无数据」★ —— "
+                      f"collector 层独立采集，该品种 IV/期货数据仍在）")
+            elif st.startswith("empty:"):
+                print(f"     ❌ {vname:6s} 拉取失败 → akshare 返回空表")
+            elif st.startswith("error:"):
+                print(f"     ❌ {vname:6s} 拉取失败 → {st[len('error:'):].strip()}")
+            else:
+                print(f"     ❌ {vname:6s} → 拉取失败（状态未记录）")
 
     # ── EXEC 卖方 ──
 
