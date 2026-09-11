@@ -49,10 +49,23 @@ class AKShareSource(DataSource):
         "沪金": "黄金期权", "铁矿石": "铁矿石期权", "橡胶": "橡胶期权"
     }
 
+    def __init__(self):
+        # 每品种最近一次 fetch_chain 的结果状态 → 给 output.print_chain_status 显示三态。
+        # 为什么需要：原版失败一律返回 None，output 只有「成功/失败」两态，
+        # 于是「拉到了、但被无套利闸拦下」被显示成「❌ 拉取失败」。
+        # 9/11 教练据此对用户说「au 无数据，跳过」，而 collector 层数据其实完整
+        # —— 一个粗粒度断言覆盖了细粒度已知事实（见 mistakes 同日那条）。
+        self.fetch_status: Dict[str, str] = {}
+
     def fetch_chain(self, vcode: str) -> Optional[OptionChain]:
-        """拉取期权链 → OptionChain，或 None（失败时）"""
+        """拉取期权链 → OptionChain，或 None（失败时）
+
+        无论成败都往 self.fetch_status[vcode] 写状态串：
+          "ok" / "empty: …"（拉到了但空）/ "blocked: …"（被无套利闸拦）/ "error: …"
+        """
         if vcode not in VARIETIES:
             print(f"     ⚠️ 未知品种 {vcode}")
+            self.fetch_status[vcode] = "error: 未知品种"
             return None
 
         vinfo = VARIETIES[vcode]
@@ -63,6 +76,7 @@ class AKShareSource(DataSource):
             contract, df, futures_price = _ak_fetch_chain(vcode, symbol)
 
             if df is None or df.empty:
+                self.fetch_status[vcode] = "empty: akshare 返回空表"
                 return None
 
             # ── 标准化校验 ──
@@ -75,6 +89,9 @@ class AKShareSource(DataSource):
             if block_errors:
                 for err in block_errors[:3]:
                     print(f"     ⚠️ 无套利【拦截】: {vname} {contract} {err}")
+                # 注意：这里是「数据到手但判为不可信」，不是「拉取失败」。
+                # 两者在 output 层必须分开显示，否则会得出「该品种无数据」的错误结论。
+                self.fetch_status[vcode] = f"blocked: {block_errors[0]}"
                 return None  # ATM 附近垂直价差倒挂 → 数据不可信
 
             # ── DTE 计算 ──
@@ -115,6 +132,7 @@ class AKShareSource(DataSource):
                     if col not in side_df.columns:
                         side_df[col] = 0.0
 
+            self.fetch_status[vcode] = "ok"
             return OptionChain(
                 variety=vcode,
                 name=vname,
@@ -129,6 +147,7 @@ class AKShareSource(DataSource):
 
         except Exception as e:
             print(f"     ❌ {vname:6s} → {str(e)[:60]}")
+            self.fetch_status[vcode] = f"error: {str(e)[:60]}"
             return None
 
     def fetch_futures_daily(self, vcode: str, days: int = 10) -> Optional[pd.DataFrame]:
@@ -169,15 +188,28 @@ class AKShareSource(DataSource):
         """
         block_errors = []
         warnings = []
-        lo, hi = futures_price * 0.85, futures_price * 1.15
 
         # ── P1（预警）: bid > ask ──
         # ≥20% 档位系统性交叉 → 升级为 P0 拦截
-        for prefix, side_name in [("p_", "Put"), ("c_", "Call")]:
+        #
+        # 2026-09-11 两处修正：
+        #  ① **必须要求 ask > 0**。原判据只写 bid > ask —— 当 ask=0（该档当天没挂卖单，
+        #     开盘瞬间极常见）时 bid > 0 > ask 恒成立，整片没报价的档位被当成「系统性交叉」
+        #     → 比例轻易破 25% → 整个品种被拦。9/11 沪金走的就是这条路。
+        #  ② **限制到 OTM 区**。原用 futures ±15% 含大量 ITM。ITM 期权由内在价值主导，
+        #     报价逻辑与 OTM 不同（轻微 bid 倒挂未必是数据错误）——P0 段早已按此理只取 OTM，
+        #     P1 却没有，两条判据口径不一致。
+        for prefix, side_name, otm_range in [
+            ("p_", "Put",  (futures_price * 0.85, futures_price)),   # OTM Put（行权 ≤ 期货）
+            ("c_", "Call", (futures_price, futures_price * 1.15)),   # OTM Call（行权 ≥ 期货）
+        ]:
             bid_col, ask_col = f"{prefix}bid", f"{prefix}ask"
             if bid_col not in df.columns or ask_col not in df.columns:
                 continue
-            core = df[(df["strike"] >= lo) & (df["strike"] <= hi)]
+            lo_s, hi_s = otm_range
+            core = df[(df["strike"] >= lo_s) & (df["strike"] <= hi_s)]
+            # 只在「买卖两边都有真实报价」的档位上判交叉
+            core = core[(core[ask_col] > 0) & (core[bid_col] > 0)]
             if len(core) == 0:
                 continue
             bad = core[(core[bid_col] > core[ask_col]) & (core[bid_col] > 1.0)]
@@ -232,6 +264,15 @@ class CachedSource(DataSource):
         self._source = source
         self._ttl = ttl_seconds
         self._cache: Dict[str, tuple] = {}  # vcode → (OptionChain, timestamp)
+
+    @property
+    def fetch_status(self) -> Dict[str, str]:
+        """透传底层数据源的每品种状态（ok / empty / blocked / error）。
+
+        缓存命中时底层本轮没跑，返回的是上一次已知状态——
+        对「显示层」够用，且比「拉取失败」准确。
+        """
+        return getattr(self._source, "fetch_status", {})
 
     def fetch_chain(self, vcode: str) -> Optional[OptionChain]:
         now = datetime.now()

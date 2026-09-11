@@ -420,7 +420,7 @@ def main():
     reporter = Reporter(capital=args.capital, show_limit=args.show)
 
     reporter.print_header()
-    reporter.print_chain_status(chains)
+    reporter.print_chain_status(chains, getattr(source, "fetch_status", None))
 
     # 事件日历
     print(f"\n  ┌─ 事件日历")
