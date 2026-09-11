@@ -15,6 +15,17 @@ docs/ctp-config.md
 volatility-trading-second-edition_compress.pdf
 docs/yuan-yongjian-strategy.md
 data/scanner_log/
-data/settlement_*.txt
+# ── 敏感：绝不进 git（2026-09-11 立，事故后补）────────────────
+# 结算单 = 真实姓名 + 客户号 + 资金账号 + 交易编码。任何扩展名一律挡。
+# 原规则只写了 data/settlement_*.txt → 挡不住 PDF，8/17 就是这么漏的 25 天。
+data/settlement*
+# data/ 下二进制一律挡 —— 内容无法文本扫描，只能按类型拦
+data/*.pdf
+data/*.png
+data/*.jpg
+data/*.jpeg
+data/*.xlsx
+data/*.docx
+data/*.zip
 data/*.log
 *.pyc
