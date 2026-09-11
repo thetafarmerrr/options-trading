@@ -229,8 +229,19 @@ def generate_chain_segment():
     tradeable_strikes = []
     all_anomalies = []
     n_anomalies = random.randint(1, 3)
-    candidates = list(range(2, len(strikes) - 2))
-    random.shuffle(candidates)
+    # 注入点必须两两间隔 ≥ MAX_GAP_STRIKES+1 档（9/11 修）。
+    # 为什么：_find_ref_leg 向下回看 MAX_GAP_STRIKES 档。若两个注入点相距 ≤3，
+    # 后一个就在前一个的「参考腿窗口」里 —— 它会改掉前一个的参考腿价格/买价，
+    # 于是前一个题目的答案键描述了链面上不存在的数字。
+    # 用户 9/11 报的「玉米 2060 显示 1.94 / 答案键 4.92」就是这个。
+    _pool = list(range(2, len(strikes) - 2))
+    random.shuffle(_pool)
+    candidates = []
+    for _c in _pool:
+        if all(abs(_c - _x) >= MAX_GAP_STRIKES + 1 for _x in candidates):
+            candidates.append(_c)
+        if len(candidates) >= n_anomalies:
+            break
 
     for idx in candidates[:n_anomalies]:
         anomaly_type = random.choice(["inversion_tradeable", "inversion_tradeable",
@@ -249,18 +260,11 @@ def generate_chain_segment():
                 prices[idx]["bid"] = round(prices[idx]["theo"] * random.uniform(0.88, 0.94), 2)
                 prices[idx]["ask"] = round(prices[idx]["bid"] * random.uniform(1.03, 1.10), 2)
                 tradeable_strikes.append(strikes[idx])
-                ref_strike = strikes[ref_idx]
-                ref_bid = prices[ref_idx]["bid"]
-                anomaly_bid = prices[idx]["bid"]
-                # 从链面数据推导描述（Put：行权价↑→买价↑，违反=倒挂）
-                if anomaly_bid < ref_bid:
-                    detail = (f"{label} 行权价{strikes[idx]}（买价{anomaly_bid}）"
-                              f"比低行权价{ref_strike}（买价{ref_bid}）还便宜 → 可交易倒挂{suffix}")
-                else:
-                    detail = (f"{label} 行权价{strikes[idx]}：理论价被压低至{anomaly_bid}，"
-                              f"与参考腿{ref_strike}（{ref_bid}）形成倒挂，买价存在{suffix}")
+                # 文案**不在这里生成** —— 推迟到全部注入完成后（见下方 _resolve 段）。
+                # 9/11 前这里是当场定稿的：ref_bid = prices[ref_idx]["bid"] 此刻取值并写进字符串，
+                # 而循环后面的迭代可能改掉 prices[ref_idx] → 答案键与展示链矛盾。
                 all_anomalies.append({"strike": strikes[idx], "type": f"{label}可交易倒挂",
-                                       "detail": detail})
+                                       "_resolve": (idx, ref_idx, label, suffix)})
         elif anomaly_type == "inversion_untradeable":
             prices[idx]["theo"] = round(prices[idx-1]["theo"] * random.uniform(0.5, 0.8), 2)
             ref_idx, label, suffix = _find_ref_leg(idx)
@@ -271,8 +275,15 @@ def generate_chain_segment():
                 prices[idx]["ask"] = round(prices[idx]["bid"] * random.uniform(1.03, 1.10), 2)
                 detail = f"行权价{strikes[idx]}：价格倒挂{suffix} → 不能做"
             else:
-                # 参考腿存在 → 选一种真实毙因，改价格以匹配
-                kill_reason = random.choice(["zero_bid", "wide_spread", "cross_leg"])
+                # 参考腿存在 → 选一种毙因，改价格以匹配。
+                # 9/11 修：原版从三种里随机抽，与链面无关 —— 当 label 是「🟢相邻」
+                # （相邻档就是参考腿、没跳过任何档）时仍可能抽到 cross_leg，
+                # 打出「需跨档参考 → 不是干净机会」而 suffix 是空串，与链面对不上。
+                # cross_leg 只在真的跨了档（🟡跨腿）时才允许出现。
+                _reasons = ["zero_bid", "wide_spread"]
+                if label == "🟡跨腿":
+                    _reasons.append("cross_leg")
+                kill_reason = random.choice(_reasons)
                 if kill_reason == "zero_bid":
                     prices[idx]["bid"] = 0.0
                     prices[idx]["ask"] = round(prices[idx]["theo"] * 1.5, 2)
@@ -295,6 +306,31 @@ def generate_chain_segment():
             prices[idx]["ask"] = round(prices[idx]["theo"] * 2.5, 2)
             all_anomalies.append({"strike": strikes[idx], "type": "价差过宽",
                                    "detail": f"行权价{strikes[idx]}：价差太宽，不能做"})
+
+    # ── 全部注入完成 → 此刻才生成答案键文案 ──────────────────
+    # 为什么推迟：文案里的每个数字（参考腿买价 / 本腿买价）必须与最终展示的链面一致。
+    # 在循环内定稿 = 拿一个「可能会被后续迭代改掉」的中间态去描述最终态。
+    # 推迟之后，无论注入点怎么排布都不可能矛盾 —— 上下两处（间隔 + 推迟）是双保险：
+    # 间隔管住 label/suffix（它们来自被读时的链面），推迟管住数字。
+    for _a in all_anomalies:
+        _r = _a.pop("_resolve", None)
+        if _r is None:
+            continue
+        _idx, _ref_idx, _label, _suffix = _r
+        # 自检：参考腿在**最终**链面上是否仍然有效（有报价）。
+        # 间隔规则本该保证，这里兜底 —— 万一被后人改坏，宁可当场喊出来。
+        if prices[_ref_idx]["bid"] <= 0:
+            print(f"  ⚠️ 【出题自检】行权价{strikes[_idx]:.0f} 题的参考腿"
+                  f"{strikes[_ref_idx]:.0f} 最终买价为 0 —— label「{_label}」前提被破坏")
+        ref_strike, ref_bid = strikes[_ref_idx], prices[_ref_idx]["bid"]
+        anomaly_bid = prices[_idx]["bid"]
+        # 从链面数据推导描述（Put：行权价↑→买价↑，违反=倒挂）
+        if anomaly_bid < ref_bid:
+            _a["detail"] = (f"{_label} 行权价{strikes[_idx]}（买价{anomaly_bid}）"
+                            f"比低行权价{ref_strike}（买价{ref_bid}）还便宜 → 可交易倒挂{_suffix}")
+        else:
+            _a["detail"] = (f"{_label} 行权价{strikes[_idx]}：理论价被压低至{anomaly_bid}，"
+                            f"与参考腿{ref_strike}（{ref_bid}）形成倒挂，买价存在{_suffix}")
 
     return {
         "product": product, "futures": fut, "strikes": strikes,
