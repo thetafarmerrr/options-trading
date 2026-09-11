@@ -1,8 +1,17 @@
 {
-  "active": true,
-  "name": "棉花 cf2701 卖P16400/买P16200",
+  "active": false,
+  "name": "棉花 cf2701 卖P16400/买P16200（9/11 已平，留档作下次开仓的模板）",
   "sell_leg": "CZCE.CF701P16400",
   "buy_leg": "CZCE.CF701P16200",
   "credit": 69,
-  "stop_net": 34.5
+  "stop_net": 34.5,
+  "entry_futures": 17200,
+  "multiplier": 5,
+  "_字段说明": {
+    "active": "true 才监控。平仓当天立刻改 false —— 否则 monitor 会对着已平的仓位持续告警",
+    "credit": "开仓净收（元/吨）",
+    "stop_net": "止盈净价 = credit × 50%（离场第 1 条）",
+    "entry_futures": "开仓时的期货价。离场方向判定的参考点（跨日移动才看得见）。缺 → 退回当日涨跌，会漏掉跨日趋势",
+    "multiplier": "合约乘数，算最大亏损用。棉 5 / 豆粕 10 / 白糖 10 / 沪金 1000 / 铁矿 100 —— 按品种查，别填错"
+  }
 }

@@ -14,6 +14,7 @@
 """
 
 import os
+import re
 import sys
 import json
 import time
@@ -101,17 +102,193 @@ def send_alert(title: str, body: str):
         pass
 
 
+# ============================================================
+# 离场六步 —— 第 2/3/4/5 条（2026-09-11 补）
+#
+# 背景：原版只监控第 1 条（止盈 50%）+ 第 6 条（事件缓冲），六步只覆盖 2 步。
+# 实盘证据：cf2701 期货 17200 → 16330，一路走进 ⛔ 撤离区（卖腿入水 70 点），
+#          monitor_stop 全程在跑，**零告警**。因为它只会报喜——
+#          net_cost = 卖腿ask − 买腿bid，只有赚钱方向才可能 ≤ stop_net，
+#          亏钱方向一路涨到全亏也一声不响。
+#
+# 规则出处 docs/monitoring-rules.md：
+#   2. 期货触及买腿行权价 → 平（开仓前定的硬线）
+#   3. 剩余 ≤ 2 个交易日   → 平（末日 Gamma + 指派风险）
+#   4. 两腿都实值          → 平（亏损已封顶，持仓无意义）
+#   5. OTM < 1% + 期货向卖腿方向移动 → 平（撤离区）
+#   三档体系（:128-133）：🟢>3% / 🟡2-3% / 🔴1-2% / ⛔<1%
+#
+# ⚠️ 口径冲突 —— 用户 2026-09-11 裁定「取并集」：
+#   :133 ⛔ <1% 写「无条件｜立刻平。不等。不犹豫」
+#   :259 第 5 条写「<1% **+** 期货向卖腿方向移动」
+#   两者矛盾 → 取并集：**<1% 一律告警**，方向只作附注，不因方向不符而压掉告警。
+#   理由：漏报的代价是「零告警进撤离区」（就是今天 cf 那次），
+#         误报的代价只是你看一眼然后判断「方向还没到，继续持有」。
+# ============================================================
+
+# 卖腿代码 "CZCE.CF701P16400" → 品种字母 + 合约月 + C/P + 行权价
+# 例：CZCE.CF701P16400 / SHFE.au2607C560 / DCE.m2701P3150
+_LEG_RE = re.compile(r"^[A-Za-z]+\.[A-Za-z]+\d+([CP])(\d+(?:\.\d+)?)$")
+
+
+def parse_leg(code):
+    """解析期权腿代码 → (kind, strike)。解析失败返回 (None, None)。"""
+    m = _LEG_RE.match(str(code or "").strip())
+    if not m:
+        return None, None
+    return m.group(1).upper(), float(m.group(2))
+
+
+def spread_geometry(cfg):
+    """从配置解出卖方价差几何 → (kind, sell_strike, buy_strike, width)
+
+    kind='P'（卖 Put 价差，危险方向=期货下跌）/ 'C'（卖 Call 价差，危险方向=期货上涨）
+    两腿期权类型不一致 → 返回 None（不是本监控覆盖的结构）
+    """
+    sk, ss = parse_leg(cfg.get("sell_leg"))
+    bk, bs = parse_leg(cfg.get("buy_leg"))
+    if sk is None or bk is None or sk != bk:
+        return None
+    return sk, ss, bs, abs(ss - bs)
+
+
+def sell_otm_pct(kind, fut, strike):
+    """卖腿虚值百分比。正 = 虚值（安全），负 = 实值（已入水）。
+
+    与 journal 9/11 口径一致：卖 P16400、期货 16330 → (16330−16400)/16400 = −0.43%
+    """
+    if not strike:
+        return None
+    return (fut - strike) / strike if kind == "P" else (strike - fut) / strike
+
+
+def trading_days_left(expire_ns):
+    """距到期的剩余【工作日】数。
+
+    ⚠️ 近似：只按周一~周五计数，**不含法定节假日** → 会高估 1-2 天。
+    宁可早报一天，不可晚报 —— 第 3 条是「剩 ≤2 交易日」，晚报等于失效。
+    """
+    from datetime import date, timedelta
+    if not expire_ns:
+        return None
+    try:
+        exp = datetime.fromtimestamp(expire_ns / 1e9).date()
+    except (OSError, ValueError, OverflowError):
+        return None
+    today = date.today()
+    if exp <= today:
+        return 0
+    n, d = 0, today
+    while d < exp:
+        d += timedelta(days=1)
+        if d.weekday() < 5:
+            n += 1
+    return n
+
+
+def check_exit_steps(cfg, fut_price, expire_ns, already_fired):
+    """离场六步第 2/3/4/5 条 → [(step_no, level, title, body), ...]
+
+    already_fired：已报过的 step 号集合（本轮内不重报）。
+    期货价缺失 → 返回空（不猜，宁可不报也不编一个价）。
+    """
+    geo = spread_geometry(cfg)
+    if not geo or not fut_price or fut_price <= 0:
+        return []
+
+    kind, sell_strike, buy_strike, width = geo
+    out = []
+
+    # 方向参考：优先开仓时的期货价（跨日移动才看得见），缺则用昨收（当日方向）
+    ref, ref_src = None, ""
+    entry_fut = cfg.get("entry_futures")
+    if entry_fut and float(entry_fut) > 0:
+        ref, ref_src = float(entry_fut), "开仓价"
+    move = None if ref is None else fut_price - ref
+    if move is None:
+        dir_txt = "（无参考价，方向未判——请填 entry_futures）"
+    else:
+        # 卖 Put 价差：期货下跌 = 朝卖腿走；卖 Call 价差：期货上涨 = 朝卖腿走
+        toward = (move < 0) if kind == "P" else (move > 0)
+        arrow = "↓" if move < 0 else ("↑" if move > 0 else "→")
+        dir_txt = (f"期货 {fut_price:.0f}（{ref_src} {ref:.0f} 起 {arrow}{abs(move):.0f}）"
+                   f" → {'✅ 朝卖腿方向' if toward else '⚠️ 未朝卖腿方向'}")
+
+    otm = sell_otm_pct(kind, fut_price, sell_strike)
+    otm_pct = otm * 100 if otm is not None else None
+
+    # ── 第 5 条 + 三档体系 ──
+    # 并集口径：<1% 与 1~3% 都报，方向只作附注（三档原规则要求方向，此处不据此压掉）
+    if otm_pct is not None and otm_pct < 1.0:
+        out.append((5, "⛔",
+                    f"撤离区触发 — {cfg['name']}",
+                    f"卖腿 OTM {otm_pct:+.2f}%  < 1%（第 5 条 · 无条件档）\n"
+                    f"卖腿行权 {sell_strike:.0f}  期货 {fut_price:.0f}\n"
+                    f"{dir_txt}\n"
+                    f"→ 规则：⛔ 立刻平，不等。方向仅供参考，不改变本条触发。"))
+    elif otm_pct is not None and otm_pct < 2.0:
+        out.append((5, "🔴",
+                    f"高危档 — {cfg['name']}",
+                    f"卖腿 OTM {otm_pct:+.2f}%  在 🔴 1-2% 高危区\n"
+                    f"卖腿行权 {sell_strike:.0f}  期货 {fut_price:.0f}\n"
+                    f"{dir_txt}\n"
+                    f"→ 规则：期货向卖腿移动 + 任何到期日 → 平（除非 >45 天且已止跌反弹）"))
+    elif otm_pct is not None and otm_pct < 3.0:
+        out.append((5, "🟡",
+                    f"警戒档 — {cfg['name']}",
+                    f"卖腿 OTM {otm_pct:+.2f}%  在 🟡 2-3% 警戒区\n"
+                    f"卖腿行权 {sell_strike:.0f}  期货 {fut_price:.0f}\n"
+                    f"{dir_txt}\n"
+                    f"→ 规则：期货向卖腿移动 + 到期 <30 天 → 评估平仓成本；亏 <30% 最大亏损可平"))
+
+    # ── 第 2 条：期货触及买腿行权价 ──
+    reached_buy = (fut_price <= buy_strike) if kind == "P" else (fut_price >= buy_strike)
+    if reached_buy:
+        out.append((2, "🔴",
+                    f"期货触及买腿 — {cfg['name']}",
+                    f"期货 {fut_price:.0f} 已触及买腿行权价 {buy_strike:.0f}\n"
+                    f"卖腿 OTM {otm_pct:+.2f}%\n"
+                    f"→ 规则：第 2 条，开仓前定的硬线 → 平"))
+
+    # ── 第 4 条：两腿都实值（亏损已封顶）──
+    both_itm = (fut_price < buy_strike) if kind == "P" else (fut_price > buy_strike)
+    if both_itm:
+        out.append((4, "⛔",
+                    f"两腿都实值 — {cfg['name']}",
+                    f"期货 {fut_price:.0f} 已越过买腿行权价 {buy_strike:.0f}\n"
+                    f"两腿均实值 → 亏损已封顶，持仓无意义\n"
+                    f"→ 规则：第 4 条 → 平仓释放保证金"
+                    f"（第 2 条『触及买腿』此时已被本条覆盖）"))
+
+    # ── 第 3 条：剩余 ≤ 2 个交易日 ──
+    dte = trading_days_left(expire_ns)
+    if dte is not None and dte <= 2:
+        out.append((3, "🔴",
+                    f"临期告警 — {cfg['name']}",
+                    f"剩余 ≈{dte} 个工作日（近似，未扣节假日）≤ 2\n"
+                    f"卖腿 OTM {otm_pct:+.2f}%\n"
+                    f"→ 规则：第 3 条，末日 Gamma + 指派风险 → 平，不赚最后一个硬币"))
+
+    return [(s, lv, t, b) for (s, lv, t, b) in out if s not in already_fired]
+
+
 def check_once(cfg):
     """单次检查（供 launchd 定时调用）"""
     api = TqApi(auth=TqAuth(TQ_USER, TQ_PASS))
     try:
         sell_quote = api.get_quote(cfg["sell_leg"])
         buy_quote = api.get_quote(cfg["buy_leg"])
+        fut_quote = _subscribe_futures(api, cfg)
         api.wait_update()
 
         sell_ask = sell_quote.ask_price1
         buy_bid = buy_quote.bid_price1
+        fut_price = fut_quote.last_price if fut_quote else None
+        fired = set()   # once 模式无状态，每次都是全新一轮
 
+        hit = False
+
+        # ── 第 1 条：止盈（原逻辑，只报喜那一侧）──
         if sell_ask and buy_bid and sell_ask > 0 and buy_bid > 0:
             net_cost = sell_ask - buy_bid
             if net_cost <= cfg["stop_net"]:
@@ -123,8 +300,17 @@ def check_once(cfg):
                 )
                 send_alert(title, body)
                 print(f"🚨 {title}")
-                return True
-        return False
+                hit = True
+
+        # ── 第 2/3/4/5 条：离场告警（2026-09-11 补）──
+        for step, level, title, body in check_exit_steps(
+                cfg, fut_price, getattr(sell_quote, "expire_datetime", None), fired):
+            fired.add(step)
+            send_alert(f"{level} {title}", body)
+            print(f"{level} {title}\n{body}")
+            hit = True
+
+        return hit
     finally:
         api.close()
 
@@ -213,7 +399,31 @@ def dry_run(cfg):
     print(f"   买腿: {cfg['buy_leg']}")
     print(f"   收入 credit: {cfg.get('credit', '?')}")
     print(f"   止盈净价 ≤ {cfg.get('stop_net', '?')}")
-    print(f"   最大亏损 ≈ {cfg.get('stop_net', 0) * 2 - cfg.get('credit', 0):.1f}" if cfg.get('stop_net') and cfg.get('credit') else "")
+
+    # ── 最大亏损（2026-09-11 修）──
+    # 旧式：stop_net × 2 − credit。错在 stop_net 是【止盈线】(= credit × 50%)，
+    # 不是价差宽度 —— 两个不相干的数凑出 "0.0"。cf2701（宽 200 / credit 69）
+    # 打印「最大亏损 ≈ 0.0」，让一个 655 元风险的仓位看起来无风险。
+    # 正确：宽度 = |卖腿行权 − 买腿行权|，最大亏损 = (宽度 − credit) × 乘数。
+    geo = spread_geometry(cfg)
+    if geo:
+        kind, ss, bs, width = geo
+        credit = cfg.get("credit", 0)
+        mult = cfg.get("multiplier")
+        print(f"   结构: 卖{kind}{ss:.0f} / 买{kind}{bs:.0f}   宽度 = {width:.0f} 点")
+        if mult:
+            print(f"   最大亏损 = ({width:.0f} − {credit}) × {mult} = {(width - credit) * float(mult):.0f}")
+        else:
+            print(f"   最大亏损 = ({width:.0f} − {credit}) × 乘数 = ?"
+                  f"   ⚠️ 配置缺 multiplier，算不出——补上它（各品种不同）")
+    else:
+        print("   ⚠️ 腿代码解析失败 → 算不出价差宽度/最大亏损（检查 leg 格式）")
+
+    # 离场告警所需字段
+    if cfg.get("entry_futures"):
+        print(f"   开仓时期货 = {cfg['entry_futures']}（离场方向参考）")
+    else:
+        print("   ⚠️ 缺 entry_futures → 离场方向只能退回当日涨跌判，跨日移动看不见")
     print()
     # 基础校验
     errors = []
@@ -231,24 +441,28 @@ def dry_run(cfg):
         return True
 
 
-def _connect_quotes(cfg):
-    """建立连接并订阅卖腿/买腿/期货报价。返回 (api, sell_quote, buy_quote, fut_quote)。
+def _subscribe_futures(api, cfg):
+    """订阅卖腿对应的期货合约。卖腿 "CZCE.CF701P16400" → 期货 "CZCE.CF701"。
 
-    #14 事件缓冲需要期货价：卖腿 "CZCE.CF701P16400" → 期货 "CZCE.CF701"。
     8/17 bug 修复：旧正则漏了合约月份数字，得到不存在的 "CZCE.CF"
     → get_quote 报错 → 坏订阅污染连接 → wait_update 静默卡死。
+    失败返回 None（不抛），调用方需容忍 fut_quote 为 None。
     """
-    import re as _re
+    m = re.match(r"([A-Za-z]+\.[A-Za-z]+\d+)", cfg.get("sell_leg", ""))
+    if not m:
+        return None
+    try:
+        return api.get_quote(m.group(1))
+    except Exception:
+        return None
+
+
+def _connect_quotes(cfg):
+    """建立连接并订阅卖腿/买腿/期货报价。返回 (api, sell_quote, buy_quote, fut_quote)。"""
     api = TqApi(auth=TqAuth(TQ_USER, TQ_PASS))
     sell_quote = api.get_quote(cfg["sell_leg"])
     buy_quote = api.get_quote(cfg["buy_leg"])
-    fut_quote = None
-    _fm = _re.match(r"([A-Za-z]+\.[A-Za-z]+\d+)", cfg["sell_leg"])
-    if _fm:
-        try:
-            fut_quote = api.get_quote(_fm.group(1))
-        except Exception:
-            fut_quote = None
+    fut_quote = _subscribe_futures(api, cfg)
     return api, sell_quote, buy_quote, fut_quote
 
 
@@ -320,6 +534,8 @@ def main():
             last_activity = time.time()   # 最近一次报价流动的墙钟时间
             last_q_dt = None              # 上一次看到的报价 datetime
             last_heartbeat = time.time()
+            exit_fired = set()            # 已报过的离场 step 号（条件解除后移除，可重报）
+            exit_err_reported = None      # 离场检查异常只打一次，不刷屏
 
             try:
                 while True:
@@ -346,6 +562,24 @@ def main():
 
                     sell_ask = sell_quote.ask_price1
                     buy_bid = buy_quote.bid_price1
+
+                    # ── 离场六步第 2/3/4/5 条（2026-09-11 补）──
+                    # 条件解除的 step 从 fired 里移除 → 再次触发会重报
+                    try:
+                        fut_price = fut_quote.last_price if fut_quote else None
+                        trig = check_exit_steps(
+                            cfg, fut_price,
+                            getattr(sell_quote, "expire_datetime", None), set())
+                        for step, level, title, body in trig:
+                            if step not in exit_fired:
+                                exit_fired.add(step)
+                                send_alert(f"{level} {title}", body)
+                                print(f"\n{level} {title}\n{body}\n")
+                        exit_fired &= {s for (s, _, _, _) in trig}
+                    except Exception as exc:
+                        if exit_err_reported is None:
+                            print(f"⚠️ 离场检查异常（不致命，继续监控）：{exc}")
+                            exit_err_reported = str(exc)
 
                     if sell_ask and buy_bid and sell_ask > 0 and buy_bid > 0:
                         net_cost = sell_ask - buy_bid
