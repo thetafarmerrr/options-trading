@@ -161,19 +161,66 @@ def check(files, new_files):
     return blocks, notes
 
 
+def rule_of(path, tracked=False):
+    """返回命中该文件的 .gitignore 规则名（tracked=True 时必须带 --no-index）"""
+    args = ["git", "check-ignore", "-v"] + (["--no-index"] if tracked else []) + [path]
+    r = subprocess.run(args, capture_output=True, text=True).stdout.strip()
+    return r.split("\t")[0].split(":")[-1] if r else None
+
+
 def audit():
-    """全量体检：报告【已跟踪但匹配 .gitignore】的长期不一致清单（不阻断，只报告）"""
-    inconsistent = [f for f in tracked_files() if is_ignored(f)]
-    print(f"\n📋 长期不一致清单：{len(inconsistent)} 个文件「.gitignore 说忽略，实际被跟踪」")
-    print("   （.gitignore 对已跟踪文件无效 —— 这些规则从写下那天起就没生效过）")
-    for f in inconsistent:
-        # 必须带 --no-index：不加的话，已跟踪文件 check-ignore 一律返回空 → 规则名显示不出来
-        r = subprocess.run(["git", "check-ignore", "-v", "--no-index", f],
-                           capture_output=True, text=True).stdout.strip()
-        rule = r.split("\t")[0].split(":")[-1] if r else "(未解析出)"
-        print(f"     {f}   ← 规则 `{rule}`")
-    print("\n   处理方式二选一：① 删掉这些失效规则（承认它们是有意跟踪的）"
-          "\n                   ② 真 untrack（按当初写规则的意图私有化）")
+    """规则体检：每条 .gitignore 规则【实际在挡什么】+【有没有历史遗留】
+
+    为什么这么设计（2026-09-11 教练踩坑后重写）：
+      旧版只报「已跟踪但匹配规则」的文件，把规则报成"失效的"。
+      但规则对【未跟踪】文件照常生效 —— 那才是它们本来的用途。
+      实测：data/*.csv 看着"失效"（12 个已跟踪命中），实际正挡着
+      2.4M 的 deep_otm 数据。按旧报告删规则 = 下次 git add -A 全部扫进库。
+      教训：判断规则死活，必须看【未跟踪侧的工作量】，不能只看已跟踪侧。
+    """
+    untracked = [f for f in sh(["git", "ls-files", "--others"]).split("\n") if f.strip()]
+    tracked = tracked_files()
+
+    # 规则 → (挡住的未跟踪文件, 已跟踪命中)
+    live = {}
+    for f in untracked:
+        r = rule_of(f, tracked=False)
+        if r:
+            size = os.path.getsize(f) if os.path.exists(f) else 0
+            live.setdefault(r, {"blocking": [], "legacy": [], "bytes": 0})["blocking"].append(f)
+            live[r]["bytes"] += size
+    for f in tracked:
+        r = rule_of(f, tracked=True)
+        if r:
+            live.setdefault(r, {"blocking": [], "legacy": [], "bytes": 0})["legacy"].append(f)
+
+    total_b = sum(v["bytes"] for v in live.values())
+    total_n = sum(len(v["blocking"]) for v in live.values())
+
+    print(f"\n📋 .gitignore 规则体检")
+    print(f"   规则共挡住 {total_n} 个未跟踪文件 / {total_b / 1024 / 1024:.1f} MB "
+          f"—— 这就是它们的真实工作量")
+    print()
+    print(f"   {'规则':<26} {'在挡':>10} {'体积':>8}  {'历史遗留':>8}  判定")
+    print("   " + "-" * 66)
+    for rule, v in sorted(live.items(), key=lambda x: -x[1]["bytes"]):
+        nb, nl = len(v["blocking"]), len(v["legacy"])
+        mb = v["bytes"] / 1024 / 1024
+        size_s = f"{mb:.1f}M" if mb >= 0.1 else f"{v['bytes'] / 1024:.0f}K"
+        if nb:
+            verdict = "✅ 有效，保留"
+        elif nl:
+            verdict = "⚪ 空转（无害，可留可删）"
+        else:
+            verdict = "⚪ 未命中任何文件"
+        print(f"   {rule:<26} {nb:>10} {size_s:>8}  {nl:>8}  {verdict}")
+
+    legacy_total = sum(len(v["legacy"]) for v in live.values())
+    print()
+    print(f"   ⚠️  历史遗留 {legacy_total} 个「规则说忽略、实际已跟踪」——"
+          f"这是 git 的正常语义（.gitignore 不追溯已跟踪文件），")
+    print(f"      不代表规则失效。删规则前先看它「在挡」那列的体积。")
+    print(f"      真要改用追踪状态 → git rm --cached <文件>（那是另一件事，别混）")
 
 
 def main():
