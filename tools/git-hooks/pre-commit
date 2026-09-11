@@ -1,0 +1,13 @@
+#!/bin/sh
+# 敏感信息闸 —— git 原生 pre-commit
+#
+# 为什么必须有一个 git 原生的：
+#   旧闸挂在 Claude Code 的 PreToolUse 上，只在【教练】跑 git commit 时触发。
+#   用户自己在终端敲 git commit —— 闸完全不生效。8/17 那次就是这么漏的。
+#   这个钩子对任何人、任何方式（终端/IDE/脚本/我）一律生效。
+#
+# 本体在 tools/sensitive_guard.py（被 .claude 侧共用，一处逻辑两处入口）。
+# 启用：git config core.hooksPath tools/git-hooks
+# 逃生：git commit --no-verify
+
+exec python3 "$(git rev-parse --show-toplevel)/tools/sensitive_guard.py"
