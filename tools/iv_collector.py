@@ -394,7 +394,7 @@ def _load_iv_history(vcode):
 def _hv_trend(rows):
     vals = _clean_vol_vals(rows[-20:], "hv_20d")
     if len(vals) < 5:
-        return None, f"有效HV不足（{len(vals)}天）"
+        return None, f"有效HV不足（{len(vals)}条样本）"
     vals = vals[-5:]
     x = np.arange(len(vals))
     slope = np.polyfit(x, vals, 1)[0]
@@ -405,7 +405,7 @@ def _hv_trend(rows):
 def _hv_regime(rows):
     vals = _clean_vol_vals(rows[-30:], "hv_20d")
     if len(vals) < 5:
-        return None, f"有效HV不足（{len(vals)}天）"
+        return None, f"有效HV不足（{len(vals)}条样本）"
     current = vals[-1]
     mean_20 = np.mean(vals)
     ratio = current / mean_20 if mean_20 > 0 else 1
@@ -507,7 +507,12 @@ def _iv_rank_volume(rows):
                 elif vol_ratio < 0.8:
                     vol_tag = " 缩量→虚高可卖"
                     favorable = True
-    return (favorable, f"分位 {percentile:.0f}% {direction}（{len(vals)}天）{warn}{vol_tag}")
+    # 标签诚实性（9/12 修）：len(vals) 是**采集条数**，不是天数（约 2 条/天 → 虚报约 2.2 倍）。
+    # 实测：m 报「90天」实际 45 个交易日，au 报「86天」实际 40 个。原写法把条数当天数。
+    # 只改标签不改算法——分位分母口径本身（混合 vs DTE 桶）是门级，走质疑轮。
+    _ndays = len({r.get("date") for r in rows if r.get("date")})
+    return (favorable,
+            f"分位 {percentile:.0f}% {direction}（{len(vals)}条/{_ndays}个交易日）{warn}{vol_tag}")
 
 
 # ═══════════════════════════════════════════════════════════════

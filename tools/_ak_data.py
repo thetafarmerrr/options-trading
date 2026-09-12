@@ -257,10 +257,12 @@ def fetch_futures_daily(vcode, days=120):
         if contract:
             df = ak.futures_zh_daily_sina(contract.upper())
             if df is not None and len(df) > 0:
-                df = df.rename(columns={
-                    "日期": "date", "开盘价": "open", "最高价": "high",
-                    "最低价": "low", "收盘价": "close", "成交量": "volume",
-                })
+                # 9/12 实测：新浪源返回的列名**本来就是英文**——
+                # date/open/high/low/close/volume/hold/settle。
+                # 原处有一段「中文列名→英文」的 rename，键名（日期/开盘价/…）从不匹配任何列，
+                # 是死代码，已删。留着会让后人以为这里真在做翻译，掩盖「依赖上游列名稳定」这个事实。
+                # 若上游哪天改回中文列名，下游 df["close"] 会 KeyError（被下面 except 吞成 None）——
+                # 「except 吞掉真因」这条已记入待办，本次不改。
                 return df
     except Exception:
         pass
