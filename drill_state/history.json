@@ -1,42 +1,6 @@
 {
   "sessions": [
     {
-      "date": "2026-07-16T11:00:10.989904",
-      "module": "H",
-      "score": 10,
-      "accuracy": 80.0,
-      "avg_time_ms": 11041.0,
-      "total_questions": 10,
-      "day_of_week": "Thursday"
-    },
-    {
-      "date": "2026-07-17T09:38:23.760139",
-      "module": "B",
-      "score": 59,
-      "accuracy": 84.0,
-      "avg_time_ms": 2575.0,
-      "total_questions": 25,
-      "day_of_week": "Friday"
-    },
-    {
-      "date": "2026-07-17T09:39:24.109029",
-      "module": "B",
-      "score": 63,
-      "accuracy": 88.0,
-      "avg_time_ms": 2155.0,
-      "total_questions": 25,
-      "day_of_week": "Friday"
-    },
-    {
-      "date": "2026-07-17T09:41:16.217363",
-      "module": "C",
-      "score": 18,
-      "accuracy": 100.0,
-      "avg_time_ms": 8557.0,
-      "total_questions": 10,
-      "day_of_week": "Friday"
-    },
-    {
       "date": "2026-07-17T09:47:02.277949",
       "module": "D",
       "score": 14,
@@ -1799,6 +1763,42 @@
       "avg_time_ms": 8459.0,
       "total_questions": 10,
       "day_of_week": "Friday"
+    },
+    {
+      "date": "2026-09-12T11:19:14.747207",
+      "module": "B",
+      "score": 69,
+      "accuracy": 96.0,
+      "avg_time_ms": 1807.0,
+      "total_questions": 25,
+      "day_of_week": "Saturday"
+    },
+    {
+      "date": "2026-09-12T11:32:54.107215",
+      "module": "G",
+      "score": 43,
+      "accuracy": 92.0,
+      "avg_time_ms": 5450.0,
+      "total_questions": 25,
+      "day_of_week": "Saturday"
+    },
+    {
+      "date": "2026-09-12T11:35:10.862141",
+      "module": "D",
+      "score": 21,
+      "accuracy": 100.0,
+      "avg_time_ms": 11163.0,
+      "total_questions": 10,
+      "day_of_week": "Saturday"
+    },
+    {
+      "date": "2026-09-14T11:55:57.312577",
+      "module": "C",
+      "score": 27,
+      "accuracy": 90.0,
+      "avg_time_ms": 970.0,
+      "total_questions": 10,
+      "day_of_week": "Monday"
     }
   ],
   "personal_bests": {
@@ -1808,7 +1808,7 @@
     "B_accuracy": 100.0,
     "C_score": 28,
     "C_accuracy": 100.0,
-    "D_score": 20,
+    "D_score": 21,
     "D_accuracy": 100.0,
     "E_score": 30,
     "E_accuracy": 100.0,
