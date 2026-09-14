@@ -448,17 +448,39 @@ def main():
         print(f"  │ 无近期高影响事件")
     print(f"  └─ 共 {len(events_engine.events)} 个事件（含 {len(ongoing)} 个持续中）")
 
-    # 非例行扫描
-    if weekly_scan_events:
+    # 非例行扫描 —— 过期必须响（9/15 修）
+    # 原逻辑：过期 → load_weekly_scan 的 valid_until 门控（main.py:208）返回空 events →
+    # `if weekly_scan_events:` 为假 → 整个 🔮 面板不打印；而提醒「可能已过时」的那句
+    # 恰恰在这个 if **内部** → 真过期时反而闭嘴 = **告警方向反了**。
+    # 9/14 实测（过期表下跑 scanner）：🔮 面板 0 次 / 补偿推定黄标 0 次 / 告警 0 条。
+    # 危害不是「显示旧数据」而是「静默消失」：补偿推定黄标（main.py:171-178）的输入是
+    # weekly_risks，表空 → 每个信号 risk=None → 零黄标 → 卖方信用 EXEC 不再区分
+    # 「错价」与「真实物理风险补偿」，而这正是 9/8 认知要防的误判。
+    # 修法：把有效期判定提到 if **之外**，过期则显式告警。
+    # **不动任何判定口径**——信号、门、阈值、tier 全不改，只把静默改成响。
+    try:
+        scan_path = os.path.join(_TOOLS_DIR, "..", "data", "weekly_event_scan.json")
+        with open(scan_path) as f:
+            raw = json.load(f)
+        valid_until = raw.get("valid_until", "")
+        scan_date = raw.get("scan_date", "")
+    except Exception:
+        valid_until = "?"
+        scan_date = ""
+
+    _today_iso = date.today().isoformat()
+    if valid_until and valid_until != "?" and valid_until < _today_iso:
         try:
-            scan_path = os.path.join(_TOOLS_DIR, "..", "data", "weekly_event_scan.json")
-            with open(scan_path) as f:
-                raw = json.load(f)
-            valid_until = raw.get("valid_until", "")
-            scan_date = raw.get("scan_date", "")
+            _stale = f" {(date.fromisoformat(_today_iso) - date.fromisoformat(valid_until)).days} 天"
         except Exception:
-            valid_until = "?"
-            scan_date = ""
+            _stale = ""
+        print(f"\n  ┌─ 🔴 非例行事件表**已过期{_stale}**（快照 {scan_date} · 有效至 {valid_until}）")
+        print(f"  │ 后果：🔮 面板不显示 + **补偿推定黄标已停用**——")
+        print(f"  │       卖方信用 EXEC 不再区分「错价」与「真实物理风险补偿」。")
+        print(f"  │ 动作：先更新 data/weekly_event_scan.json（valid_until 设至下周五），再重跑。")
+        print(f"  └─")
+
+    if weekly_scan_events:
         print(f"\n  ┌─ 🔮 本周非例行扫描（快照 {scan_date} · 有效至 {valid_until}）")
         if scan_date:
             print(f"  │ ⚠️ 此为 {scan_date} 手动扫描快照，催化/预警文本可能已过时；")
