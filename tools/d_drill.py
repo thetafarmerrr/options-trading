@@ -5,7 +5,7 @@ D-Drill v1.1 -- 纪律训练
 题库分 A/B 两半，隔天轮换。答做/不做 + 原因。
 """
 
-import json, random, time
+import json, random, re, time
 from datetime import date
 from pathlib import Path
 
@@ -45,7 +45,7 @@ def run():
 
     print(f"\n{'='*55}")
     print(f"  D-Drill -- 题库{pool_label} ({len(use_pool)}题) | {today}")
-    print(f"  答「做」或「不做」+ 一句原因。Ctrl+C 退出。")
+    print(f"  答「做/不做」或「过/不过」（层次题）+ 一句原因。Ctrl+C 退出。")
     print(f"{'='*55}\n")
 
     correct = 0
@@ -56,7 +56,14 @@ def run():
         label = q.get("v", "")
         # 根据正确答案推断问法
         raw_ans = q.get("a", "")
-        if "不做" in raw_ans:
+        # 9/15 加：层次题（题干含「第N层：XXX」）改问「这一层过不过？」。
+        # 原因：原来用执行动词「做/不做」问单层问题，而答案本身写「继续看后三层」
+        # ——等于承认单层不足以决定执行，问法与语义冲突（9/12 一道层次题因此判错）。
+        # 层次题的过/不过按同一套 做/不做 内部逻辑比对，只换问法与输入词。
+        is_layer = bool(re.search(r"第[一二三四]层", q.get("s", "")))
+        if is_layer:
+            ask_type = "【这一层过不过？】"
+        elif "不做" in raw_ans:
             ask_type = "【做不做？】"
         elif raw_ans.startswith("平"):
             ask_type = "【平不平？】"
@@ -79,14 +86,22 @@ def run():
             continue
 
         # Extract answer keyword (last occurrence in case user types 反证 prefix)
-        def _extract_ans(text):
+        def _extract_ans(text, layer_style=False):
+            # 层次题：用户答「过/不过」，内部映射回 做/不做 参与比对。
+            # 只对用户输入启用；答案键仍走 做/不做（a 均以「做。」/「不做。」开头）。
+            if layer_style:
+                for kw in ("不过", "过"):
+                    idx = text.rfind(kw)
+                    if idx >= 0:
+                        return "不做" if kw == "不过" else "做"
+                return text
             for kw in ("不做", "不平", "做", "平"):
                 idx = text.rfind(kw)
                 if idx >= 0:
                     return kw
             return text
 
-        user_ans = _extract_ans(ans)
+        user_ans = _extract_ans(ans, layer_style=is_layer)
         actual_ans = _extract_ans(q["a"])
         actual_do = actual_ans in ("做", "平")
         user_do = user_ans in ("做", "平")
