@@ -279,6 +279,10 @@ def collect_variety(vcode, vinfo):
 
     # ── 次月 ATM IV ──
     far_contract_str, far_iv, far_liquidity_ok = None, None, None
+    # 9/15 加：失真归因字段。原显示端只印"盘口失真·倒挂不判定"，不记是哪道闸
+    # 打的、也不算 spread 值 → 事后无法回答"为什么这次失真"，只能答"有没有"。
+    # 只加记录字段，判定逻辑与阈值一字不改。
+    far_spread_pct, far_reject, far_reject_iv = None, None, None
     if far_contract and far_contract != main_contract:
         try:
             _, far_df, far_fp = fetch_option_chain(vcode, symbol, far_contract)
@@ -317,6 +321,8 @@ def collect_variety(vcode, vinfo):
                     f_call_spread = (c_a_f - c_b_f) / c_b_f if c_b_f > 0 else 999
                     far_spread_pct = round(max(f_put_spread, f_call_spread) * 100, 1)
                     far_liquidity_ok = 0 if far_spread_pct >= 15 else 1
+                    if far_liquidity_ok == 0:
+                        far_reject = "spread"
                     far_contract_str = far_contract
                     if far_liquidity_ok and far_fp and far_fp > 0:
                         far_iv = _est_iv(float(far_fp), p_b_f, p_a_f, c_b_f, c_a_f, dte_f)
@@ -330,8 +336,10 @@ def collect_variety(vcode, vinfo):
                         if far_iv and iv:
                             _bw = IV_BANDWIDTH
                             if not (max(_bw["abs_floor"], _bw["lo_ratio"] * iv) <= far_iv <= _bw["hi_ratio"] * iv):
+                                far_reject_iv = far_iv   # 9/15 加：留被否掉的那个值供显示
                                 far_iv = None
                                 far_liquidity_ok = 0
+                                far_reject = "bandwidth"
         except Exception:
             pass
 
@@ -358,7 +366,18 @@ def collect_variety(vcode, vinfo):
         "far_contract": far_contract_str,
         "far_iv": far_iv,
         "far_liquidity_ok": far_liquidity_ok,
+        # ↓ 9/15 加：仅供显示端归因，不写 CSV（见 _DISPLAY_ONLY）
+        "far_spread_pct": far_spread_pct,
+        "far_reject": far_reject,
+        "far_reject_iv": far_reject_iv,
     }
+
+
+# 仅用于终端显示的字段名——写 CSV 前必须剔除。
+# 起因：CSV 写入端会按 result 的键自动扩列（:760-771），
+# 不剔除则 iv_history.csv 会从 22 列悄悄变 25 列。
+# 加显示字段前先想清楚：这是展示需求，不是数据口径变更。
+_DISPLAY_ONLY = ("far_spread_pct", "far_reject", "far_reject_iv")
 
 
 # ═══════════════════════════════════════════════════════════════
@@ -680,7 +699,8 @@ def _run_one_collection(target, window_label):
             if result:
                 spread_too_wide = result["spread_pct"] >= 15
                 result["liquidity_ok"] = 0 if spread_too_wide else 1
-                rows.append(result)
+                # 剔除仅供显示的字段，保持 CSV 22 列不变
+                rows.append({k: v for k, v in result.items() if k not in _DISPLAY_ONLY})
                 icon = "✅" if result["spread_pct"] < 10 else ("🚫" if spread_too_wide else "⚠️")
                 iv_str = f"{result['iv_est']:.1%}" if result['iv_est'] else "N/A"
                 hv20_str = f"{result['hv_20d']:.1%}" if result['hv_20d'] else "N/A"
@@ -722,7 +742,21 @@ def _run_one_collection(target, window_label):
                             structure = ""
                         print(f"         {pad}次月 {result['far_contract']} IV≈{far_iv_str} {structure}")
                     elif result.get('far_liquidity_ok') == 0:
-                        print(f"         {pad}次月 {result['far_contract']} 盘口失真 · 倒挂不判定")
+                        # 9/15 加：印出「哪道闸 + 触发值」，否则事后只能答"有没有失真"、
+                        # 答不了"为什么失真"（9/15 ru/cf 追问时暴露的缺口）。
+                        _rj = result.get('far_reject')
+                        _ivm = result.get('iv_est')
+                        if _rj == 'spread':
+                            _why = f"价差闸 max(put,call)={result.get('far_spread_pct')}% ≥15%"
+                        elif _rj == 'bandwidth' and _ivm:
+                            _rvi = result.get('far_reject_iv') or 0.0
+                            _lo = max(IV_BANDWIDTH["abs_floor"], IV_BANDWIDTH["lo_ratio"] * _ivm)
+                            _hi = IV_BANDWIDTH["hi_ratio"] * _ivm
+                            _why = (f"带宽闸 算出IV≈{_rvi:.1%} 越界 "
+                                    f"[{_lo:.1%},{_hi:.1%}]（主月{_ivm:.1%}）")
+                        else:
+                            _why = "闸门原因未记录"
+                        print(f"         {pad}次月 {result['far_contract']} 盘口失真 · 倒挂不判定  ｜ {_why}")
                     else:
                         print(f"         {pad}次月 {result['far_contract']} 无流动性")
                 if result['iv_est'] and result['hv_20d'] and result['hv_20d'] > 0:
