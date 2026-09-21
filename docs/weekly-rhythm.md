@@ -20,7 +20,7 @@
 
 | 步骤 | 命令 | 时间 |
 |------|------|------|
-| 英文（盘前清醒期 8:00）| Mike 系列视频 + 跟读 + 90s 炸弹 + 笔译 | 20 min |
+| 英文（盘前清醒期 8:00）| Mike 系列视频 + 跟读 + 挖矿 3 句进 glossary | 15 min |
 | 盘前启动（8:25）| `python3 tools/iv_collector.py --watch`（09:15+09:30+14:50 自动三采）+ `./start_deep_otm.sh`（discover 换月+启动采集）。**盘前不跑 scanner**（8/14 盘前脏数据污染实锤：盘口未稳+价差 295%），决策只用 9:15 采完那次输出 | 5 min |
 | 开盘决策窗口（9:15-9:30）| 9:15 自动采完 → **执行** `python3 -m tools.scanner.main` → **四层独立讲清 + IV 方向预测**（先写 10 品种「做/不做+理由」→有信号品种预测 5 日 IV 升/降 append `data/iv_direction_pred.csv`→贴教练对答案，8/27 起）→ 用新输出确认 [EXEC]→六步进场→纸面挑信号 | 10 min |
 | 训练（决策后第一个·易拖优先）| `python3 tools/drill_system.py B` + 4 个轮转模块 | 25 min |
@@ -115,14 +115,16 @@ Sinclair 回到 30 min 底线
 
 ---
 
-## 英文（每天 20 min，不动）
+## 英文（每天 15 min）
 
 | 步骤 | 内容 |
 |------|------|
 | 视频 | Mike 系列（Tastytrade beginner options course），从上次停的地方继续 |
 | 跟读 | 张嘴跟，1/3 懂就过，不回头 |
-| 90s 炸弹 | 刚看的说了什么，张嘴 90 秒，录→转文字→瞥一眼 |
-| 笔译 | 当日扫描结论译英文 2-3 句 |
+| 挖矿 | 抓 3 个整句进 `glossary.md` 底部 `## 句型库` |
+
+> **9/21 改版**：撤 6c「90s 炸弹」+ 6d「笔译」（**20 → 15 min**）。英语在本项目是**输入**用途，输出边际回报最低。
+> 原「不动」二字解除——恢复需走质疑轮。完整流程见 `docs/english-flow.md`。
 
 > 素材已定：`youtube.com/watch?v=FAwDrUqpGUI&list=PLPVve34yolHY43YaBegHMzN9WjrTnQfFr`（121集）
 

@@ -75,7 +75,7 @@
 2. python3 tools/iv_collector.py             # IV + 环境定性
 3. python3 tools/drill_system.py B           # 训练
 4. Sinclair 阅读                              # 期权教材
-5. 英文：Mike 系列 + 跟读 + 90s 炸弹 + 笔译
+5. 英文：Mike 系列 + 跟读 + 挖矿 3 句进 glossary      # 15 min（9/21 撤 炸弹/笔译）
 6. 影响力：本周有可发的吗？（Twitter + Substack）
 7. python3 tools/daily_quiz.py               # 验收题
 8. journal/ + commit + push
