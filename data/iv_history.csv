@@ -1,4 +1,4 @@
-date,time,variety,name,contract,atm_strike,call_bid,call_ask,put_bid,put_ask,spread_pct,iv_est,hv_parkinson,iv_slope,dte,inferred_futures,hv_20d,hv_60d,far_contract,far_iv,window,liquidity_ok,far_liquidity_ok
+date,time,variety,name,contract,atm_strike,call_bid,call_ask,put_bid,put_ask,spread_pct,iv_est,hv_parkinson,iv_slope,dte,inferred_futures,hv_20d,hv_60d,ref_contract,ref_iv,window,liquidity_ok,ref_liquidity_ok
 2026-07-13,16:10,m,豆粕,m2609,3050,52.0,53.0,53.5,54.5,1.9,0.1257,,,44,3050.0,0.1021,0.1074,,,,,
 2026-07-13,16:10,c,玉米,c2609,2300,28.5,29.0,21.5,22.5,4.7,0.0794,,,44,2300.0,0.0839,0.0785,,,,,
 2026-07-13,16:10,rm,菜籽粕,rm2609,2300,42.0,43.0,46.5,48.0,3.2,0.1405,,,44,2300.0,0.1527,0.1469,,,,,
