@@ -140,7 +140,7 @@ def apply_iv_hv_gate(all_signals: list, iv_hist: dict):
 def apply_inversion_gate(all_signals: list, iv_hist: dict):
     """期限结构倒挂硬闸（法则①，9/2 立）：EXEC 且近月 IV>远月 IV → 🟡 + 标注禁卖方。
 
-    数据源 = iv_history 动态 far_iv（取代 weekly_event_scan 手写过时备注）。
+    数据源 = iv_history 动态 ref_iv（参考月；旧名 far_iv 已废，见 _ak_data.pick_two_contracts）。
     **不降 tier（保留 EXEC）**——纪律需"当天有 EXEC + 人脑逐层毙"才计数，
     直接拦掉 = 无信号日 = 纪律白费。倒挂信号保持可见，四层负责毙。
     """

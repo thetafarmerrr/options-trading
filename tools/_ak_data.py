@@ -106,20 +106,29 @@ def pick_active_months(symbol, vcode=None, n=2, min_oi=0, refresh=False, dte_min
 
 
 def pick_two_contracts(symbol, vcode=None):
-    """选活跃月前 2 个（近月+次近月）。兼容 iv_collector 的 (near, far) 签名。"""
+    """选活跃月前 2 个 —— **按总持仓降序**（口径见 pick_active_months 文档）。
+
+    ⚠️ 返回的两个合约**不保序**：months[0] = 持仓第一（通常即主力），
+    months[1] = 持仓第二，它**可能在 months[0] 之前，也可能之后**。
+    → 因此**不可命名为 near/far**。
+
+    9/22 核查：10 品种里 5 个（m/cf/sr/i/au）的 months[1] 其实是更近的月份，
+    历史列名 `far_iv` 因此是错的，已改名 **`ref_iv`（参考月）**。
+    **判近远一律用 DTE，不用名字、不用顺序。**
+    """
     months = pick_active_months(symbol, vcode, n=2)
     if not months:
         return None, None
-    near = months[0][0]
-    far = months[1][0] if len(months) > 1 else None
-    return near, far
+    first = months[0][0]
+    second = months[1][0] if len(months) > 1 else None
+    return first, second
 
 
 def _safe(v):
     return v if not pd.isna(v) else 0
 
 
-# 期货真实最新价缓存（9/5）：主/次月两次 fetch_option_chain 同秒调用，品种级共享一次拉取。
+# 期货真实最新价缓存（9/5）：主/参考月两次 fetch_option_chain 同秒调用，品种级共享一次拉取。
 _REALTIME_CACHE = {}
 _REALTIME_TTL = 60
 
@@ -127,7 +136,7 @@ _REALTIME_TTL = 60
 def fetch_futures_realtime(vcode, contract):
     """取指定合约（如 m2611）的期货真实最新价（新浪实时，按品种名一次拉全合约 df 查行）。
 
-    9/5 far_fp 根治：次月薄链冻结档会让 best_strike 平价推断偏 ~7%（m2611 推断 3650/
+    9/5 ref_fp 根治：参考月薄链冻结档会让 best_strike 平价推断偏 ~7%（m2611 推断 3650/
     实 3406、c2701 2460/实 2330），旧 25% 安全网以主力价参照太松拦不住 → far ATM 选错
     档 → 真倒挂被带宽闸遮蔽。实时价直接当 S；失败/查无 → None（上层降级推断）。"""
     if not vcode or not contract:
@@ -229,7 +238,7 @@ def fetch_option_chain(vcode, symbol, contract=None):
 
     df['strike'] = df['strike'].astype(float)
 
-    # 期货价：优先该合约自身真实最新价（新浪实时）。9/5 far_fp 根治——次月薄链
+    # 期货价：优先该合约自身真实最新价（新浪实时）。9/5 ref_fp 根治——参考月薄链
     # 平价推断吃冻结报价偏 ~7%（m2611 推断 3650/实 3406、c2701 2460/实 2330），
     # 旧 25% 主力参照太松拦不住 → far ATM 选错档 → 真倒挂被带宽闸遮蔽。实时价
     # 失败才降级 _infer_futures_price（原推断+安全网兜底，低频）。全路径统一，无

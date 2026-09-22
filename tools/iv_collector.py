@@ -44,8 +44,8 @@ TRADING_DAYS = 242
 PARKINSON_WINDOW = 60
 MIN_VALID_DAYS = 15
 
-# far_iv 物理带宽闸参数（9/3 立）：lo/hi = 次月相对主月 IV 的可信比区间。
-# 低流动性次月冻结报价会算出 1.3-5.5% 物理不可能 IV（c2701/ru2610），
+# ref_iv 物理带宽闸参数（9/3 立）：lo/hi = 参考月相对主月 IV 的可信比区间。
+# 低流动性参考月冻结报价会算出 1.3-5.5% 物理不可能 IV（c2701/ru2610），
 # abs_floor 兜绝对下限（同 scanner 侧 <5% 闸），lo_ratio 补相对下限
 # （ru 5.5% vs 主月 19% 这类地板漏网）。暂不品种化——真倒挂保留样本
 # 仅 c 一个，品种化是 overfit。触发条件见 journal 9/3 搁置。
@@ -217,10 +217,10 @@ def collect_variety(vcode, vinfo):
     """用 akshare 拉取单个品种的近月+次近月 ATM 期权数据"""
     symbol = vinfo["symbol"]
     main_contract = get_last_contract(vcode)
-    near_contract, far_contract = pick_two_contracts(symbol, vcode)
-    if near_contract and near_contract != main_contract:
-        print(f"  🔄 {vinfo['name']} 合约切换: {main_contract} → {near_contract}")
-    main_contract = near_contract or main_contract
+    primary_contract, ref_contract = pick_two_contracts(symbol, vcode)
+    if primary_contract and primary_contract != main_contract:
+        print(f"  🔄 {vinfo['name']} 合约切换: {main_contract} → {primary_contract}")
+    main_contract = primary_contract or main_contract
     if not main_contract:
         return None
 
@@ -277,28 +277,28 @@ def collect_variety(vcode, vinfo):
     hv_60 = calc_parkinson_hv(vcode, window=60)
     iv_slope = calc_iv_slope(vcode)
 
-    # ── 次月 ATM IV ──
-    far_contract_str, far_iv, far_liquidity_ok = None, None, None
+    # ── 参考月 ATM IV ──
+    ref_contract_str, ref_iv, ref_liquidity_ok = None, None, None
     # 9/15 加：失真归因字段。原显示端只印"盘口失真·倒挂不判定"，不记是哪道闸
     # 打的、也不算 spread 值 → 事后无法回答"为什么这次失真"，只能答"有没有"。
     # 只加记录字段，判定逻辑与阈值一字不改。
-    far_spread_pct, far_reject, far_reject_iv = None, None, None
-    if far_contract and far_contract != main_contract:
+    ref_spread_pct, ref_reject, ref_reject_iv = None, None, None
+    if ref_contract and ref_contract != main_contract:
         try:
-            _, far_df, far_fp = fetch_option_chain(vcode, symbol, far_contract)
-            if not far_df.empty:
+            _, ref_df, ref_fp = fetch_option_chain(vcode, symbol, ref_contract)
+            if not ref_df.empty:
                 f_strike, f_score, f_row = None, -1, None
                 f_best_dist = float('inf')
-                for _, row in far_df.iterrows():
+                for _, row in ref_df.iterrows():
                     p_b = _safe(row["p_bid"])
                     c_b = _safe(row["c_bid"])
                     if p_b > 0 and c_b > 0:
                         diff_f = abs(p_b - c_b)
                         act_f = (p_b + c_b) / 2
                         sc_f = act_f / max(diff_f, 0.01)
-                        # 8/24 修复：与主 ATM 同构——距次月期货价最近的健康档
-                        if far_fp and far_fp > 0:
-                            f_dist = abs(int(row["strike"]) - far_fp) / far_fp
+                        # 8/24 修复：与主 ATM 同构——距参考月期货价最近的健康档
+                        if ref_fp and ref_fp > 0:
+                            f_dist = abs(int(row["strike"]) - ref_fp) / ref_fp
                             if f_dist > 0.05:
                                 continue
                         else:
@@ -313,33 +313,33 @@ def collect_variety(vcode, vinfo):
                     p_a_f = _safe(f_row["p_ask"])
                     c_b_f = _safe(f_row["c_bid"])
                     c_a_f = _safe(f_row["c_ask"])
-                    dte_f = _est_dte(far_contract)
-                    # 8/25 修复：次月盘口质量闸——薄链档位 spread 过宽 → 不采 far_iv，
+                    dte_f = _est_dte(ref_contract)
+                    # 8/25 修复：参考月盘口质量闸——薄链档位 spread 过宽 → 不采 ref_iv，
                     # 避免 8/25 au2612 早盘 8.6%→收盘 26.1% 类噪声污染倒挂标签。
                     # 与主采同构：max(put,call) 价差比 ≥15% = 失真。
                     f_put_spread = (p_a_f - p_b_f) / p_b_f if p_b_f > 0 else 999
                     f_call_spread = (c_a_f - c_b_f) / c_b_f if c_b_f > 0 else 999
-                    far_spread_pct = round(max(f_put_spread, f_call_spread) * 100, 1)
-                    far_liquidity_ok = 0 if far_spread_pct >= 15 else 1
-                    if far_liquidity_ok == 0:
-                        far_reject = "spread"
-                    far_contract_str = far_contract
-                    if far_liquidity_ok and far_fp and far_fp > 0:
-                        far_iv = _est_iv(float(far_fp), p_b_f, p_a_f, c_b_f, c_a_f, dte_f)
-                        # 9/3 修复：物理带宽闸。低流动性次月"双bid>0"多为冻结老报价，
-                        # 双bid/距far_fp 5%/spread<15% 三关全过仍算出 1.3-5.5% 物理不可能
-                        # IV（c2701/ru2610 坏数实锤）。闸建在 IV 结果上：次月不可能低于
+                    ref_spread_pct = round(max(f_put_spread, f_call_spread) * 100, 1)
+                    ref_liquidity_ok = 0 if ref_spread_pct >= 15 else 1
+                    if ref_liquidity_ok == 0:
+                        ref_reject = "spread"
+                    ref_contract_str = ref_contract
+                    if ref_liquidity_ok and ref_fp and ref_fp > 0:
+                        ref_iv = _est_iv(float(ref_fp), p_b_f, p_a_f, c_b_f, c_a_f, dte_f)
+                        # 9/3 修复：物理带宽闸。低流动性参考月"双bid>0"多为冻结老报价，
+                        # 双bid/距ref_fp 5%/spread<15% 三关全过仍算出 1.3-5.5% 物理不可能
+                        # IV（c2701/ru2610 坏数实锤）。闸建在 IV 结果上：参考月不可能低于
                         # max(abs_floor, lo_ratio×主月IV) 或高于 hi_ratio×主月IV。触发→
-                        # 置空+far_liquidity_ok=0，显示端自动落"盘口失真·倒挂不判定"(700行)，
+                        # 置空+ref_liquidity_ok=0，显示端自动落"盘口失真·倒挂不判定"(700行)，
                         # CSV 同步不写脏。参数见顶部 IV_BANDWIDTH。主采 iv 缺失时保守跳过
                         # (不判不拦)，scanner 侧 <5% 闸仍兜底。
-                        if far_iv and iv:
+                        if ref_iv and iv:
                             _bw = IV_BANDWIDTH
-                            if not (max(_bw["abs_floor"], _bw["lo_ratio"] * iv) <= far_iv <= _bw["hi_ratio"] * iv):
-                                far_reject_iv = far_iv   # 9/15 加：留被否掉的那个值供显示
-                                far_iv = None
-                                far_liquidity_ok = 0
-                                far_reject = "bandwidth"
+                            if not (max(_bw["abs_floor"], _bw["lo_ratio"] * iv) <= ref_iv <= _bw["hi_ratio"] * iv):
+                                ref_reject_iv = ref_iv   # 9/15 加：留被否掉的那个值供显示
+                                ref_iv = None
+                                ref_liquidity_ok = 0
+                                ref_reject = "bandwidth"
         except Exception:
             pass
 
@@ -363,13 +363,13 @@ def collect_variety(vcode, vinfo):
         "iv_slope": round(iv_slope, 6) if iv_slope is not None else None,
         "dte": dte,
         "inferred_futures": futures_price,
-        "far_contract": far_contract_str,
-        "far_iv": far_iv,
-        "far_liquidity_ok": far_liquidity_ok,
+        "ref_contract": ref_contract_str,
+        "ref_iv": ref_iv,
+        "ref_liquidity_ok": ref_liquidity_ok,
         # ↓ 9/15 加：仅供显示端归因，不写 CSV（见 _DISPLAY_ONLY）
-        "far_spread_pct": far_spread_pct,
-        "far_reject": far_reject,
-        "far_reject_iv": far_reject_iv,
+        "ref_spread_pct": ref_spread_pct,
+        "ref_reject": ref_reject,
+        "ref_reject_iv": ref_reject_iv,
     }
 
 
@@ -377,7 +377,7 @@ def collect_variety(vcode, vinfo):
 # 起因：CSV 写入端会按 result 的键自动扩列（:760-771），
 # 不剔除则 iv_history.csv 会从 22 列悄悄变 25 列。
 # 加显示字段前先想清楚：这是展示需求，不是数据口径变更。
-_DISPLAY_ONLY = ("far_spread_pct", "far_reject", "far_reject_iv")
+_DISPLAY_ONLY = ("ref_spread_pct", "ref_reject", "ref_reject_iv")
 
 
 # ═══════════════════════════════════════════════════════════════
@@ -728,37 +728,37 @@ def _run_one_collection(target, window_label):
                       f"价差={result['spread_pct']}% "
                       f"IV≈{iv_str}{iv_dir} HV₂₀={hv20_str} HV₆₀={hv60_str} {hv_gap}")
                 pad = ' ' * (len(result['name']) + len(result['contract']) - 1)
-                if result.get('far_contract'):
-                    if result.get('far_iv'):
-                        far_iv_str = f"{result['far_iv']:.1%}"
-                        if result['iv_est'] and result['far_iv']:
+                if result.get('ref_contract'):
+                    if result.get('ref_iv'):
+                        ref_iv_str = f"{result['ref_iv']:.1%}"
+                        if result['iv_est'] and result['ref_iv']:
                             dte_main = result['dte']
-                            dte_far = _est_dte(result['far_contract'])
+                            dte_far = _est_dte(result['ref_contract'])
                             main_is_near = dte_main <= dte_far
-                            near_iv = result['iv_est'] if main_is_near else result['far_iv']
-                            far_iv_v = result['far_iv'] if main_is_near else result['iv_est']
-                            structure = "⚠️近月>远月·倒挂" if near_iv > far_iv_v else "→近月<远月·正常"
+                            near_iv = result['iv_est'] if main_is_near else result['ref_iv']
+                            ref_iv_v = result['ref_iv'] if main_is_near else result['iv_est']
+                            structure = "⚠️近月>远月·倒挂" if near_iv > ref_iv_v else "→近月<远月·正常"
                         else:
                             structure = ""
-                        print(f"         {pad}次月 {result['far_contract']} IV≈{far_iv_str} {structure}")
-                    elif result.get('far_liquidity_ok') == 0:
+                        print(f"         {pad}参考月 {result['ref_contract']} IV≈{ref_iv_str} {structure}")
+                    elif result.get('ref_liquidity_ok') == 0:
                         # 9/15 加：印出「哪道闸 + 触发值」，否则事后只能答"有没有失真"、
                         # 答不了"为什么失真"（9/15 ru/cf 追问时暴露的缺口）。
-                        _rj = result.get('far_reject')
+                        _rj = result.get('ref_reject')
                         _ivm = result.get('iv_est')
                         if _rj == 'spread':
-                            _why = f"价差闸 max(put,call)={result.get('far_spread_pct')}% ≥15%"
+                            _why = f"价差闸 max(put,call)={result.get('ref_spread_pct')}% ≥15%"
                         elif _rj == 'bandwidth' and _ivm:
-                            _rvi = result.get('far_reject_iv') or 0.0
+                            _rvi = result.get('ref_reject_iv') or 0.0
                             _lo = max(IV_BANDWIDTH["abs_floor"], IV_BANDWIDTH["lo_ratio"] * _ivm)
                             _hi = IV_BANDWIDTH["hi_ratio"] * _ivm
                             _why = (f"带宽闸 算出IV≈{_rvi:.1%} 越界 "
                                     f"[{_lo:.1%},{_hi:.1%}]（主月{_ivm:.1%}）")
                         else:
                             _why = "闸门原因未记录"
-                        print(f"         {pad}次月 {result['far_contract']} 盘口失真 · 倒挂不判定  ｜ {_why}")
+                        print(f"         {pad}参考月 {result['ref_contract']} 盘口失真 · 倒挂不判定  ｜ {_why}")
                     else:
-                        print(f"         {pad}次月 {result['far_contract']} 无流动性")
+                        print(f"         {pad}参考月 {result['ref_contract']} 无流动性")
                 if result['iv_est'] and result['hv_20d'] and result['hv_20d'] > 0:
                     sp = result['iv_est'] - result['hv_20d']
                     if sp >= 0.05:
