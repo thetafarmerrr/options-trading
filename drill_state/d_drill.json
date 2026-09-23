@@ -3,13 +3,6 @@
     {
       "date": "2026-07-16",
       "pool": "B",
-      "correct": 7,
-      "total": 17,
-      "accuracy": 41.2
-    },
-    {
-      "date": "2026-07-16",
-      "pool": "B",
       "correct": 15,
       "total": 17,
       "accuracy": 88.2
@@ -419,8 +412,15 @@
       "correct": 21,
       "total": 21,
       "accuracy": 100.0
+    },
+    {
+      "date": "2026-09-23",
+      "pool": "A",
+      "correct": 21,
+      "total": 21,
+      "accuracy": 100.0
     }
   ],
-  "streak": 3,
+  "streak": 4,
   "best_streak": 10
 }
