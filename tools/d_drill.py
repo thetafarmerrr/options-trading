@@ -2,7 +2,7 @@
 """
 D-Drill v1.1 -- 纪律训练
 每天 17 题，覆盖五大 override + 十大禁止 + 四层绿灯 + 离场规则。
-题库分 A/B 两半，隔天轮换。答做/不做 + 原因。
+题库分 A/B 两半，**逐次轮换**（9/23 改：原按日期奇偶，人不一定每天跑 → 常失效）。答做/不做 + 原因。
 """
 
 import json, random, re, time
@@ -40,8 +40,16 @@ def run():
     pool_b = all_q[half:]
     random.shuffle(pool_a)
     random.shuffle(pool_b)
-    use_pool = pool_a if today.day % 2 == 1 else pool_b
-    pool_label = "A" if today.day % 2 == 1 else "B"
+    # 9/23 改：显式轮转，不看日历。
+    # 原先按"几号"奇偶，而 D-Drill 常只在奇数日跑 → 事实上连续多次落同一池
+    # （9/15–9/23 连跑 5 次全是 A），"隔天轮换"从未发生。
+    _st = load_state()
+    _last = _st["sessions"][-1]["pool"] if _st.get("sessions") else None
+    pool_label = "B" if _last == "A" else "A"
+    use_pool = pool_b if pool_label == "B" else pool_a
+    # 9/23：本轮实际出现的题号（题库文件序），供重复率统计
+    _idmap = {id(q): i + 1 for i, q in enumerate(all_q)}
+    _ids_used = [_idmap[id(q)] for q in use_pool]
 
     print(f"\n{'='*55}")
     print(f"  D-Drill -- 题库{pool_label} ({len(use_pool)}题) | {today}")
@@ -129,10 +137,10 @@ def run():
         state["streak"] += 1
         if state["streak"] > state["best_streak"]:
             state["best_streak"] = state["streak"]
-        print(f"  全对! 连续 {state['streak']} 天。最佳: {state['best_streak']} 天。")
+        print(f"  全对! 连续 {state['streak']} 次。最佳: {state['best_streak']} 次。")
     else:
         if state["streak"] > 0:
-            print(f"  连续 {state['streak']} 天中断。")
+            print(f"  连续 {state['streak']} 次中断。")
         state["streak"] = 0
 
     state["sessions"].append({
@@ -141,6 +149,8 @@ def run():
         "correct": correct,
         "total": total,
         "accuracy": accuracy,
+        # 9/23：记录本轮实际题号，重复率可算（原先只存 pool 标签，测不出重复）
+        "question_ids": _ids_used,
     })
     state["sessions"] = state["sessions"][-60:]
     save_state(state)
