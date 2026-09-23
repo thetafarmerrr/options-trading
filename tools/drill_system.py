@@ -55,9 +55,9 @@ def load_history():
         return json.loads(HISTORY_FILE.read_text())
     return {"sessions": [], "personal_bests": {}}
 
-def save_session(module, score, accuracy, avg_time, total_q):
+def save_session(module, score, accuracy, avg_time, total_q, rounds=None):
     h = load_history()
-    h["sessions"].append({
+    rec = {
         "date": datetime.now().isoformat(),
         "module": module,
         "score": score,
@@ -65,7 +65,11 @@ def save_session(module, score, accuracy, avg_time, total_q):
         "avg_time_ms": round(avg_time, 0),
         "total_questions": total_q,
         "day_of_week": date.today().strftime("%A"),
-    })
+    }
+    # 9/23：记录每轮原始作答。history 原先只存分数 —— 答对答错事后无从查证
+    if rounds:
+        rec["rounds"] = rounds
+    h["sessions"].append(rec)
     # 更新个人最佳
     key = f"{module}_score"
     if key not in h["personal_bests"] or score > h["personal_bests"][key]:
@@ -76,6 +80,9 @@ def save_session(module, score, accuracy, avg_time, total_q):
 
     # 只保留最近 200 条
     h["sessions"] = h["sessions"][-200:]
+    # 9/23：rounds 体积大，只留最近 20 次，其余剥掉（防文件膨胀）
+    for _s in h["sessions"][:-20]:
+        _s.pop("rounds", None)
     HISTORY_FILE.write_text(json.dumps(h, ensure_ascii=False, indent=2))
 
 
@@ -1108,6 +1115,7 @@ def run_drill_e(quick=False):
     score = 0
     total_time = 0
     correct = 0
+    rounds_log = []   # 9/23：每轮原始作答留痕
 
     for round_num in range(1, n_rounds + 1):
         chain = generate_chain_segment()
@@ -1224,15 +1232,37 @@ def run_drill_e(quick=False):
                 print(f"  ❌ 链面有 {len(cs_pairs)} 个可交易信用价差，答'无'漏了机会。")
             else:
                 print(f"  ❌ 你选的 {user_pair[0]}/{user_pair[1]} 不在可交易对里（需卖bid>买ask 且宽度≤期货5%）。")
+                # 9/23：判 ❌ 必须给对照，把「配错腿」和「尺度/读值问题」分开
+                print(f"     你的输入原文：{answer}")
+                print(f"     链面行权价：{list(chain['strikes'])}")
+                if any(u in list(chain['strikes']) for u in user_pair):
+                    print(f"     ⚠️ 你的数字在链面里，只是这一对不合法（配错腿 / 宽度超限）")
+                else:
+                    print(f"     ⚠️ 你的数字不在链面行权价里 —— 疑似尺度或读值问题，不一定是判断错")
             print(f"     合法示例（最优）：卖P{best['sell_strike']}/买P{best['buy_strike']} 净收 ¥{best['net_premium']}（净收/宽度比最高）")
             score += 0
+
+        # 9/23：本轮留痕（题干 / 原文 / 链面 / 合法对 / 判词）
+        rounds_log.append({
+            "round": round_num,
+            "product": chain.get("product"),
+            "futures": chain.get("futures"),
+            "strikes": list(chain.get("strikes", [])),
+            "user_raw": answer,
+            "user_pair": list(user_pair) if user_pair else None,
+            "user_net": user_net,
+            "legal_pairs": [{"sell": p["sell_strike"], "buy": p["buy_strike"],
+                             "net": p["net_premium"]} for p in cs_pairs],
+            "pair_ok": pair_ok,
+            "net_ok": net_ok,
+        })
 
         if round_num < n_rounds:
             input(f"  (按回车继续)")
 
     accuracy = correct / n_rounds * 100
     avg_time = total_time / n_rounds
-    save_session("E", score, accuracy, avg_time, n_rounds)
+    save_session("E", score, accuracy, avg_time, n_rounds, rounds=rounds_log)
 
     print(f"\n  {'─'*40}")
     print(f"  训练E完成: {correct}/{n_rounds} 正确 ({accuracy:.0f}%)")
