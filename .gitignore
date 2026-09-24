@@ -15,6 +15,9 @@ docs/ctp-config.md
 volatility-trading-second-edition_compress.pdf
 docs/yuan-yongjian-strategy.md
 data/scanner_log/
+# akshare 交易日历缓存（8797 行派生数据，刷新即变，不进 git）—— 9/24 加
+data/trade_calendar.txt
+data/trade_calendar.txt.tmp
 # ── 敏感：绝不进 git（2026-09-11 立，事故后补）────────────────
 # 结算单 = 真实姓名 + 客户号 + 资金账号 + 交易编码。任何扩展名一律挡。
 # 原规则只写了 data/settlement_*.txt → 挡不住 PDF，8/17 就是这么漏的 25 天。
