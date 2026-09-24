@@ -485,3 +485,8 @@ when we look at hedging, we're basically looking at minimizing risk. So when we'
 
 ### Delta 与 ITM 概率
 - Deltas roughly equate to probability of being in the money. So it's not going to be totally accurate or completely equal, but when you're looking at deltas and probability of being in the money, they're pretty much going to be similar values.  （Mike E11, Options Delta Explained）
+
+### Theta 衰减与 DTE（9/24）
+- The more value it loses, the slower it's going to decay.  （Mike E13 Theta Explained · ⚠️字幕抄录，非听力）
+- The curve goes from very wide to very narrow as you get closer to expiration.  （Mike E13 Theta Explained · ⚠️字幕抄录，非听力）
+- Theta is going to creep up and become much more non-linear the closer we get to expiration.  （Mike E13 Theta Explained · ⚠️字幕抄录，非听力）
