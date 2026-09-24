@@ -1,51 +1,6 @@
 {
   "sessions": [
     {
-      "date": "2026-07-26T20:48:10.361207",
-      "module": "D",
-      "score": 15,
-      "accuracy": 90.0,
-      "avg_time_ms": 16215.0,
-      "total_questions": 10,
-      "day_of_week": "Sunday"
-    },
-    {
-      "date": "2026-07-26T20:50:59.747190",
-      "module": "E",
-      "score": 28,
-      "accuracy": 100.0,
-      "avg_time_ms": 12253.0,
-      "total_questions": 10,
-      "day_of_week": "Sunday"
-    },
-    {
-      "date": "2026-07-26T20:53:31.123986",
-      "module": "A",
-      "score": 22,
-      "accuracy": 80.0,
-      "avg_time_ms": 9332.0,
-      "total_questions": 10,
-      "day_of_week": "Sunday"
-    },
-    {
-      "date": "2026-07-27T09:53:36.117493",
-      "module": "B",
-      "score": 69,
-      "accuracy": 92.0,
-      "avg_time_ms": 1643.0,
-      "total_questions": 25,
-      "day_of_week": "Monday"
-    },
-    {
-      "date": "2026-07-27T10:39:03.412715",
-      "module": "D",
-      "score": 13,
-      "accuracy": 100.0,
-      "avg_time_ms": 22671.0,
-      "total_questions": 10,
-      "day_of_week": "Monday"
-    },
-    {
       "date": "2026-07-27T10:42:08.469842",
       "module": "E",
       "score": 21,
@@ -1799,6 +1754,290 @@
       "avg_time_ms": 17701.0,
       "total_questions": 10,
       "day_of_week": "Wednesday"
+    },
+    {
+      "date": "2026-09-24T08:49:18.938103",
+      "module": "B",
+      "score": 62,
+      "accuracy": 92.0,
+      "avg_time_ms": 2402.0,
+      "total_questions": 25,
+      "day_of_week": "Thursday"
+    },
+    {
+      "date": "2026-09-24T18:46:59.403103",
+      "module": "E",
+      "score": 30,
+      "accuracy": 100.0,
+      "avg_time_ms": 1540.0,
+      "total_questions": 10,
+      "day_of_week": "Thursday",
+      "rounds": [
+        {
+          "round": 1,
+          "product": "橡胶",
+          "futures": 17000,
+          "strikes": [
+            10500,
+            11000,
+            11500,
+            12000,
+            12500,
+            13000,
+            13500,
+            14000,
+            14500,
+            15000,
+            15500,
+            16000
+          ],
+          "user_raw": "无",
+          "user_pair": null,
+          "user_net": 0,
+          "legal_pairs": [],
+          "pair_ok": false,
+          "net_ok": true
+        },
+        {
+          "round": 2,
+          "product": "豆粕",
+          "futures": 2800,
+          "strikes": [
+            2050,
+            2100,
+            2150,
+            2200,
+            2250,
+            2300,
+            2350,
+            2400,
+            2450,
+            2500,
+            2550
+          ],
+          "user_raw": "无",
+          "user_pair": null,
+          "user_net": 0,
+          "legal_pairs": [],
+          "pair_ok": false,
+          "net_ok": true
+        },
+        {
+          "round": 3,
+          "product": "铁矿石",
+          "futures": 780,
+          "strikes": [
+            520,
+            540,
+            560,
+            580,
+            600,
+            620,
+            640,
+            660,
+            680,
+            700,
+            720
+          ],
+          "user_raw": "无",
+          "user_pair": null,
+          "user_net": 0,
+          "legal_pairs": [],
+          "pair_ok": false,
+          "net_ok": true
+        },
+        {
+          "round": 4,
+          "product": "玉米",
+          "futures": 2300,
+          "strikes": [
+            1780,
+            1820,
+            1860,
+            1900,
+            1940,
+            1980,
+            2020,
+            2060,
+            2100,
+            2140
+          ],
+          "user_raw": "无",
+          "user_pair": null,
+          "user_net": 0,
+          "legal_pairs": [],
+          "pair_ok": false,
+          "net_ok": true
+        },
+        {
+          "round": 5,
+          "product": "菜籽粕",
+          "futures": 2500,
+          "strikes": [
+            1700,
+            1750,
+            1800,
+            1850,
+            1900,
+            1950,
+            2000,
+            2050,
+            2100,
+            2150,
+            2200,
+            2250
+          ],
+          "user_raw": "无",
+          "user_pair": null,
+          "user_net": 0,
+          "legal_pairs": [],
+          "pair_ok": false,
+          "net_ok": true
+        },
+        {
+          "round": 6,
+          "product": "玉米",
+          "futures": 2300,
+          "strikes": [
+            1780,
+            1820,
+            1860,
+            1900,
+            1940,
+            1980,
+            2020,
+            2060,
+            2100,
+            2140
+          ],
+          "user_raw": "无",
+          "user_pair": null,
+          "user_net": 0,
+          "legal_pairs": [],
+          "pair_ok": false,
+          "net_ok": true
+        },
+        {
+          "round": 7,
+          "product": "玉米",
+          "futures": 2300,
+          "strikes": [
+            1740,
+            1780,
+            1820,
+            1860,
+            1900,
+            1940,
+            1980,
+            2020,
+            2060,
+            2100,
+            2140
+          ],
+          "user_raw": "无",
+          "user_pair": null,
+          "user_net": 0,
+          "legal_pairs": [],
+          "pair_ok": false,
+          "net_ok": true
+        },
+        {
+          "round": 8,
+          "product": "白糖",
+          "futures": 5600,
+          "strikes": [
+            4500,
+            4600,
+            4700,
+            4800,
+            4900,
+            5000,
+            5100,
+            5200,
+            5300,
+            5400
+          ],
+          "user_raw": "无",
+          "user_pair": null,
+          "user_net": 0,
+          "legal_pairs": [],
+          "pair_ok": false,
+          "net_ok": true
+        },
+        {
+          "round": 9,
+          "product": "PTA",
+          "futures": 4800,
+          "strikes": [
+            4150,
+            4200,
+            4250,
+            4300,
+            4350,
+            4400,
+            4450,
+            4500,
+            4550,
+            4600,
+            4650
+          ],
+          "user_raw": "无",
+          "user_pair": null,
+          "user_net": 0,
+          "legal_pairs": [],
+          "pair_ok": false,
+          "net_ok": true
+        },
+        {
+          "round": 10,
+          "product": "橡胶",
+          "futures": 17000,
+          "strikes": [
+            11000,
+            11500,
+            12000,
+            12500,
+            13000,
+            13500,
+            14000,
+            14500,
+            15000
+          ],
+          "user_raw": "无",
+          "user_pair": null,
+          "user_net": 0,
+          "legal_pairs": [],
+          "pair_ok": false,
+          "net_ok": true
+        }
+      ]
+    },
+    {
+      "date": "2026-09-24T18:48:55.221051",
+      "module": "C",
+      "score": 22,
+      "accuracy": 100.0,
+      "avg_time_ms": 5444.0,
+      "total_questions": 10,
+      "day_of_week": "Thursday"
+    },
+    {
+      "date": "2026-09-24T18:50:33.946041",
+      "module": "H",
+      "score": 28,
+      "accuracy": 100.0,
+      "avg_time_ms": 3399.0,
+      "total_questions": 10,
+      "day_of_week": "Thursday"
+    },
+    {
+      "date": "2026-09-24T18:52:09.228605",
+      "module": "F",
+      "score": 27,
+      "accuracy": 100.0,
+      "avg_time_ms": 7967.0,
+      "total_questions": 10,
+      "day_of_week": "Thursday"
     }
   ],
   "personal_bests": {
@@ -1812,7 +2051,7 @@
     "D_accuracy": 100.0,
     "E_score": 30,
     "E_accuracy": 100.0,
-    "F_score": 25,
+    "F_score": 27,
     "F_accuracy": 100.0,
     "G_score": 53,
     "G_accuracy": 100.0,
