@@ -1,11 +1,21 @@
 """akshare 数据层 — scanner + iv_collector 共享（日频 REST，不挂）"""
+import os
 import re
+import sys
 import math
 import time
 import pandas as pd
 from datetime import datetime
 
 import akshare as ak
+
+# 交易所规则单一真相源（tools/exchange_ltd.py）。直接以脚本方式跑本文件时
+# tools/ 不在 sys.path 上，补一下；被 iv_collector / scanner 导入时已就位。
+try:
+    from exchange_ltd import dte as _true_dte
+except ImportError:                                       # pragma: no cover
+    sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+    from exchange_ltd import dte as _true_dte
 
 VALID_MONTHS = {
     'm': [1, 5, 9], 'rm': [1, 5, 9], 'sr': [1, 5, 9], 'cf': [1, 5, 9],
@@ -279,15 +289,13 @@ def fetch_futures_daily(vcode, days=120):
 
 
 def _est_dte(contract):
-    try:
-        m = re.search(r'(\d{4})$', contract)
-        if m:
-            yy, mm = int(m.group(1)[:2]), int(m.group(1)[2:])
-            expiry = datetime(2000 + yy, mm, 1)
-            return max((expiry - datetime.now()).days - 5, 5)
-    except Exception:
-        pass
-    return 30
+    """期权距到期天数 —— 转发到 tools/exchange_ltd.py（交易所规则单一真相源）。
+
+    2026-09-27 前这里是「到期月首日 - 5 天」的近似式，比真实到期日长 3~15 天。
+    本函数被 pick_active_months() 的 dte_min 闸调用（下面 :99 附近），
+    旧的近似尺会把**真·临近交割**的合约判成"还早"放进候选池 —— 同一根坏尺子。
+    """
+    return _true_dte(contract)
 
 
 def estimate_iv_from_chain(df, futures_price, contract):

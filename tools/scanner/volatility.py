@@ -10,9 +10,16 @@ import csv
 import math
 import re
 import os
+import sys
 from collections import defaultdict
 from datetime import date
 from typing import Optional, Tuple, Dict, List
+
+# 交易所规则单一真相源（tools/exchange_ltd.py）
+_TOOLS_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+if _TOOLS_DIR not in sys.path:
+    sys.path.insert(0, _TOOLS_DIR)
+from exchange_ltd import dte as _true_dte, parse_contract as _parse_contract
 
 
 def _extract_variety(contract: str) -> Optional[str]:
@@ -46,6 +53,7 @@ def load_iv_history() -> dict:
                 dte = int(row.get("dte", 30) or 30)
                 ref_iv_raw = row.get("ref_iv", "")
                 hist[c] = {
+                    "contract": c,          # 9/27 加：倒挂检测要重算主采 dte，原先拿不到合约码
                     "iv_est": iv,
                     "hv_20d": hv20,
                     "hv_60d": hv60,
@@ -108,19 +116,24 @@ def detect_term_structure_inversion(info: dict) -> Optional[dict]:
     if main_iv <= 0 or ref_iv < 0.05:          # ref_iv <5% = 坏数据不判
         return None
     ref_contract = info.get("ref_contract", "") or ""
-    try:
-        main_dte = int(info.get("dte") or 0)
-    except (ValueError, TypeError):
-        main_dte = 0
-    if main_dte <= 0 or not ref_contract:
+    main_contract = info.get("contract", "") or ""
+    if not ref_contract or not main_contract:
         return None
-    m = re.search(r"(\d{4})$", ref_contract)   # far 合约月份 YYMM
-    if not m:
+    # 2026-09-27：两个 DTE 都换成交易所规则单一真相源，且**同一个基准日**
+    # （该行自己的 date，不是 today —— 历史行必须相对它那天算）。
+    #
+    # 改之前这里是两根不同的尺子：main_dte 来自 CSV 的 dte 列（采集时用
+    # 「月首-5」近似式写的，而那个近似式在 2026-09-27 之前还混着
+    # datetime/date 的 -1），ref_dte 是分析时用 date.today() 现算的。
+    # 两把尺子比大小，谁近谁远本身就可能判反。
+    asof = info.get("date") or None
+    if _parse_contract(ref_contract) is None:    # 认不出的代码 → 不判，不猜
         return None
-    yy, mm = int(m.group(1)[:2]), int(m.group(1)[2:])
-    try:
-        ref_dte = max((date(2000 + yy, mm, 1) - date.today()).days - 5, 5)
-    except ValueError:
+    ref_dte = _true_dte(ref_contract, asof)
+    if _parse_contract(main_contract) is None:
+        return None
+    main_dte = _true_dte(main_contract, asof)
+    if main_dte <= 0:
         return None
     # 谁 DTE 短谁是近月
     if main_dte < ref_dte:                      # 主采=近月
