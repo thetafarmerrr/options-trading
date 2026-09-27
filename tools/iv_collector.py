@@ -24,6 +24,7 @@ sys.path.insert(0, SCRIPT_DIR)
 
 from _ak_data import (pick_two_contracts, fetch_option_chain, fetch_futures_daily,
                       estimate_iv_from_chain, DEFAULT_FUTURES, STRIKE_INTERVAL)
+from exchange_ltd import dte as _true_dte
 
 # ── 配置 ──
 DEFAULT_VARIETIES = {
@@ -161,20 +162,20 @@ def get_last_contract(vcode):
 
 
 def _est_dte(contract):
-    """估算期权距到期天数（近似值，实际到期日各交易所规则不同）。
+    """期权距到期天数 —— 转发到 tools/exchange_ltd.py（交易所规则单一真相源）。
 
-    大商所：交割月前月第5个交易日 | 郑商所：前月第3个交易日 | 上期所：前月倒数第5个交易日。
-    此处用"月份首日 -5 天"统一近似，偏差通常 3-10 天。IV 计算对此偏差不敏感。
-    如需精确 DTE，接入交易所日历后再替换。
+    2026-09-27 前这里是「到期月首日 - 5 天」的近似式，实测比真实到期日
+    长 3~15 天（大商所/郑商所的规则注释本身也已过期），导致 IV 被系统性低估。
+    真实规则与原文出处见 exchange_ltd 模块 docstring。
+
+    ⚠️ 历史行已于 2026-09-27 全量回填（`tools/backfill_dte_20260927.py`），
+    所以 `data/iv_history.csv` 的 dte/iv_est/ref_iv 现在**通篇同一把尺**，
+    不存在新旧混比。两处例外，看 `dte_src` 列：
+      exact    —— 按规则精确算出（1114 行）
+      expired  —— 采集当天该合约已在/过了最后交易日，dte 存真值(0或负)，
+                  **iv_est 保留回填前的旧值**（公式在 dte≤0 无定义）。共 14 行。
     """
-    try:
-        month = int(contract[-2:])
-        year = 2000 + int(contract[-4:-2])
-        expiry = datetime(year, month, 1)
-        dte = (expiry - datetime.now()).days - 5  # 到期月首日前 5 天
-        return max(dte, 5)
-    except Exception:
-        return 30
+    return _true_dte(contract)
 
 
 _WINDOW_OVERRIDE = None  # CLI --window 手动覆盖时设置

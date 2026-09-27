@@ -23,6 +23,7 @@ from _ak_data import (fetch_option_chain as _ak_fetch_chain,
                        estimate_iv_from_chain as _ak_est_iv,
                        fetch_futures_daily as _ak_futures_daily,
                        pick_best_contract as _ak_pick_contract)
+from exchange_ltd import dte as _true_dte
 
 from .models import OptionChain
 from .config import VARIETIES, MAX_SPREAD_PCT
@@ -95,15 +96,9 @@ class AKShareSource(DataSource):
                 return None  # ATM 附近垂直价差倒挂 → 数据不可信
 
             # ── DTE 计算 ──
-            dte = 30
-            try:
-                m = re.search(r'(\d{4})$', contract)
-                if m:
-                    yy, mm = int(m.group(1)[:2]), int(m.group(1)[2:])
-                    expiry = datetime(2000 + yy, mm, 1)
-                    dte = max((expiry - datetime.now()).days - 5, 5)
-            except Exception:
-                pass
+            # 2026-09-27：换成交易所规则单一真相源（旧「月首-5」近似式长 3~15 天）。
+            # 下面的 chain.expiry 也跟着一起纠正 —— 它原先由坏 dte 反推。
+            dte = _true_dte(contract)
 
             # ── 分离 Put/Call ──
             put_cols = [c for c in df.columns if c.startswith("p_")]
