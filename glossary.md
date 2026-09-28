@@ -490,3 +490,8 @@ when we look at hedging, we're basically looking at minimizing risk. So when we'
 - The more value it loses, the slower it's going to decay.  （Mike E13 Theta Explained · ⚠️字幕抄录，非听力）
 - The curve goes from very wide to very narrow as you get closer to expiration.  （Mike E13 Theta Explained · ⚠️字幕抄录，非听力）
 - Theta is going to creep up and become much more non-linear the closer we get to expiration.  （Mike E13 Theta Explained · ⚠️字幕抄录，非听力）
+
+### Theta 的符号与非线性（9/28 听力）
+- Theta is shown as a negative number when you're long the option.  （Mike E13 · 原听成"for me"，条件待复核）[与 E02/E03 卖方 +theta 互为两面]
+- Another takeaway is that theta changes as extrinsic value and time change.  （Mike E13）
+- Theta is nonlinear, especially closer to expiration.  （Mike E13 · 与 9/24 字幕抄录那句同义，两次独立到达）
