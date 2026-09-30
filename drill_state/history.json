@@ -1,24 +1,6 @@
 {
   "sessions": [
     {
-      "date": "2026-07-28T10:31:30.345173",
-      "module": "C",
-      "score": 10,
-      "accuracy": 80.0,
-      "avg_time_ms": 14886.0,
-      "total_questions": 10,
-      "day_of_week": "Tuesday"
-    },
-    {
-      "date": "2026-07-28T10:33:34.979616",
-      "module": "H",
-      "score": 11,
-      "accuracy": 70.0,
-      "avg_time_ms": 10105.0,
-      "total_questions": 10,
-      "day_of_week": "Tuesday"
-    },
-    {
       "date": "2026-07-29T10:43:17.562956",
       "module": "B",
       "score": 66,
@@ -2272,6 +2254,275 @@
       "avg_time_ms": 11146.0,
       "total_questions": 12,
       "day_of_week": "Tuesday"
+    },
+    {
+      "date": "2026-09-30T08:16:02.226942",
+      "module": "B",
+      "score": 67,
+      "accuracy": 96.0,
+      "avg_time_ms": 2051.0,
+      "total_questions": 25,
+      "day_of_week": "Wednesday"
+    },
+    {
+      "date": "2026-09-30T08:18:05.445936",
+      "module": "E",
+      "score": 27,
+      "accuracy": 90.0,
+      "avg_time_ms": 6249.0,
+      "total_questions": 10,
+      "day_of_week": "Wednesday",
+      "rounds": [
+        {
+          "round": 1,
+          "product": "橡胶",
+          "futures": 17000,
+          "strikes": [
+            10500,
+            11000,
+            11500,
+            12000,
+            12500,
+            13000,
+            13500,
+            14000,
+            14500,
+            15000,
+            15500,
+            16000
+          ],
+          "user_raw": "无",
+          "user_pair": null,
+          "user_net": 0,
+          "legal_pairs": [],
+          "pair_ok": false,
+          "net_ok": true
+        },
+        {
+          "round": 2,
+          "product": "PTA",
+          "futures": 4800,
+          "strikes": [
+            4050,
+            4100,
+            4150,
+            4200,
+            4250,
+            4300,
+            4350,
+            4400,
+            4450,
+            4500,
+            4550
+          ],
+          "user_raw": "无",
+          "user_pair": null,
+          "user_net": 0,
+          "legal_pairs": [],
+          "pair_ok": false,
+          "net_ok": true
+        },
+        {
+          "round": 3,
+          "product": "玉米",
+          "futures": 2300,
+          "strikes": [
+            1860,
+            1900,
+            1940,
+            1980,
+            2020,
+            2060,
+            2100,
+            2140,
+            2180,
+            2220
+          ],
+          "user_raw": "210,2060,2.77",
+          "user_pair": [
+            210,
+            2060
+          ],
+          "user_net": 2.77,
+          "legal_pairs": [
+            {
+              "sell": 2180,
+              "buy": 2100,
+              "net": 0.6
+            },
+            {
+              "sell": 2100,
+              "buy": 2060,
+              "net": 2.8
+            }
+          ],
+          "pair_ok": false,
+          "net_ok": true
+        },
+        {
+          "round": 4,
+          "product": "甲醇",
+          "futures": 2450,
+          "strikes": [
+            1700,
+            1750,
+            1800,
+            1850,
+            1900,
+            1950,
+            2000,
+            2050,
+            2100,
+            2150,
+            2200
+          ],
+          "user_raw": "w",
+          "user_pair": null,
+          "user_net": 0,
+          "legal_pairs": [],
+          "pair_ok": false,
+          "net_ok": true
+        },
+        {
+          "round": 5,
+          "product": "甲醇",
+          "futures": 2450,
+          "strikes": [
+            1750,
+            1800,
+            1850,
+            1900,
+            1950,
+            2000,
+            2050,
+            2100,
+            2150,
+            2200
+          ],
+          "user_raw": "无",
+          "user_pair": null,
+          "user_net": 0,
+          "legal_pairs": [],
+          "pair_ok": false,
+          "net_ok": true
+        },
+        {
+          "round": 6,
+          "product": "沪金",
+          "futures": 870,
+          "strikes": [
+            766,
+            774,
+            782,
+            790,
+            798,
+            806,
+            814,
+            822,
+            830
+          ],
+          "user_raw": "无",
+          "user_pair": null,
+          "user_net": 0,
+          "legal_pairs": [],
+          "pair_ok": false,
+          "net_ok": true
+        },
+        {
+          "round": 7,
+          "product": "白糖",
+          "futures": 5600,
+          "strikes": [
+            4300,
+            4400,
+            4500,
+            4600,
+            4700,
+            4800,
+            4900,
+            5000,
+            5100,
+            5200,
+            5300
+          ],
+          "user_raw": "无",
+          "user_pair": null,
+          "user_net": 0,
+          "legal_pairs": [],
+          "pair_ok": false,
+          "net_ok": true
+        },
+        {
+          "round": 8,
+          "product": "白糖",
+          "futures": 5600,
+          "strikes": [
+            4200,
+            4300,
+            4400,
+            4500,
+            4600,
+            4700,
+            4800,
+            4900,
+            5000,
+            5100
+          ],
+          "user_raw": "无",
+          "user_pair": null,
+          "user_net": 0,
+          "legal_pairs": [],
+          "pair_ok": false,
+          "net_ok": true
+        },
+        {
+          "round": 9,
+          "product": "菜籽粕",
+          "futures": 2500,
+          "strikes": [
+            1850,
+            1900,
+            1950,
+            2000,
+            2050,
+            2100,
+            2150,
+            2200,
+            2250
+          ],
+          "user_raw": "无",
+          "user_pair": null,
+          "user_net": 0,
+          "legal_pairs": [],
+          "pair_ok": false,
+          "net_ok": true
+        },
+        {
+          "round": 10,
+          "product": "铁矿石",
+          "futures": 780,
+          "strikes": [
+            520,
+            540,
+            560,
+            580,
+            600,
+            620,
+            640,
+            660,
+            680,
+            700,
+            720,
+            740
+          ],
+          "user_raw": "无",
+          "user_pair": null,
+          "user_net": 0,
+          "legal_pairs": [],
+          "pair_ok": false,
+          "net_ok": true
+        }
+      ]
     }
   ],
   "personal_bests": {
