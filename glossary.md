@@ -495,3 +495,8 @@ when we look at hedging, we're basically looking at minimizing risk. So when we'
 - Theta is shown as a negative number when you're long the option.  （Mike E13 · 原听成"for me"，条件待复核）[与 E02/E03 卖方 +theta 互为两面]
 - Another takeaway is that theta changes as extrinsic value and time change.  （Mike E13）
 - Theta is nonlinear, especially closer to expiration.  （Mike E13 · 与 9/24 字幕抄录那句同义，两次独立到达）
+
+### Gamma 与 Delta 的关系（9/30 · E15 Gamma Explained · 双语字幕生效第 1 天）
+- Gamma is a derivative of delta.  （Mike E15 · 挖矿第 1 句）
+- With the same stock price change, a longer-dated option's delta changes less than a shorter-dated one's.  （Mike E15 · 口述转写，原话见下）
+> ⚠️ **9/30 记录**：本日挖矿只交 **1 句**（计划 3 句）。第 2 句由你的口述整理，**不是我听来的**——若与原视频有出入，以原视频为准。
