@@ -696,8 +696,12 @@ def run_drill_c(quick=False):
     total_time = 0
     correct = 0
 
+    # 10/11 修：原为 random.choice（有放回）——池 15 题抽 10 轮，P(至少一个重复)=98.1%，
+    # 期望漏掉 ~7.5 个场景 ⇒ 每次跑的是不同题集，分数跨次不可比。改无放回，同 D 模块。
+    pool = random.sample(SCENARIOS_C, min(n_rounds, len(SCENARIOS_C)))
+
     for round_num in range(1, n_rounds + 1):
-        scenario = random.choice(SCENARIOS_C)
+        scenario = pool[(round_num - 1) % len(pool)]
         random.shuffle(scenario["options"])
 
         print(f"\n  [{round_num}/{n_rounds}]")
@@ -1413,8 +1417,11 @@ def run_drill_f(quick=False):
     total_time = 0
     correct = 0
 
+    # 10/11 修：同 C 模块——原 random.choice 有放回，池 15 题抽 10 轮几乎必然重复。
+    pool_f = random.sample(SCENARIOS_F, min(n_rounds, len(SCENARIOS_F)))
+
     for round_num in range(1, n_rounds + 1):
-        scenario = random.choice(SCENARIOS_F)
+        scenario = pool_f[(round_num - 1) % len(pool_f)]
         random.shuffle(scenario["options"])
 
         print(f"\n  [{round_num}/{n_rounds}]")
