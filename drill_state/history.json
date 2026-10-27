@@ -1,141 +1,6 @@
 {
   "sessions": [
     {
-      "date": "2026-07-30T09:35:03.905127",
-      "module": "C",
-      "score": 14,
-      "accuracy": 90.0,
-      "avg_time_ms": 10815.0,
-      "total_questions": 10,
-      "day_of_week": "Thursday"
-    },
-    {
-      "date": "2026-07-30T09:37:03.578143",
-      "module": "H",
-      "score": 11,
-      "accuracy": 90.0,
-      "avg_time_ms": 10518.0,
-      "total_questions": 10,
-      "day_of_week": "Thursday"
-    },
-    {
-      "date": "2026-07-30T09:40:06.861962",
-      "module": "F",
-      "score": 17,
-      "accuracy": 90.0,
-      "avg_time_ms": 15313.0,
-      "total_questions": 10,
-      "day_of_week": "Thursday"
-    },
-    {
-      "date": "2026-07-31T10:09:37.979401",
-      "module": "B",
-      "score": 65,
-      "accuracy": 92.0,
-      "avg_time_ms": 2285.0,
-      "total_questions": 25,
-      "day_of_week": "Friday"
-    },
-    {
-      "date": "2026-07-31T10:11:28.026670",
-      "module": "E",
-      "score": 23,
-      "accuracy": 80.0,
-      "avg_time_ms": 6753.0,
-      "total_questions": 10,
-      "day_of_week": "Friday"
-    },
-    {
-      "date": "2026-07-31T10:16:32.478488",
-      "module": "G",
-      "score": 24,
-      "accuracy": 80.0,
-      "avg_time_ms": 11442.0,
-      "total_questions": 25,
-      "day_of_week": "Friday"
-    },
-    {
-      "date": "2026-07-31T10:19:21.171784",
-      "module": "D",
-      "score": 16,
-      "accuracy": 90.0,
-      "avg_time_ms": 14840.0,
-      "total_questions": 10,
-      "day_of_week": "Friday"
-    },
-    {
-      "date": "2026-07-31T10:21:47.368357",
-      "module": "A",
-      "score": 20,
-      "accuracy": 80.0,
-      "avg_time_ms": 10879.0,
-      "total_questions": 10,
-      "day_of_week": "Friday"
-    },
-    {
-      "date": "2026-08-01T08:18:38.737118",
-      "module": "B",
-      "score": 55,
-      "accuracy": 80.0,
-      "avg_time_ms": 2683.0,
-      "total_questions": 25,
-      "day_of_week": "Saturday"
-    },
-    {
-      "date": "2026-08-01T08:23:30.974812",
-      "module": "G",
-      "score": 22,
-      "accuracy": 80.0,
-      "avg_time_ms": 9743.0,
-      "total_questions": 25,
-      "day_of_week": "Saturday"
-    },
-    {
-      "date": "2026-08-01T08:26:42.312970",
-      "module": "D",
-      "score": 16,
-      "accuracy": 100.0,
-      "avg_time_ms": 17453.0,
-      "total_questions": 10,
-      "day_of_week": "Saturday"
-    },
-    {
-      "date": "2026-08-01T08:28:16.947442",
-      "module": "C",
-      "score": 20,
-      "accuracy": 100.0,
-      "avg_time_ms": 8036.0,
-      "total_questions": 10,
-      "day_of_week": "Saturday"
-    },
-    {
-      "date": "2026-08-01T08:33:30.130675",
-      "module": "J",
-      "score": 15,
-      "accuracy": 70.0,
-      "avg_time_ms": 14905.0,
-      "total_questions": 20,
-      "day_of_week": "Saturday"
-    },
-    {
-      "date": "2026-08-02T23:27:48.452287",
-      "module": "D",
-      "score": 14,
-      "accuracy": 90.0,
-      "avg_time_ms": 19926.0,
-      "total_questions": 10,
-      "day_of_week": "Sunday"
-    },
-    {
-      "date": "2026-08-03T09:57:40.391970",
-      "module": "B",
-      "score": 58,
-      "accuracy": 84.0,
-      "avg_time_ms": 2562.0,
-      "total_questions": 25,
-      "day_of_week": "Monday"
-    },
-    {
       "date": "2026-08-03T09:58:31.485574",
       "module": "E",
       "score": 30,
@@ -1654,246 +1519,7 @@
       "accuracy": 100.0,
       "avg_time_ms": 1540.0,
       "total_questions": 10,
-      "day_of_week": "Thursday",
-      "rounds": [
-        {
-          "round": 1,
-          "product": "橡胶",
-          "futures": 17000,
-          "strikes": [
-            10500,
-            11000,
-            11500,
-            12000,
-            12500,
-            13000,
-            13500,
-            14000,
-            14500,
-            15000,
-            15500,
-            16000
-          ],
-          "user_raw": "无",
-          "user_pair": null,
-          "user_net": 0,
-          "legal_pairs": [],
-          "pair_ok": false,
-          "net_ok": true
-        },
-        {
-          "round": 2,
-          "product": "豆粕",
-          "futures": 2800,
-          "strikes": [
-            2050,
-            2100,
-            2150,
-            2200,
-            2250,
-            2300,
-            2350,
-            2400,
-            2450,
-            2500,
-            2550
-          ],
-          "user_raw": "无",
-          "user_pair": null,
-          "user_net": 0,
-          "legal_pairs": [],
-          "pair_ok": false,
-          "net_ok": true
-        },
-        {
-          "round": 3,
-          "product": "铁矿石",
-          "futures": 780,
-          "strikes": [
-            520,
-            540,
-            560,
-            580,
-            600,
-            620,
-            640,
-            660,
-            680,
-            700,
-            720
-          ],
-          "user_raw": "无",
-          "user_pair": null,
-          "user_net": 0,
-          "legal_pairs": [],
-          "pair_ok": false,
-          "net_ok": true
-        },
-        {
-          "round": 4,
-          "product": "玉米",
-          "futures": 2300,
-          "strikes": [
-            1780,
-            1820,
-            1860,
-            1900,
-            1940,
-            1980,
-            2020,
-            2060,
-            2100,
-            2140
-          ],
-          "user_raw": "无",
-          "user_pair": null,
-          "user_net": 0,
-          "legal_pairs": [],
-          "pair_ok": false,
-          "net_ok": true
-        },
-        {
-          "round": 5,
-          "product": "菜籽粕",
-          "futures": 2500,
-          "strikes": [
-            1700,
-            1750,
-            1800,
-            1850,
-            1900,
-            1950,
-            2000,
-            2050,
-            2100,
-            2150,
-            2200,
-            2250
-          ],
-          "user_raw": "无",
-          "user_pair": null,
-          "user_net": 0,
-          "legal_pairs": [],
-          "pair_ok": false,
-          "net_ok": true
-        },
-        {
-          "round": 6,
-          "product": "玉米",
-          "futures": 2300,
-          "strikes": [
-            1780,
-            1820,
-            1860,
-            1900,
-            1940,
-            1980,
-            2020,
-            2060,
-            2100,
-            2140
-          ],
-          "user_raw": "无",
-          "user_pair": null,
-          "user_net": 0,
-          "legal_pairs": [],
-          "pair_ok": false,
-          "net_ok": true
-        },
-        {
-          "round": 7,
-          "product": "玉米",
-          "futures": 2300,
-          "strikes": [
-            1740,
-            1780,
-            1820,
-            1860,
-            1900,
-            1940,
-            1980,
-            2020,
-            2060,
-            2100,
-            2140
-          ],
-          "user_raw": "无",
-          "user_pair": null,
-          "user_net": 0,
-          "legal_pairs": [],
-          "pair_ok": false,
-          "net_ok": true
-        },
-        {
-          "round": 8,
-          "product": "白糖",
-          "futures": 5600,
-          "strikes": [
-            4500,
-            4600,
-            4700,
-            4800,
-            4900,
-            5000,
-            5100,
-            5200,
-            5300,
-            5400
-          ],
-          "user_raw": "无",
-          "user_pair": null,
-          "user_net": 0,
-          "legal_pairs": [],
-          "pair_ok": false,
-          "net_ok": true
-        },
-        {
-          "round": 9,
-          "product": "PTA",
-          "futures": 4800,
-          "strikes": [
-            4150,
-            4200,
-            4250,
-            4300,
-            4350,
-            4400,
-            4450,
-            4500,
-            4550,
-            4600,
-            4650
-          ],
-          "user_raw": "无",
-          "user_pair": null,
-          "user_net": 0,
-          "legal_pairs": [],
-          "pair_ok": false,
-          "net_ok": true
-        },
-        {
-          "round": 10,
-          "product": "橡胶",
-          "futures": 17000,
-          "strikes": [
-            11000,
-            11500,
-            12000,
-            12500,
-            13000,
-            13500,
-            14000,
-            14500,
-            15000
-          ],
-          "user_raw": "无",
-          "user_pair": null,
-          "user_net": 0,
-          "legal_pairs": [],
-          "pair_ok": false,
-          "net_ok": true
-        }
-      ]
+      "day_of_week": "Thursday"
     },
     {
       "date": "2026-09-24T18:48:55.221051",
@@ -1938,241 +1564,7 @@
       "accuracy": 100.0,
       "avg_time_ms": 2465.0,
       "total_questions": 10,
-      "day_of_week": "Tuesday",
-      "rounds": [
-        {
-          "round": 1,
-          "product": "沪金",
-          "futures": 870,
-          "strikes": [
-            758,
-            766,
-            774,
-            782,
-            790,
-            798,
-            806,
-            814,
-            822,
-            830
-          ],
-          "user_raw": "无",
-          "user_pair": null,
-          "user_net": 0,
-          "legal_pairs": [],
-          "pair_ok": false,
-          "net_ok": true
-        },
-        {
-          "round": 2,
-          "product": "菜籽粕",
-          "futures": 2500,
-          "strikes": [
-            1800,
-            1850,
-            1900,
-            1950,
-            2000,
-            2050,
-            2100,
-            2150,
-            2200,
-            2250
-          ],
-          "user_raw": "无",
-          "user_pair": null,
-          "user_net": 0,
-          "legal_pairs": [],
-          "pair_ok": false,
-          "net_ok": true
-        },
-        {
-          "round": 3,
-          "product": "豆粕",
-          "futures": 2800,
-          "strikes": [
-            2200,
-            2250,
-            2300,
-            2350,
-            2400,
-            2450,
-            2500,
-            2550,
-            2600,
-            2650
-          ],
-          "user_raw": "无",
-          "user_pair": null,
-          "user_net": 0,
-          "legal_pairs": [],
-          "pair_ok": false,
-          "net_ok": true
-        },
-        {
-          "round": 4,
-          "product": "铁矿石",
-          "futures": 780,
-          "strikes": [
-            540,
-            560,
-            580,
-            600,
-            620,
-            640,
-            660,
-            680,
-            700,
-            720
-          ],
-          "user_raw": "无",
-          "user_pair": null,
-          "user_net": 0,
-          "legal_pairs": [],
-          "pair_ok": false,
-          "net_ok": true
-        },
-        {
-          "round": 5,
-          "product": "菜籽粕",
-          "futures": 2500,
-          "strikes": [
-            1950,
-            2000,
-            2050,
-            2100,
-            2150,
-            2200,
-            2250,
-            2300,
-            2350,
-            2400
-          ],
-          "user_raw": "无",
-          "user_pair": null,
-          "user_net": 0,
-          "legal_pairs": [],
-          "pair_ok": false,
-          "net_ok": true
-        },
-        {
-          "round": 6,
-          "product": "橡胶",
-          "futures": 17000,
-          "strikes": [
-            10500,
-            11000,
-            11500,
-            12000,
-            12500,
-            13000,
-            13500,
-            14000,
-            14500
-          ],
-          "user_raw": "无",
-          "user_pair": null,
-          "user_net": 0,
-          "legal_pairs": [],
-          "pair_ok": false,
-          "net_ok": true
-        },
-        {
-          "round": 7,
-          "product": "铁矿石",
-          "futures": 780,
-          "strikes": [
-            580,
-            600,
-            620,
-            640,
-            660,
-            680,
-            700,
-            720,
-            740
-          ],
-          "user_raw": "无",
-          "user_pair": null,
-          "user_net": 0,
-          "legal_pairs": [],
-          "pair_ok": false,
-          "net_ok": true
-        },
-        {
-          "round": 8,
-          "product": "棉花",
-          "futures": 13500,
-          "strikes": [
-            10700,
-            10900,
-            11100,
-            11300,
-            11500,
-            11700,
-            11900,
-            12100,
-            12300,
-            12500,
-            12700
-          ],
-          "user_raw": "无",
-          "user_pair": null,
-          "user_net": 0,
-          "legal_pairs": [],
-          "pair_ok": false,
-          "net_ok": true
-        },
-        {
-          "round": 9,
-          "product": "PTA",
-          "futures": 4800,
-          "strikes": [
-            4050,
-            4100,
-            4150,
-            4200,
-            4250,
-            4300,
-            4350,
-            4400,
-            4450,
-            4500,
-            4550
-          ],
-          "user_raw": "无",
-          "user_pair": null,
-          "user_net": 0,
-          "legal_pairs": [],
-          "pair_ok": false,
-          "net_ok": true
-        },
-        {
-          "round": 10,
-          "product": "棉花",
-          "futures": 13500,
-          "strikes": [
-            10500,
-            10700,
-            10900,
-            11100,
-            11300,
-            11500,
-            11700,
-            11900,
-            12100,
-            12300,
-            12500,
-            12700
-          ],
-          "user_raw": "无",
-          "user_pair": null,
-          "user_net": 0,
-          "legal_pairs": [],
-          "pair_ok": false,
-          "net_ok": true
-        }
-      ]
+      "day_of_week": "Tuesday"
     },
     {
       "date": "2026-09-29T08:57:27.369560",
@@ -2217,258 +1609,7 @@
       "accuracy": 90.0,
       "avg_time_ms": 6249.0,
       "total_questions": 10,
-      "day_of_week": "Wednesday",
-      "rounds": [
-        {
-          "round": 1,
-          "product": "橡胶",
-          "futures": 17000,
-          "strikes": [
-            10500,
-            11000,
-            11500,
-            12000,
-            12500,
-            13000,
-            13500,
-            14000,
-            14500,
-            15000,
-            15500,
-            16000
-          ],
-          "user_raw": "无",
-          "user_pair": null,
-          "user_net": 0,
-          "legal_pairs": [],
-          "pair_ok": false,
-          "net_ok": true
-        },
-        {
-          "round": 2,
-          "product": "PTA",
-          "futures": 4800,
-          "strikes": [
-            4050,
-            4100,
-            4150,
-            4200,
-            4250,
-            4300,
-            4350,
-            4400,
-            4450,
-            4500,
-            4550
-          ],
-          "user_raw": "无",
-          "user_pair": null,
-          "user_net": 0,
-          "legal_pairs": [],
-          "pair_ok": false,
-          "net_ok": true
-        },
-        {
-          "round": 3,
-          "product": "玉米",
-          "futures": 2300,
-          "strikes": [
-            1860,
-            1900,
-            1940,
-            1980,
-            2020,
-            2060,
-            2100,
-            2140,
-            2180,
-            2220
-          ],
-          "user_raw": "210,2060,2.77",
-          "user_pair": [
-            210,
-            2060
-          ],
-          "user_net": 2.77,
-          "legal_pairs": [
-            {
-              "sell": 2180,
-              "buy": 2100,
-              "net": 0.6
-            },
-            {
-              "sell": 2100,
-              "buy": 2060,
-              "net": 2.8
-            }
-          ],
-          "pair_ok": false,
-          "net_ok": true
-        },
-        {
-          "round": 4,
-          "product": "甲醇",
-          "futures": 2450,
-          "strikes": [
-            1700,
-            1750,
-            1800,
-            1850,
-            1900,
-            1950,
-            2000,
-            2050,
-            2100,
-            2150,
-            2200
-          ],
-          "user_raw": "w",
-          "user_pair": null,
-          "user_net": 0,
-          "legal_pairs": [],
-          "pair_ok": false,
-          "net_ok": true
-        },
-        {
-          "round": 5,
-          "product": "甲醇",
-          "futures": 2450,
-          "strikes": [
-            1750,
-            1800,
-            1850,
-            1900,
-            1950,
-            2000,
-            2050,
-            2100,
-            2150,
-            2200
-          ],
-          "user_raw": "无",
-          "user_pair": null,
-          "user_net": 0,
-          "legal_pairs": [],
-          "pair_ok": false,
-          "net_ok": true
-        },
-        {
-          "round": 6,
-          "product": "沪金",
-          "futures": 870,
-          "strikes": [
-            766,
-            774,
-            782,
-            790,
-            798,
-            806,
-            814,
-            822,
-            830
-          ],
-          "user_raw": "无",
-          "user_pair": null,
-          "user_net": 0,
-          "legal_pairs": [],
-          "pair_ok": false,
-          "net_ok": true
-        },
-        {
-          "round": 7,
-          "product": "白糖",
-          "futures": 5600,
-          "strikes": [
-            4300,
-            4400,
-            4500,
-            4600,
-            4700,
-            4800,
-            4900,
-            5000,
-            5100,
-            5200,
-            5300
-          ],
-          "user_raw": "无",
-          "user_pair": null,
-          "user_net": 0,
-          "legal_pairs": [],
-          "pair_ok": false,
-          "net_ok": true
-        },
-        {
-          "round": 8,
-          "product": "白糖",
-          "futures": 5600,
-          "strikes": [
-            4200,
-            4300,
-            4400,
-            4500,
-            4600,
-            4700,
-            4800,
-            4900,
-            5000,
-            5100
-          ],
-          "user_raw": "无",
-          "user_pair": null,
-          "user_net": 0,
-          "legal_pairs": [],
-          "pair_ok": false,
-          "net_ok": true
-        },
-        {
-          "round": 9,
-          "product": "菜籽粕",
-          "futures": 2500,
-          "strikes": [
-            1850,
-            1900,
-            1950,
-            2000,
-            2050,
-            2100,
-            2150,
-            2200,
-            2250
-          ],
-          "user_raw": "无",
-          "user_pair": null,
-          "user_net": 0,
-          "legal_pairs": [],
-          "pair_ok": false,
-          "net_ok": true
-        },
-        {
-          "round": 10,
-          "product": "铁矿石",
-          "futures": 780,
-          "strikes": [
-            520,
-            540,
-            560,
-            580,
-            600,
-            620,
-            640,
-            660,
-            680,
-            700,
-            720,
-            740
-          ],
-          "user_raw": "无",
-          "user_pair": null,
-          "user_net": 0,
-          "legal_pairs": [],
-          "pair_ok": false,
-          "net_ok": true
-        }
-      ]
+      "day_of_week": "Wednesday"
     },
     {
       "date": "2026-10-10T09:20:35.690152",
@@ -2523,10 +1664,897 @@
       "avg_time_ms": 2002.0,
       "total_questions": 25,
       "day_of_week": "Monday"
+    },
+    {
+      "date": "2026-10-15T09:53:47.280342",
+      "module": "C",
+      "score": 19,
+      "accuracy": 90.0,
+      "avg_time_ms": 6171.0,
+      "total_questions": 10,
+      "day_of_week": "Thursday"
+    },
+    {
+      "date": "2026-10-15T15:53:45.129210",
+      "module": "B",
+      "score": 68,
+      "accuracy": 96.0,
+      "avg_time_ms": 2125.0,
+      "total_questions": 25,
+      "day_of_week": "Thursday"
+    },
+    {
+      "date": "2026-10-15T15:55:48.293920",
+      "module": "E",
+      "score": 27,
+      "accuracy": 90.0,
+      "avg_time_ms": 8460.0,
+      "total_questions": 10,
+      "day_of_week": "Thursday",
+      "rounds": [
+        {
+          "round": 1,
+          "product": "橡胶",
+          "futures": 17000,
+          "strikes": [
+            11500,
+            12000,
+            12500,
+            13000,
+            13500,
+            14000,
+            14500,
+            15000,
+            15500
+          ],
+          "user_raw": "无",
+          "user_pair": null,
+          "user_net": 0,
+          "legal_pairs": [],
+          "pair_ok": false,
+          "net_ok": true
+        },
+        {
+          "round": 2,
+          "product": "沪金",
+          "futures": 870,
+          "strikes": [
+            766,
+            774,
+            782,
+            790,
+            798,
+            806,
+            814,
+            822,
+            830,
+            838,
+            846,
+            854
+          ],
+          "user_raw": "卖,买,净利0.16",
+          "user_pair": null,
+          "user_net": 0,
+          "legal_pairs": [
+            {
+              "sell": 814,
+              "buy": 782,
+              "net": 0.1
+            }
+          ],
+          "pair_ok": false,
+          "net_ok": true
+        },
+        {
+          "round": 3,
+          "product": "沪金",
+          "futures": 870,
+          "strikes": [
+            774,
+            782,
+            790,
+            798,
+            806,
+            814,
+            822,
+            830,
+            838,
+            846
+          ],
+          "user_raw": "无",
+          "user_pair": null,
+          "user_net": 0,
+          "legal_pairs": [],
+          "pair_ok": false,
+          "net_ok": true
+        },
+        {
+          "round": 4,
+          "product": "PTA",
+          "futures": 4800,
+          "strikes": [
+            4050,
+            4100,
+            4150,
+            4200,
+            4250,
+            4300,
+            4350,
+            4400,
+            4450,
+            4500,
+            4550
+          ],
+          "user_raw": "无",
+          "user_pair": null,
+          "user_net": 0,
+          "legal_pairs": [],
+          "pair_ok": false,
+          "net_ok": true
+        },
+        {
+          "round": 5,
+          "product": "棉花",
+          "futures": 13500,
+          "strikes": [
+            11300,
+            11500,
+            11700,
+            11900,
+            12100,
+            12300,
+            12500,
+            12700,
+            12900,
+            13100
+          ],
+          "user_raw": "无",
+          "user_pair": null,
+          "user_net": 0,
+          "legal_pairs": [],
+          "pair_ok": false,
+          "net_ok": true
+        },
+        {
+          "round": 6,
+          "product": "铁矿石",
+          "futures": 780,
+          "strikes": [
+            520,
+            540,
+            560,
+            580,
+            600,
+            620,
+            640,
+            660,
+            680,
+            700
+          ],
+          "user_raw": "无",
+          "user_pair": null,
+          "user_net": 0,
+          "legal_pairs": [],
+          "pair_ok": false,
+          "net_ok": true
+        },
+        {
+          "round": 7,
+          "product": "铁矿石",
+          "futures": 780,
+          "strikes": [
+            520,
+            540,
+            560,
+            580,
+            600,
+            620,
+            640,
+            660,
+            680,
+            700
+          ],
+          "user_raw": "无",
+          "user_pair": null,
+          "user_net": 0,
+          "legal_pairs": [],
+          "pair_ok": false,
+          "net_ok": true
+        },
+        {
+          "round": 8,
+          "product": "沪金",
+          "futures": 870,
+          "strikes": [
+            774,
+            782,
+            790,
+            798,
+            806,
+            814,
+            822,
+            830,
+            838,
+            846
+          ],
+          "user_raw": "无",
+          "user_pair": null,
+          "user_net": 0,
+          "legal_pairs": [],
+          "pair_ok": false,
+          "net_ok": true
+        },
+        {
+          "round": 9,
+          "product": "沪金",
+          "futures": 870,
+          "strikes": [
+            774,
+            782,
+            790,
+            798,
+            806,
+            814,
+            822,
+            830,
+            838,
+            846
+          ],
+          "user_raw": "无",
+          "user_pair": null,
+          "user_net": 0,
+          "legal_pairs": [],
+          "pair_ok": false,
+          "net_ok": true
+        },
+        {
+          "round": 10,
+          "product": "甲醇",
+          "futures": 2450,
+          "strikes": [
+            1700,
+            1750,
+            1800,
+            1850,
+            1900,
+            1950,
+            2000,
+            2050,
+            2100,
+            2150,
+            2200
+          ],
+          "user_raw": "无",
+          "user_pair": null,
+          "user_net": 0,
+          "legal_pairs": [],
+          "pair_ok": false,
+          "net_ok": true
+        }
+      ]
+    },
+    {
+      "date": "2026-10-15T15:57:38.243484",
+      "module": "H",
+      "score": 29,
+      "accuracy": 100.0,
+      "avg_time_ms": 3112.0,
+      "total_questions": 10,
+      "day_of_week": "Thursday"
+    },
+    {
+      "date": "2026-10-15T16:00:35.544317",
+      "module": "F",
+      "score": 19,
+      "accuracy": 100.0,
+      "avg_time_ms": 12986.0,
+      "total_questions": 10,
+      "day_of_week": "Thursday"
+    },
+    {
+      "date": "2026-10-19T08:35:49.040290",
+      "module": "B",
+      "score": 67,
+      "accuracy": 96.0,
+      "avg_time_ms": 2361.0,
+      "total_questions": 25,
+      "day_of_week": "Monday"
+    },
+    {
+      "date": "2026-10-19T08:36:27.927015",
+      "module": "E",
+      "score": 30,
+      "accuracy": 100.0,
+      "avg_time_ms": 2061.0,
+      "total_questions": 10,
+      "day_of_week": "Monday",
+      "rounds": [
+        {
+          "round": 1,
+          "product": "菜籽粕",
+          "futures": 2500,
+          "strikes": [
+            1850,
+            1900,
+            1950,
+            2000,
+            2050,
+            2100,
+            2150,
+            2200,
+            2250,
+            2300,
+            2350,
+            2400
+          ],
+          "user_raw": "不",
+          "user_pair": null,
+          "user_net": 0,
+          "legal_pairs": [],
+          "pair_ok": false,
+          "net_ok": true
+        },
+        {
+          "round": 2,
+          "product": "橡胶",
+          "futures": 17000,
+          "strikes": [
+            10500,
+            11000,
+            11500,
+            12000,
+            12500,
+            13000,
+            13500,
+            14000,
+            14500,
+            15000,
+            15500,
+            16000
+          ],
+          "user_raw": "不",
+          "user_pair": null,
+          "user_net": 0,
+          "legal_pairs": [],
+          "pair_ok": false,
+          "net_ok": true
+        },
+        {
+          "round": 3,
+          "product": "橡胶",
+          "futures": 17000,
+          "strikes": [
+            11000,
+            11500,
+            12000,
+            12500,
+            13000,
+            13500,
+            14000,
+            14500,
+            15000,
+            15500,
+            16000
+          ],
+          "user_raw": "不",
+          "user_pair": null,
+          "user_net": 0,
+          "legal_pairs": [],
+          "pair_ok": false,
+          "net_ok": true
+        },
+        {
+          "round": 4,
+          "product": "橡胶",
+          "futures": 17000,
+          "strikes": [
+            10000,
+            10500,
+            11000,
+            11500,
+            12000,
+            12500,
+            13000,
+            13500,
+            14000,
+            14500,
+            15000
+          ],
+          "user_raw": "不",
+          "user_pair": null,
+          "user_net": 0,
+          "legal_pairs": [],
+          "pair_ok": false,
+          "net_ok": true
+        },
+        {
+          "round": 5,
+          "product": "甲醇",
+          "futures": 2450,
+          "strikes": [
+            1700,
+            1750,
+            1800,
+            1850,
+            1900,
+            1950,
+            2000,
+            2050,
+            2100,
+            2150,
+            2200
+          ],
+          "user_raw": "不",
+          "user_pair": null,
+          "user_net": 0,
+          "legal_pairs": [],
+          "pair_ok": false,
+          "net_ok": true
+        },
+        {
+          "round": 6,
+          "product": "玉米",
+          "futures": 2300,
+          "strikes": [
+            1740,
+            1780,
+            1820,
+            1860,
+            1900,
+            1940,
+            1980,
+            2020,
+            2060,
+            2100
+          ],
+          "user_raw": "不",
+          "user_pair": null,
+          "user_net": 0,
+          "legal_pairs": [],
+          "pair_ok": false,
+          "net_ok": true
+        },
+        {
+          "round": 7,
+          "product": "PTA",
+          "futures": 4800,
+          "strikes": [
+            4050,
+            4100,
+            4150,
+            4200,
+            4250,
+            4300,
+            4350,
+            4400,
+            4450,
+            4500,
+            4550
+          ],
+          "user_raw": "不",
+          "user_pair": null,
+          "user_net": 0,
+          "legal_pairs": [],
+          "pair_ok": false,
+          "net_ok": true
+        },
+        {
+          "round": 8,
+          "product": "PTA",
+          "futures": 4800,
+          "strikes": [
+            4150,
+            4200,
+            4250,
+            4300,
+            4350,
+            4400,
+            4450,
+            4500,
+            4550
+          ],
+          "user_raw": "不",
+          "user_pair": null,
+          "user_net": 0,
+          "legal_pairs": [],
+          "pair_ok": false,
+          "net_ok": true
+        },
+        {
+          "round": 9,
+          "product": "白糖",
+          "futures": 5600,
+          "strikes": [
+            4200,
+            4300,
+            4400,
+            4500,
+            4600,
+            4700,
+            4800,
+            4900,
+            5000,
+            5100,
+            5200,
+            5300
+          ],
+          "user_raw": "不",
+          "user_pair": null,
+          "user_net": 0,
+          "legal_pairs": [],
+          "pair_ok": false,
+          "net_ok": true
+        },
+        {
+          "round": 10,
+          "product": "豆粕",
+          "futures": 2800,
+          "strikes": [
+            2200,
+            2250,
+            2300,
+            2350,
+            2400,
+            2450,
+            2500,
+            2550,
+            2600,
+            2650,
+            2700
+          ],
+          "user_raw": "不",
+          "user_pair": null,
+          "user_net": 0,
+          "legal_pairs": [],
+          "pair_ok": false,
+          "net_ok": true
+        }
+      ]
+    },
+    {
+      "date": "2026-10-19T08:38:52.048371",
+      "module": "G",
+      "score": 45,
+      "accuracy": 96.0,
+      "avg_time_ms": 5241.0,
+      "total_questions": 25,
+      "day_of_week": "Monday"
+    },
+    {
+      "date": "2026-10-19T08:42:06.414997",
+      "module": "I",
+      "score": 25,
+      "accuracy": 100.0,
+      "avg_time_ms": 10545.0,
+      "total_questions": 12,
+      "day_of_week": "Monday"
+    },
+    {
+      "date": "2026-10-19T08:43:16.019178",
+      "module": "A",
+      "score": 30,
+      "accuracy": 100.0,
+      "avg_time_ms": 4655.0,
+      "total_questions": 10,
+      "day_of_week": "Monday"
+    },
+    {
+      "date": "2026-10-23T10:16:58.662132",
+      "module": "B",
+      "score": 74,
+      "accuracy": 100.0,
+      "avg_time_ms": 1725.0,
+      "total_questions": 25,
+      "day_of_week": "Friday"
+    },
+    {
+      "date": "2026-10-23T10:19:26.775637",
+      "module": "E",
+      "score": 25,
+      "accuracy": 90.0,
+      "avg_time_ms": 11214.0,
+      "total_questions": 10,
+      "day_of_week": "Friday",
+      "rounds": [
+        {
+          "round": 1,
+          "product": "玉米",
+          "futures": 2300,
+          "strikes": [
+            1820,
+            1860,
+            1900,
+            1940,
+            1980,
+            2020,
+            2060,
+            2100,
+            2140
+          ],
+          "user_raw": "无",
+          "user_pair": null,
+          "user_net": 0,
+          "legal_pairs": [],
+          "pair_ok": false,
+          "net_ok": true
+        },
+        {
+          "round": 2,
+          "product": "铁矿石",
+          "futures": 780,
+          "strikes": [
+            480,
+            500,
+            520,
+            540,
+            560,
+            580,
+            600,
+            620,
+            640,
+            660,
+            680
+          ],
+          "user_raw": "无",
+          "user_pair": null,
+          "user_net": 0,
+          "legal_pairs": [],
+          "pair_ok": false,
+          "net_ok": true
+        },
+        {
+          "round": 3,
+          "product": "甲醇",
+          "futures": 2450,
+          "strikes": [
+            1850,
+            1900,
+            1950,
+            2000,
+            2050,
+            2100,
+            2150,
+            2200,
+            2250,
+            2300,
+            2350
+          ],
+          "user_raw": "无",
+          "user_pair": null,
+          "user_net": 0,
+          "legal_pairs": [],
+          "pair_ok": false,
+          "net_ok": true
+        },
+        {
+          "round": 4,
+          "product": "菜籽粕",
+          "futures": 2500,
+          "strikes": [
+            1900,
+            1950,
+            2000,
+            2050,
+            2100,
+            2150,
+            2200,
+            2250,
+            2300,
+            2350
+          ],
+          "user_raw": "无",
+          "user_pair": null,
+          "user_net": 0,
+          "legal_pairs": [],
+          "pair_ok": false,
+          "net_ok": true
+        },
+        {
+          "round": 5,
+          "product": "PTA",
+          "futures": 4800,
+          "strikes": [
+            4200,
+            4250,
+            4300,
+            4350,
+            4400,
+            4450,
+            4500,
+            4550,
+            4600,
+            4650
+          ],
+          "user_raw": "无",
+          "user_pair": null,
+          "user_net": 0,
+          "legal_pairs": [],
+          "pair_ok": false,
+          "net_ok": true
+        },
+        {
+          "round": 6,
+          "product": "PTA",
+          "futures": 4800,
+          "strikes": [
+            4100,
+            4150,
+            4200,
+            4250,
+            4300,
+            4350,
+            4400,
+            4450,
+            4500,
+            4550,
+            4600,
+            4650
+          ],
+          "user_raw": "4300，4200，0.46",
+          "user_pair": [
+            4300,
+            4200
+          ],
+          "user_net": 0.46,
+          "legal_pairs": [
+            {
+              "sell": 4350,
+              "buy": 4200,
+              "net": 0.6
+            },
+            {
+              "sell": 4300,
+              "buy": 4200,
+              "net": 0.5
+            }
+          ],
+          "pair_ok": true,
+          "net_ok": true
+        },
+        {
+          "round": 7,
+          "product": "沪金",
+          "futures": 870,
+          "strikes": [
+            766,
+            774,
+            782,
+            790,
+            798,
+            806,
+            814,
+            822,
+            830
+          ],
+          "user_raw": "无",
+          "user_pair": null,
+          "user_net": 0,
+          "legal_pairs": [],
+          "pair_ok": false,
+          "net_ok": true
+        },
+        {
+          "round": 8,
+          "product": "PTA",
+          "futures": 4800,
+          "strikes": [
+            4200,
+            4250,
+            4300,
+            4350,
+            4400,
+            4450,
+            4500,
+            4550,
+            4600,
+            4650,
+            4700
+          ],
+          "user_raw": "4550，4500，3.92",
+          "user_pair": [
+            4550,
+            4500
+          ],
+          "user_net": 3.92,
+          "legal_pairs": [
+            {
+              "sell": 4550,
+              "buy": 4500,
+              "net": 3.9
+            }
+          ],
+          "pair_ok": true,
+          "net_ok": true
+        },
+        {
+          "round": 9,
+          "product": "PTA",
+          "futures": 4800,
+          "strikes": [
+            4200,
+            4250,
+            4300,
+            4350,
+            4400,
+            4450,
+            4500,
+            4550,
+            4600,
+            4650
+          ],
+          "user_raw": "4500，4530，2.5",
+          "user_pair": [
+            4500,
+            4530
+          ],
+          "user_net": 2.5,
+          "legal_pairs": [
+            {
+              "sell": 4500,
+              "buy": 4300,
+              "net": 2.6
+            }
+          ],
+          "pair_ok": false,
+          "net_ok": true
+        },
+        {
+          "round": 10,
+          "product": "豆粕",
+          "futures": 2800,
+          "strikes": [
+            2050,
+            2100,
+            2150,
+            2200,
+            2250,
+            2300,
+            2350,
+            2400,
+            2450,
+            2500,
+            2550,
+            2600
+          ],
+          "user_raw": "无",
+          "user_pair": null,
+          "user_net": 0,
+          "legal_pairs": [],
+          "pair_ok": false,
+          "net_ok": true
+        }
+      ]
+    },
+    {
+      "date": "2026-10-23T10:22:27.682174",
+      "module": "G",
+      "score": 37,
+      "accuracy": 92.0,
+      "avg_time_ms": 6526.0,
+      "total_questions": 25,
+      "day_of_week": "Friday"
+    },
+    {
+      "date": "2026-10-23T10:25:42.456296",
+      "module": "D",
+      "score": 16,
+      "accuracy": 90.0,
+      "avg_time_ms": 18197.0,
+      "total_questions": 10,
+      "day_of_week": "Friday"
+    },
+    {
+      "date": "2026-10-23T10:26:54.677840",
+      "module": "A",
+      "score": 24,
+      "accuracy": 80.0,
+      "avg_time_ms": 4435.0,
+      "total_questions": 10,
+      "day_of_week": "Friday"
     }
   ],
   "personal_bests": {
-    "A_score": 29,
+    "A_score": 30,
     "A_accuracy": 100.0,
     "B_score": 74,
     "B_accuracy": 100.0,

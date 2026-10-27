@@ -163,6 +163,11 @@ class Reporter:
         limit = min(self.show_limit, len(filtered)) if self.show_limit > 0 else len(filtered)
 
         for i, s in enumerate(filtered[:limit], 1):
+            # 十大禁止 #8（10/13 立）：上涨不卖 Call / 下跌不卖 Put。**不降 tier**，
+            # 只打 ⛔ 标——人脑第 0 步负责毙（同倒挂闸的处理，见 main.apply_trend_gate）。
+            forbid_note = ""
+            if s.metadata.get("forbid_8"):
+                forbid_note = f" ⛔禁止#8·{s.metadata.get('forbid_8_msg', '')}"
             inv_note = ""
             if s.metadata.get("inversion"):
                 inv_msg = s.metadata.get("inversion_msg", "")
@@ -206,7 +211,7 @@ class Reporter:
                   f"卖{opt_type_short}{sell_strike}/{buy_strike}  "
                   f"净收 ¥{net_premium}  卖bid ¥{sell_bid} 买ask ¥{buy_ask}  "
                   f"盈亏比 {s.rr_ratio}:1  OTM {s.metadata.get('otm_pct','?')}%"
-                  f"{inv_note}{warn}{comp_note}")
+                  f"{forbid_note}{inv_note}{warn}{comp_note}")
             print(f"        {tier_str}")
 
             tp = round(s.max_profit * 0.5, 0)

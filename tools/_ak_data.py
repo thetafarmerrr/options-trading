@@ -37,6 +37,12 @@ FUTURES_ZH_NAME = {
     "au": "黄金", "cf": "棉花", "sr": "白糖", "i": "铁矿石", "ru": "橡胶",
 }
 
+# 十大禁止 #8「上涨不卖 Call / 下跌不卖 Put」的判定阈值（10/13 立）。
+# 取 1.0%，对齐 docs/monitoring-rules.md 的既有门槛「趋势方向明确 = 5 日涨/跌幅 ≥ 1%」。
+# （旧死代码 _price_trend 里写的是 0.5%，未沿用——同一件事不留两个数。10/13 实跑：
+#  0.5% 触 8/10 品种（含 au +0.92%、cf +0.54% 这类边缘），1.0% 触 6/10。）
+TREND_PCT = 0.01
+
 
 def pick_best_contract(symbol, vcode=None):
     """选主力合约。实际委托 pick_two_contracts，只返回近月。"""
@@ -286,6 +292,37 @@ def fetch_futures_daily(vcode, days=120):
     except Exception:
         pass
     return None
+
+
+def price_trend_5d(vcode):
+    """5 日价格斜率（6 个收盘 = 5 个区间），用于十大禁止 #8（10/13 立）。
+
+    返回 (pct, label, forbidden_side)：
+      pct             5 日涨跌幅（小数，如 铁矿石 −0.0315）
+      label           "📈单边上涨" / "📉单边下跌" / None（震荡，不限定）
+      forbidden_side  该趋势下**禁卖的腿**："call"（上涨）/ "put"（下跌）/ None
+
+    阈值见 TREND_PCT。数据源 = akshare 真实日线**收盘价**（fetch_futures_daily），
+    不是 inferred_futures 推断价——方向判定用推断价会在换月/失真时翻向。
+    取不到数据 → (None, None, None)；调用方须**跳过**（宁可漏标，不可误标）。
+
+    ⚠️ 原实现是 tools/iv_collector.py 里的 `_price_trend`，**零调用点**（死代码）。
+    10/13 i2701 卖P 违规开仓后，把它提上来接线，成为禁止条 #8 的数据源。
+    """
+    try:
+        df = fetch_futures_daily(vcode, 15)
+    except Exception:
+        return None, None, None
+    if df is None or len(df) < 6:
+        return None, None, None
+    df = df.sort_values("date").tail(6)
+    closes = df["close"].values.astype(float)
+    pct = float((closes[-1] - closes[0]) / closes[0])
+    if pct > TREND_PCT:
+        return pct, "📈单边上涨", "call"
+    if pct < -TREND_PCT:
+        return pct, "📉单边下跌", "put"
+    return pct, None, None
 
 
 def _est_dte(contract):

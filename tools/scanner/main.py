@@ -157,6 +157,48 @@ def apply_inversion_gate(all_signals: list, iv_hist: dict):
             s.metadata["tier_color"] = "yellow"
 
 
+def apply_trend_gate(all_signals: list):
+    """十大禁止 #8 硬闸（10/13 立）：上涨趋势不卖 Call / 下跌趋势不卖 Put。
+
+    数据源 = akshare 真实日线 5 日收盘斜率（_ak_data.price_trend_5d），非 inferred 推断价。
+    学倒挂闸（apply_inversion_gate）：**不降 tier（保留 EXEC），只打 ⛔ 标**。
+    10/13 裁定「选项 1」：标记 > 抹除——把违规抹成「无信号日」= 违规消失而不是被看见；
+    且纪律计数需「当天有 EXEC + 人脑逐层毙」才成立。
+
+    ⚠️ **覆盖边界（别把绿当成过）**：十大禁止里机器可查的只有 4 条
+    （#8 本闸 / #4 OTM<2% 策略层 / #6 ITM / #9 同品种持仓）。
+    #1 组合单 · #2 事件 D-0·D-1 · #3 裸卖 · #5 账户闲着 · #7 浮亏浮盈 · #10 买方摊平
+    —— 机器查不了，**仍须人脑第 0 步**。EXEC 行没印 ⛔ ≠ 过十大禁止。
+    """
+    try:
+        if _TOOLS_DIR not in sys.path:
+            sys.path.insert(0, _TOOLS_DIR)
+        from _ak_data import price_trend_5d
+    except Exception:
+        return  # 数据层不可用：不标（宁可漏标，不可误标或崩扫描）
+
+    cache = {}
+    for s in all_signals:
+        if s.tier != "EXEC" or "credit" not in s.strategy:
+            continue  # #8 只约束**卖腿**方向 → 仅卖方信用价差
+        v = s.variety
+        if v not in cache:
+            try:
+                cache[v] = price_trend_5d(v)
+            except Exception:
+                cache[v] = (None, None, None)
+        pct, label, forbidden = cache[v]
+        if not forbidden:
+            continue  # 数据不足 / 震荡 → 不限定
+        if s.metadata.get("direction", "") != forbidden:
+            continue  # 卖腿与趋势同向（上涨卖Put / 下跌卖Call）→ 不触 #8
+        s.metadata["forbid_8"] = True
+        s.metadata["forbid_8_msg"] = (
+            f"{label}（5日 {pct*100:+.2f}%）→ 仅可卖 "
+            f"{'Call' if forbidden == 'put' else 'Put'}"
+        )
+
+
 def apply_compensation_presumption(all_signals: list, weekly_risks: dict):
     """错价 vs 补偿推定（9/8 认知落地）：真实物理风险登记窗内 + 卖方 EXEC → 黄标推定补偿。
 
@@ -384,6 +426,8 @@ def main():
     # ── IV-HV 硬门槛（#12）：EXEC 必须 IV-HV ≥1%；<1%（含折价）降级 INTERCEPTED ──
     apply_iv_hv_gate(all_signals, iv_hist)
     apply_inversion_gate(all_signals, iv_hist)
+    # ── 十大禁止 #8 硬闸（10/13 立）：上涨不卖 Call / 下跌不卖 Put → ⛔ 标（不降 tier）
+    apply_trend_gate(all_signals)
     # ── 错价vs补偿推定（9/8）：真实物理风险窗内 + 卖方 EXEC → 黄标，四层证伪补偿才可卖
     apply_compensation_presumption(all_signals, weekly_risks)
 

@@ -60,20 +60,9 @@ def _safe(v):
     return v if not pd.isna(v) else 0
 
 
-def _price_trend(vcode):
-    """5 日价格斜率，正=上涨，负=下跌。用于方向限定。"""
-    df = fetch_futures_daily(vcode, 15)
-    if df is None or len(df) < 6:
-        return None, None
-    df = df.sort_values("date").tail(6)
-    closes = df["close"].values.astype(float)
-    pct = (closes[-1] - closes[0]) / closes[0]
-    if pct > 0.005:
-        return "📈单边上涨", "仅卖Put"
-    elif pct < -0.005:
-        return "📉单边下跌", "仅卖Call"
-    else:
-        return None, None  # 震荡不限定
+# `_price_trend` 已于 10/13 移出本文件 → tools/_ak_data.py 的 `price_trend_5d`，
+# 并接线到 scanner 的十大禁止 #8 硬闸。此处**不再保留副本**：原实现是零调用点的
+# 死代码，且阈值与 monitoring-rules.md 不一致（0.5% vs 1%），留两处 = 留两个数。
 
 
 def calc_parkinson_hv(vcode, window=PARKINSON_WINDOW):
